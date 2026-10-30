@@ -165,4 +165,4 @@ def test_agent_run_unknown_runtime_is_refused(project: Path, tmp_path: Path) -> 
         ],
     )
     assert result.exit_code == 1
-    assert "not registered" in result.output
+    assert "execution mode is not usable" in result.output
