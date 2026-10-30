@@ -1,0 +1,7 @@
+Done — bug fixed and test passing.
+
+**Fix**
+- `math_utils.py:3` — `sum_of_squares` now returns `sum(n * n for n in numbers)` instead of `sum(numbers)`.
+
+**Verification**
+- `python3 -m pytest -q test_math.py` → 1 passed. `test_math.py` was not modified.

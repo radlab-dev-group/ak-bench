@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.idea/*
+# AK-Bench: dane uruchomieniowe (workspace, artefakty runów, instancje runtime, SQLite)
+/data/
+
+# AK-Bench: generowane raporty HTML
+/reports/

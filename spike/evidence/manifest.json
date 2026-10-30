@@ -1,0 +1,93 @@
+{
+  "schema_version": "0.1",
+  "run_id": "spike-20261030-130140",
+  "created_at": "2026-10-30T13:03:23+0100",
+  "task": {
+    "id": "spike-001",
+    "source": "spike/task.yaml",
+    "sha256": "361d77386410a40aaea19bdf131c9403f3086d3dc2516e1f75a0a947a6ec0b82"
+  },
+  "repository": {
+    "fixture": "spike/repo",
+    "base_commit": "ce35d2fe6605e2074a9b74a8c0891dd57b9d281a",
+    "commit_after_agent": "ce35d2fe6605e2074a9b74a8c0891dd57b9d281a"
+  },
+  "agent": {
+    "id": "codex",
+    "adapter": "codex_cli",
+    "version": "codex-cli 0.166.0",
+    "session_id": "01a18cb0-474a-7da3-9adf-3ae6967c6d69",
+    "config_requested": {
+      "model": "config-default (auto_codex)",
+      "sandbox": "workspace-write",
+      "approval_policy": "never"
+    },
+    "config_effective": {
+      "model": "auto_codex (from isolated config.toml)"
+    },
+    "config_observed": {
+      "model": "auto_codex",
+      "model_provider": "llamacpp",
+      "sandbox_policy": "workspace-write",
+      "cwd": "/mnt/data2/dev/develop/ak-bench/data/workspaces/spike-20261030-130140/repo",
+      "cli_version": "0.166.0",
+      "verification_status": "verified"
+    },
+    "observations": {
+      "tool_call_count": 6,
+      "tool_names": {
+        "exec_command": 6
+      },
+      "stream_error": null,
+      "turn_failed": null
+    }
+  },
+  "runtime": {
+    "id": "llm_router",
+    "mode": "router",
+    "lifecycle": "external",
+    "base_url": "http://192.168.100.65:8081/v1",
+    "healthcheck": "GET /health -> 200 (verified pre-run)"
+  },
+  "agent_result": {
+    "exit_code": 0,
+    "timed_out": false,
+    "duration_s": 96.67,
+    "last_message": "Done — bug fixed and test passing.\n\n**Fix**\n- `math_utils.py:3` — `sum_of_squares` now returns `sum(n * n for n in numbers)` instead of `sum(numbers)`.\n\n**Verification**\n- `python3 -m pytest -q test_math.py` → 1 passed. `test_math.py` was not modified.",
+    "usage": {
+      "input_tokens": 39313,
+      "cached_input_tokens": 21010,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 588,
+      "reasoning_output_tokens": 0,
+      "total_tokens": 39901
+    },
+    "final_message": "Done — bug fixed and test passing.\n\n**Fix**\n- `math_utils.py:3` — `sum_of_squares` now returns `sum(n * n for n in numbers)` instead of `sum(numbers)`.\n\n**Verification**\n- `python3 -m pytest -q test_math.py` → 1 passed. `test_math.py` was not modified.",
+    "status": "completed",
+    "failure_class": "agent",
+    "infra_markers": []
+  },
+  "evaluation": {
+    "exit_code": 0,
+    "pass": true,
+    "stdout_tail": [
+      "1 passed in 0.36s"
+    ]
+  },
+  "artifacts": {
+    "codex_stdout": "codex_stdout.jsonl",
+    "codex_stderr": "codex_stderr.log",
+    "agent_trace": "agent_trace.jsonl",
+    "tool_calls": "tool_calls.jsonl",
+    "diff": "diff.patch",
+    "last_message": "last_message.txt",
+    "evaluation": "evaluation.json"
+  },
+  "artifact_hashes": {
+    "codex_stdout.jsonl": "8f4ce3d942d1d0d1e33651439457b3f1fc9f33ecbe47b189d6ea06bfc522482a",
+    "codex_stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "diff.patch": "d02b0c99dc49263d5c9738445997b301dde6173c94a7394691cd53b5fe40d871",
+    "evaluation.json": "71dd77efe69d5797a23d5c8a07e09e60b6499a950a516b43510fcf37236523e2",
+    "agent_trace.jsonl": "a7a56d695038e30ba9d816778c1af2494774a23895af12bf55e7a39495a0f127"
+  }
+}
