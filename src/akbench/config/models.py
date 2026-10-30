@@ -80,5 +80,7 @@ class Settings(_StrictModel):
     @classmethod
     def _check_schema(cls, value: int) -> int:
         if value != SCHEMA_VERSION:
-            raise ValueError(f"unsupported config schema_version {value!r}, expected {SCHEMA_VERSION}")
+            raise ValueError(
+                f"unsupported config schema_version {value!r}, expected {SCHEMA_VERSION}"
+            )
         return value

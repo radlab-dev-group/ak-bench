@@ -7,12 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import typer
 from rich.console import Console
-from rich.json import JSON
-from typing_extensions import ParamSpec
 
 from akbench.config.loader import LoadedConfig, load_settings
 from akbench.core.errors import AKBenchmarkError
@@ -22,8 +20,6 @@ EXIT_OK = 0
 EXIT_ERROR = 1
 
 LOG = get_logger("cli")
-P = ParamSpec("P")
-R = TypeVar("R")
 
 
 @dataclass
@@ -44,13 +40,18 @@ class CliContext:
             )
         return self._loaded
 
-    def apply_logging(self) -> None:
+    def apply_logging(self, *, min_level: str | None = None) -> None:
+        """Configure logging. ``min_level`` raises the floor for machine output."""
         settings = self.loaded().settings
         level = settings.logging.level
         if self.verbose:
             level = "DEBUG"
         elif self.quiet:
             level = "ERROR"
+        elif min_level is not None:
+            ranking = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+            if ranking.index(min_level) > ranking.index(level):
+                level = min_level
         log_file = None
         if settings.logging.to_file and settings.logging.file:
             from akbench.core.paths import resolve_path
@@ -70,16 +71,22 @@ console = Console()
 error_console = Console(stderr=True)
 
 
+def show_json(data: Any) -> None:
+    """Write JSON to stdout verbatim.
+
+    Rich would wrap long values and inject newlines inside strings, which makes
+    ``--json`` output unparseable when piped, so plain ``print`` is deliberate.
+    Logs go to stderr, keeping stdout a clean JSON stream.
+    """
+    print(json.dumps(data, indent=2, ensure_ascii=False, default=str), flush=True)
+
+
 def emit(data: Any, *, as_json: bool, render: Callable[[], None]) -> None:
     """Print machine readable data, or fall back to the human renderer."""
     if as_json:
-        console.print_json(json.dumps(data, ensure_ascii=False, default=str))
+        show_json(data)
     else:
         render()
-
-
-def show_json(data: Any) -> None:
-    console.print(JSON(json.dumps(data, ensure_ascii=False, default=str)))
 
 
 def fail(message: str, *, hint: str | None = None) -> typer.Exit:
@@ -89,7 +96,7 @@ def fail(message: str, *, hint: str | None = None) -> typer.Exit:
     return typer.Exit(EXIT_ERROR)
 
 
-def handle_errors(func: Callable[P, R]) -> Callable[P, R]:
+def handle_errors[P, R](func: Callable[P, R]) -> Callable[P, R]:
     """Convert domain errors into exit code 1 instead of a traceback."""
 
     @wraps(func)

@@ -97,7 +97,9 @@ def initialize(
             report.messages.append(f"config already present: {config_target}")
         else:
             config_target.parent.mkdir(parents=True, exist_ok=True)
-            config_target.write_text(CONFIG_TEMPLATE.format(schema_version=SCHEMA_VERSION), encoding="utf-8")
+            config_target.write_text(
+                CONFIG_TEMPLATE.format(schema_version=SCHEMA_VERSION), encoding="utf-8"
+            )
             report.config_written = True
             LOG.info("wrote config %s", config_target)
 

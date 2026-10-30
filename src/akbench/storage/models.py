@@ -49,7 +49,7 @@ class RunStatus(StrEnum):
     EVALUATION_ERROR = "evaluation_error"
 
     @classmethod
-    def terminal(cls) -> frozenset["RunStatus"]:
+    def terminal(cls) -> frozenset[RunStatus]:
         return frozenset(
             {
                 cls.COMPLETED,

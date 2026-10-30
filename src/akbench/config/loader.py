@@ -11,9 +11,9 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from akbench.config.models import Settings
 from akbench.core.errors import ConfigError
 from akbench.core.paths import AppPaths, resolve_path, resolve_project_root
-from akbench.config.models import Settings
 
 DEFAULT_CONFIG_RELPATH = Path("configs/defaults.yaml")
 ENV_CONFIG_PATH = "AKBENCH_CONFIG"
@@ -130,7 +130,11 @@ def load_settings(
 ) -> LoadedConfig:
     """Build validated settings from built-ins, an optional file and env overrides."""
     env = os.environ if environ is None else environ
-    root = Path(project_root).expanduser().resolve() if project_root else resolve_project_root(environ=env)
+    root = (
+        Path(project_root).expanduser().resolve()
+        if project_root
+        else resolve_project_root(environ=env)
+    )
 
     explicit = Path(config_path).expanduser() if config_path else None
     path, source = discover_config_file(explicit, root, env)

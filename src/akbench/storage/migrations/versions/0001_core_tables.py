@@ -61,7 +61,10 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["experiment_id"], ["experiments.id"], name="fk_task_runs_experiment_id", ondelete="CASCADE"
+            ["experiment_id"],
+            ["experiments.id"],
+            name="fk_task_runs_experiment_id",
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("experiment_id", "uid", name="uq_task_runs_experiment_uid"),

@@ -42,7 +42,11 @@ class CheckResult:
     hint: str | None = None
 
     def as_dict(self) -> dict[str, object]:
-        payload: dict[str, object] = {"name": self.name, "status": str(self.status), "detail": self.detail}
+        payload: dict[str, object] = {
+            "name": self.name,
+            "status": str(self.status),
+            "detail": self.detail,
+        }
         if self.hint:
             payload["hint"] = self.hint
         return payload
@@ -158,11 +162,15 @@ def check_directories(paths: list[Path]) -> list[CheckResult]:
             )
         elif not directory.is_dir():
             results.append(
-                CheckResult(f"dir:{directory.name}", CheckStatus.FAIL, f"{directory} is not a directory")
+                CheckResult(
+                    f"dir:{directory.name}", CheckStatus.FAIL, f"{directory} is not a directory"
+                )
             )
         elif not os.access(directory, os.W_OK):
             results.append(
-                CheckResult(f"dir:{directory.name}", CheckStatus.FAIL, f"{directory} is not writable")
+                CheckResult(
+                    f"dir:{directory.name}", CheckStatus.FAIL, f"{directory} is not writable"
+                )
             )
         else:
             results.append(CheckResult(f"dir:{directory.name}", CheckStatus.OK, str(directory)))
@@ -175,8 +183,12 @@ def check_database(database_url: str) -> list[CheckResult]:
         engine = create_db_engine(database_url)
         engine_is_reachable(engine)
     except DatabaseError as exc:
+        hint = "`akbench init` creates the SQLite file"
         return [
-            CheckResult("database", CheckStatus.FAIL, str(exc), hint="`akbench init` creates the SQLite file")
+            CheckResult("database", CheckStatus.FAIL, str(exc), hint=hint),
+            CheckResult(
+                "schema", CheckStatus.FAIL, "schema cannot be read without a database", hint=hint
+            ),
         ]
     finally:
         if engine is not None:
@@ -217,7 +229,12 @@ def check_tools(tools: list[str], *, required: bool) -> list[CheckResult]:
             results.append(CheckResult(f"tool:{tool}", CheckStatus.OK, found))
         elif required:
             results.append(
-                CheckResult(f"tool:{tool}", CheckStatus.FAIL, f"{tool} not found in PATH", hint=f"install {tool}")
+                CheckResult(
+                    f"tool:{tool}",
+                    CheckStatus.FAIL,
+                    f"{tool} not found in PATH",
+                    hint=f"install {tool}",
+                )
             )
         else:
             results.append(
@@ -238,7 +255,9 @@ def check_disk(path: Path, min_free_mb: int) -> CheckResult:
     try:
         usage = shutil.disk_usage(probe)
     except OSError as exc:
-        return CheckResult("disk", CheckStatus.WARNING, f"cannot read disk usage for {probe}: {exc}")
+        return CheckResult(
+            "disk", CheckStatus.WARNING, f"cannot read disk usage for {probe}: {exc}"
+        )
     free_mb = usage.free // (1024 * 1024)
     if free_mb < min_free_mb:
         return CheckResult(

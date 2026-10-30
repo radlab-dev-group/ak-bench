@@ -7,8 +7,8 @@ their own phases and are intentionally absent rather than stubbed.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.table import Table
@@ -30,6 +30,7 @@ app = typer.Typer(
     name="akbench",
     help="AK-Bench: repeatabalna ocena agentow programistycznych, routerow i pluginow.",
     no_args_is_help=True,
+    invoke_without_command=True,
     pretty_exceptions_show_locals=False,
 )
 config_app = typer.Typer(help="Inspekcja konfiguracji.", no_args_is_help=True)
@@ -57,21 +58,29 @@ ProjectOption = typer.Option(
 )
 
 
-def _context(config: Optional[Path], project_root: Optional[Path], verbose: bool, quiet: bool) -> CliContext:
+def _context(
+    config: Path | None,
+    project_root: Path | None,
+    verbose: bool,
+    quiet: bool,
+) -> CliContext:
     return CliContext(config_path=config, project_root=project_root, verbose=verbose, quiet=quiet)
 
 
 @app.callback()
 def cli(
     ctx: typer.Context,
-    config: Optional[Path] = ConfigOption,
-    project_root: Optional[Path] = ProjectOption,
+    config: Path | None = ConfigOption,
+    project_root: Path | None = ProjectOption,
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Logi w poziomie DEBUG."),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Tylko bledy."),
     version: bool = typer.Option(False, "--version", help="Wersja AK-Bench i wyjscie."),
 ) -> None:
     if version:
         console.print(f"ak-bench {__version__}")
+        raise typer.Exit(EXIT_OK)
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
         raise typer.Exit(EXIT_OK)
     context = _context(config, project_root, verbose, quiet)
     ctx.obj = context
@@ -97,7 +106,11 @@ def version_cmd(
         except md.PackageNotFoundError:
             deps[name] = None
 
-    payload = {"ak_bench": __version__, "python": __import__("sys").version.split()[0], "dependencies": deps}
+    payload = {
+        "ak_bench": __version__,
+        "python": sys.version.split()[0],
+        "dependencies": deps,
+    }
     if as_json:
         show_json(payload)
         return
@@ -117,6 +130,8 @@ def init_cmd(
 ) -> None:
     """Tworzy katalogi, konfiguracje i baze danych (migracje do head)."""
     context: CliContext = ctx.obj
+    if as_json:
+        context.apply_logging(min_level="WARNING")
     loaded = context.loaded()
     report = initialize(
         loaded,
@@ -128,7 +143,8 @@ def init_cmd(
     if as_json:
         show_json(report.as_dict())
     else:
-        console.print(f"[green]zainicjalizowano[/green] projekt w {build_app_paths(loaded.settings).project_root}")
+        root = build_app_paths(loaded.settings).project_root
+        console.print(f"[green]zainicjalizowano[/green] projekt w {root}")
         console.print(f"  katalogi utworzone: {len(report.created_dirs)}")
         if report.config_written:
             console.print(f"  konfiguracja: {report.config_path}")
@@ -177,7 +193,9 @@ def doctor_cmd(
 def config_show_cmd(
     ctx: typer.Context,
     as_json: bool = typer.Option(False, "--json", help="Wynik jako JSON."),
-    show_all: bool = typer.Option(False, "--all", help="Rowniez wartosci niesciezkeowe konfiguracji."),
+    show_all: bool = typer.Option(
+        False, "--all", help="Rowniez pozostale sekcje konfiguracji."
+    ),
 ) -> None:
     """Pokazuje efektywna konfiguracje wraz ze zrodlami."""
     context: CliContext = ctx.obj

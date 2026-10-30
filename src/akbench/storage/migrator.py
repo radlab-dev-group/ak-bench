@@ -6,6 +6,7 @@ plain ``pip install`` without an ``alembic.ini`` in the working directory.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,6 +32,7 @@ def build_config(database_url: str) -> AlembicConfig:
     config.set_main_option("script_location", _escape(str(MIGRATIONS_DIR)))
     config.set_main_option("version_locations", _escape(str(MIGRATIONS_DIR / "versions")))
     config.set_main_option("sqlalchemy.url", _escape(database_url))
+    config.set_main_option("path_separator", _escape(os.pathsep))
     return config
 
 
