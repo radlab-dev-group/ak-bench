@@ -28,6 +28,8 @@ class PathsSettings(_StrictModel):
     runtime_instances_dir: Path = Path("data/runtime_instances")
     reports_dir: Path = Path("reports")
     descriptors_dir: Path = Path("descriptors")
+    datasets_dir: Path = Path("datasets")
+    repositories_dir: Path = Path("data/repositories")
     database_file: Path = Path("data/akbench.sqlite")
     logs_dir: Path | None = Path("data/logs")
 

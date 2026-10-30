@@ -60,6 +60,8 @@ class AppPaths:
     runtime_instances_dir: Path
     reports_dir: Path
     descriptors_dir: Path
+    datasets_dir: Path
+    repositories_dir: Path
     database_file: Path
     logs_dir: Path | None = None
     created: list[Path] = field(default_factory=list, compare=False, repr=False)
@@ -72,6 +74,7 @@ class AppPaths:
             self.runtime_instances_dir,
             self.reports_dir,
             self.descriptors_dir,
+            self.repositories_dir,
             *([self.logs_dir] if self.logs_dir else []),
         ]
 
@@ -97,6 +100,8 @@ class AppPaths:
                 ("runtime_instances_dir", self.runtime_instances_dir),
                 ("reports_dir", self.reports_dir),
                 ("descriptors_dir", self.descriptors_dir),
+                ("datasets_dir", self.datasets_dir),
+                ("repositories_dir", self.repositories_dir),
                 ("database_file", self.database_file),
                 ("logs_dir", self.logs_dir),
             )

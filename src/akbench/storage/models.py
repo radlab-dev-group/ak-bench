@@ -1,8 +1,8 @@
-"""Core persistence model for Phase 1.
+"""Persistence model.
 
-Deliberately small: the complete data model (metrics, observations, descriptor
-snapshots, events) lands in Phase 11. ``task_uid`` is a plain identifier here
-and becomes a real foreign key when the dataset layer exists in Phase 3.
+Kept deliberately small: metrics, observations, descriptor snapshots and events
+land in Phase 11. Phase 3 added ``repositories`` and ``tasks``, which turn a run's
+``task_uid`` into a reference to a real, versioned task row.
 """
 
 from __future__ import annotations
@@ -77,6 +77,45 @@ class TimestampMixin:
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class Repository(Base, TimestampMixin):
+    """A source repository a task pins its code to (plan section 8.3)."""
+
+    __tablename__ = "repositories"
+    __table_args__ = (Index("ix_repositories_source", "source"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    source: Mapped[str] = mapped_column(String(512), nullable=False)
+    default_ref: Mapped[str | None] = mapped_column(String(128))
+    source_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="git")
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class Task(Base, TimestampMixin):
+    """A versioned task as recorded when it was used (plan sections 8.3, 19)."""
+
+    __tablename__ = "tasks"
+    __table_args__ = (
+        UniqueConstraint("task_id", "version", name="uq_tasks_task_id_version"),
+        Index("ix_tasks_category", "category"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    task_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255))
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    difficulty: Mapped[str] = mapped_column(String(32), nullable=False)
+    evaluator: Mapped[str] = mapped_column(String(128), nullable=False)
+    repository_uid: Mapped[str | None] = mapped_column(
+        ForeignKey("repositories.uid", ondelete="SET NULL")
+    )
+    base_commit: Mapped[str | None] = mapped_column(String(64))
+    mutation_version: Mapped[str | None] = mapped_column(String(64))
+    snapshot_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+
+
 class Experiment(Base, TimestampMixin):
     __tablename__ = "experiments"
 
@@ -107,7 +146,9 @@ class TaskRun(Base, TimestampMixin):
         ForeignKey("experiments.id", ondelete="CASCADE")
     )
     variant_uid: Mapped[str | None] = mapped_column(String(64))
-    task_uid: Mapped[str | None] = mapped_column(String(128))
+    task_uid: Mapped[str | None] = mapped_column(
+        String(128), ForeignKey("tasks.uid", ondelete="SET NULL")
+    )
 
     agent_id: Mapped[str | None] = mapped_column(String(128))
     agent_version: Mapped[str | None] = mapped_column(String(64))
