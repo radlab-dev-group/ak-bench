@@ -22,8 +22,8 @@ akbench doctor
 ```
 
 Tests need neither network nor an agent: they run against temporary
-directories and SQLite files. Integration tests (the CLI) use
-`typer.testing.CliRunner`.
+directories, real local git repositories and SQLite files. Integration tests
+ (the CLI) use `typer.testing.CliRunner`.
 
 Contract tests worth knowing about:
 
@@ -38,6 +38,10 @@ Contract tests worth knowing about:
   still loads (and that unavailable metrics carry a reason).
 - `tests/unit/test_env_observation.py` — the ENV allowlist: only declared
   variables are read, secrets are reduced to `is_set`.
+- `tests/integration/test_workspaces.py` — git worktree workspaces and mutation
+  verification against real repositories (repeatable fingerprints, cleanup,
+  hidden-test isolation, `not_detectable` rejection).
+- `tests/integration/test_dataset_cli.py` — the dataset command group.
 
 ## 3. Migrations
 
@@ -53,6 +57,8 @@ Rules:
 - SQLite with `render_as_batch=True` (the `ALTER TABLE` limitations),
 - `task_uid` in `task_runs` is a plain string for now — the real foreign key to
   `tasks` arrives in Phase 3,
+- `task_runs.task_uid` is a real foreign key to `tasks.uid` from Phase 3 on, so
+  a run can never reference a task that was never registered;
 - the complete data model (metrics, observations, descriptor snapshots,
   events) lands in Phase 11.
 
@@ -74,11 +80,14 @@ Rules:
 
 ## 5. Deliberately unfinished
 
-- The `dataset`, `runtime`, `experiment`, `report` and `export` commands —
-  Phases 3 and later.
+- The `runtime`, `experiment`, `report` and `export` commands — Phases 4 and
+  later.
 - The runtime and plugin *adapters* that act on the runtime/plugin descriptors
   (configuration read/write, verification, event interpretation) — Phases 5
   and 9. Until then the descriptors describe the interface; nothing acts on it.
-- The `tasks` table and its relations — Phase 3.
+- The Agent Adapter Framework (the universal contract + the Codex adapter) —
+  Phase 4.
+- The evaluator *engine* that runs hidden tests against an agent's produced
+  workspace — Phase 6 (the dataset layer only verifies mutations today).
 - The observability and metrics layer — Phases 9 and 11.
 - Docker sandboxing — Phases 3/7 (Docker availability verified, not implemented).

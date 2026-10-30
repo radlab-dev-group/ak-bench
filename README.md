@@ -15,7 +15,8 @@ task execution through a chosen agent and verifies the outcome independently.
 | 0 | Integration spike (Codex CLI + LLM Router) | done |
 | 1 | Skeleton: CLI, configuration, logging, SQLite, migrations | done |
 | 2 | Descriptors and registries | done |
-| 3 | Dataset, tasks, worktrees | next |
+| 3 | Dataset, tasks, repositories, workspaces | done |
+| 4 | Agent adapter framework | next |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -35,6 +36,7 @@ akbench init          # directories + configuration + database (migrations to he
 akbench doctor        # environment readiness
 akbench config show   # effective configuration and paths
 akbench descriptor validate  # component descriptors
+akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 ```
 
 ## Commands
@@ -52,6 +54,10 @@ akbench descriptor validate  # component descriptors
 | `akbench agent list [--json]` | registered agents with usable-capability counts |
 | `akbench agent inspect REF [--json]` | agent capabilities, statuses, controllable parameters |
 | `akbench category list [--json]` | task categories and whether they are enabled |
+| `akbench dataset list [--category C] [--json]` | registered tasks |
+| `akbench dataset validate [--check-repositories] [--verify-mutations] [--json]` | validate tasks; exit 1 on failure |
+| `akbench dataset show REF [--json]` | one task with its resolved repository and digest |
+| `akbench dataset prepare REF [--no-mutation] [--json]` | create a repeatable workspace for a task |
 
 Global options: `--config/-c`, `--project-root`, `--verbose/-v`, `--quiet/-q`, `--version`.
 
@@ -82,13 +88,15 @@ src/akbench/
   core/         # errors, paths, time, logging
   descriptors/  # descriptor models, ENV allowlist, registry
   storage/      # SQLAlchemy, models, Alembic migrations, migration runner
+  datasets/     # task descriptors, dataset validation, repositories, workspaces
   bootstrap.py  # `akbench init` logic
   doctor.py     # environment diagnostics
 tests/
   unit/         # paths, configuration, storage, doctor, descriptors
   integration/  # CLI
 descriptors/    # component definitions (agents, plugins, models, ...)
-data/           # run directories and database (git-ignored)
+datasets/       # task definitions, hidden tests and mutation patches
+data/           # run directories, repository cache and database (git-ignored)
 docs/           # integration and development documentation
 spike/          # Phase 0 code (flow validation)
 ```
@@ -100,6 +108,7 @@ spike/          # Phase 0 code (flow validation)
 - `docs/ROUTER_INTEGRATION.md` — LLM Router: healthcheck, models, plugins,
   metrics and verification limits
 - `docs/DESCRIPTOR_SYSTEM.md` — descriptor kinds, registries, ENV allowlist, dimension rules
+- `docs/DATASETS.md` — tasks, repositories, repeatable workspaces, mutation verification
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions
