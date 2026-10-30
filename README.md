@@ -16,7 +16,8 @@ task execution through a chosen agent and verifies the outcome independently.
 | 1 | Skeleton: CLI, configuration, logging, SQLite, migrations | done |
 | 2 | Descriptors and registries | done |
 | 3 | Dataset, tasks, repositories, workspaces | done |
-| 4 | Agent adapter framework | next |
+| 4 | Agent adapter framework (contract, registry, Codex adapter) | done |
+| 5 | Runtime and Router Manager | next |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -53,6 +54,7 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench descriptor show REF --kind K [--json]` | one descriptor: content, digest, derived facts |
 | `akbench agent list [--json]` | registered agents with usable-capability counts |
 | `akbench agent inspect REF [--json]` | agent capabilities, statuses, controllable parameters |
+| `akbench agent run REF [--task T] [--workspace D] [--runtime R] [--param k=v] [--json]` | run one task through an agent adapter |
 | `akbench category list [--json]` | task categories and whether they are enabled |
 | `akbench dataset list [--category C] [--json]` | registered tasks |
 | `akbench dataset validate [--check-repositories] [--verify-mutations] [--json]` | validate tasks; exit 1 on failure |
@@ -87,13 +89,15 @@ src/akbench/
   config/       # Pydantic models + YAML/ENV loading
   core/         # errors, paths, time, logging
   descriptors/  # descriptor models, ENV allowlist, registry
+  agents/       # adapter contract, agent registry, catalog, Codex adapter
   storage/      # SQLAlchemy, models, Alembic migrations, migration runner
   datasets/     # task descriptors, dataset validation, repositories, workspaces
   bootstrap.py  # `akbench init` logic
   doctor.py     # environment diagnostics
 tests/
-  unit/         # paths, configuration, storage, doctor, descriptors
+  unit/         # paths, configuration, storage, doctor, descriptors, agents
   integration/  # CLI
+  contract/     # shared adapter contract suite, fake agent, CLI stub
 descriptors/    # component definitions (agents, plugins, models, ...)
 datasets/       # task definitions, hidden tests and mutation patches
 data/           # run directories, repository cache and database (git-ignored)
@@ -109,6 +113,7 @@ spike/          # Phase 0 code (flow validation)
   metrics and verification limits
 - `docs/DESCRIPTOR_SYSTEM.md` — descriptor kinds, registries, ENV allowlist, dimension rules
 - `docs/DATASETS.md` — tasks, repositories, repeatable workspaces, mutation verification
+- `docs/AGENT_ADAPTERS.md` — the adapter contract, agent registry, capability gating, contract tests
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions
