@@ -1,0 +1,18 @@
+# Embedding-based half of agentic routing.
+schema_version: "1.0"
+id: routing_semantic_enabled
+version: "1.0.0"
+title: Agentic routing semantic layer enabled
+description: Enables semantic similarity matching in the agentic routing plugin.
+
+dimension:
+  type: plugin_configuration
+  source: plugin.agentic_routing_codex.env
+  values: [false, true]
+  controllable: true
+  observed: true
+  configure_via: env LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SEMANTIC_ENABLED
+  verify_via: same as routing_heuristic_enabled (response model field, partial)
+  depends_on:
+    - request carries the trigger alias auto_codex
+    - embedding model reachable (env ..._AGENTIC_CODEX_MODEL)

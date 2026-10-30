@@ -33,6 +33,11 @@ Contract tests worth knowing about:
   models breaks this test.
 - `tests/integration/test_cli.py` — exit codes and the shape of `--json`
   output.
+- `tests/unit/test_descriptor_registry.py` — discovery, versioned identity,
+  digest stability and conflicts; also asserts that every shipped descriptor
+  still loads (and that unavailable metrics carry a reason).
+- `tests/unit/test_env_observation.py` — the ENV allowlist: only declared
+  variables are read, secrets are reduced to `is_set`.
 
 ## 3. Migrations
 
@@ -69,7 +74,11 @@ Rules:
 
 ## 5. Deliberately unfinished
 
-- The `agent`, `dataset`, `experiment`, `report` and `export` commands — Phase 2+.
+- The `dataset`, `runtime`, `experiment`, `report` and `export` commands —
+  Phases 3 and later.
+- The runtime and plugin *adapters* that act on the runtime/plugin descriptors
+  (configuration read/write, verification, event interpretation) — Phases 5
+  and 9. Until then the descriptors describe the interface; nothing acts on it.
 - The `tasks` table and its relations — Phase 3.
 - The observability and metrics layer — Phases 9 and 11.
 - Docker sandboxing — Phases 3/7 (Docker availability verified, not implemented).

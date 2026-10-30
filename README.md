@@ -14,7 +14,8 @@ task execution through a chosen agent and verifies the outcome independently.
 |---|---|---|
 | 0 | Integration spike (Codex CLI + LLM Router) | done |
 | 1 | Skeleton: CLI, configuration, logging, SQLite, migrations | done |
-| 2 | Descriptors and registries | next |
+| 2 | Descriptors and registries | done |
+| 3 | Dataset, tasks, worktrees | next |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -33,9 +34,10 @@ uv pip install -e ".[dev]"
 akbench init          # directories + configuration + database (migrations to head)
 akbench doctor        # environment readiness
 akbench config show   # effective configuration and paths
+akbench descriptor validate  # component descriptors
 ```
 
-## Commands (Phase 1)
+## Commands
 
 | Command | Description |
 |---|---|
@@ -44,6 +46,12 @@ akbench config show   # effective configuration and paths
 | `akbench doctor [--json] [--strict]` | environment diagnostics; exit 1 on failures |
 | `akbench config show [--json] [--all]` | effective configuration, paths, database URL |
 | `akbench config validate` | validate the configuration file without writing |
+| `akbench descriptor list [--kind K] [--json]` | list registered descriptors |
+| `akbench descriptor validate [--kind K] [--json]` | validate every file; exit 1 on any failure |
+| `akbench descriptor show REF --kind K [--json]` | one descriptor: content, digest, derived facts |
+| `akbench agent list [--json]` | registered agents with usable-capability counts |
+| `akbench agent inspect REF [--json]` | agent capabilities, statuses, controllable parameters |
+| `akbench category list [--json]` | task categories and whether they are enabled |
 
 Global options: `--config/-c`, `--project-root`, `--verbose/-v`, `--quiet/-q`, `--version`.
 
@@ -69,15 +77,17 @@ while it is not.
 
 ```text
 src/akbench/
-  cli/         # CLI layer (typer)
-  config/      # Pydantic models + YAML/ENV loading
-  core/        # errors, paths, time, logging
-  storage/     # SQLAlchemy, models, Alembic migrations, migration runner
-  bootstrap.py # `akbench init` logic
-  doctor.py    # environment diagnostics
+  cli/          # CLI layer (typer)
+  config/       # Pydantic models + YAML/ENV loading
+  core/         # errors, paths, time, logging
+  descriptors/  # descriptor models, ENV allowlist, registry
+  storage/      # SQLAlchemy, models, Alembic migrations, migration runner
+  bootstrap.py  # `akbench init` logic
+  doctor.py     # environment diagnostics
 tests/
-  unit/         # paths, configuration, storage, doctor
+  unit/         # paths, configuration, storage, doctor, descriptors
   integration/  # CLI
+descriptors/    # component definitions (agents, plugins, models, ...)
 data/           # run directories and database (git-ignored)
 docs/           # integration and development documentation
 spike/          # Phase 0 code (flow validation)
@@ -89,6 +99,7 @@ spike/          # Phase 0 code (flow validation)
   its interface does **not** provide (cost, cancellation, session reset)
 - `docs/ROUTER_INTEGRATION.md` — LLM Router: healthcheck, models, plugins,
   metrics and verification limits
+- `docs/DESCRIPTOR_SYSTEM.md` — descriptor kinds, registries, ENV allowlist, dimension rules
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions

@@ -1,0 +1,13 @@
+# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+schema_version: "1.0"
+id: security
+version: "1.0.0"
+title: Security
+description: Locate and fix a specified security issue.
+
+category:
+  enabled: false
+  difficulties: [medium, hard, expert]
+  task_requirements:
+    - repository with a pinned commit
+    - hidden tests proving the vulnerability is closed

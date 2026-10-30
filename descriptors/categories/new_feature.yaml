@@ -1,0 +1,18 @@
+# Task category (plan section 8.1, 8.5): the agent receives a base repository
+# plus a functional specification and implements the feature.
+schema_version: "1.0"
+id: new_feature
+version: "1.0.0"
+title: New feature
+description: >-
+  The agent implements a specified feature on a base repository; the result is
+  judged by hidden tests, regression tests and additional evaluators.
+
+category:
+  enabled: true
+  difficulties: [easy, medium, hard, expert]
+  default_evaluators: [pytest_evaluator, command_evaluator]
+  task_requirements:
+    - repository with a pinned commit
+    - functional specification visible to the agent
+    - hidden tests and evaluator kept outside the agent workspace

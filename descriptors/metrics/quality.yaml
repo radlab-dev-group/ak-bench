@@ -1,0 +1,61 @@
+# Quality metrics (plan section 18.1). Produced by the evaluator engine; they
+# are the only group that decides whether a task passed.
+schema_version: "1.0"
+id: task_success_rate
+version: "1.0.0"
+title: Task success rate
+metric:
+  group: quality
+  unit: ratio
+  direction: higher_is_better
+  availability: computed
+  requires: [evaluator.verdict]
+  notes: Share of runs whose evaluator verdict is a full success.
+---
+schema_version: "1.0"
+id: hidden_test_pass_rate
+version: "1.0.0"
+title: Hidden test pass rate
+metric:
+  group: quality
+  unit: ratio
+  direction: higher_is_better
+  availability: computed
+  requires: [evaluator.hidden_test_results]
+  notes: Tests the agent never saw, so the verdict cannot be gamed by the agent.
+---
+schema_version: "1.0"
+id: partial_success_rate
+version: "1.0.0"
+title: Partial success rate
+metric:
+  group: quality
+  unit: ratio
+  direction: higher_is_better
+  availability: computed
+  requires: [evaluator.verdict]
+  notes: Runs that pass some tests; reported apart from full success, never merged into it.
+---
+schema_version: "1.0"
+id: regression_rate
+version: "1.0.0"
+title: Regression rate
+metric:
+  group: quality
+  unit: ratio
+  direction: lower_is_better
+  availability: computed
+  requires: [evaluator.regression_results]
+  notes: Previously passing tests broken by the change; a distinct verdict from failure.
+---
+schema_version: "1.0"
+id: evaluator_score
+version: "1.0.0"
+title: Evaluator score
+metric:
+  group: quality
+  unit: score
+  direction: higher_is_better
+  availability: derived
+  requires: [evaluator.score]
+  notes: Score of evaluators whose result_kind is score or partial; never a substitute for pass/fail.

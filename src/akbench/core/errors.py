@@ -42,6 +42,12 @@ class DatabaseError(AKBenchmarkError):
     failure_class = FailureClass.INFRASTRUCTURE
 
 
+class DescriptorError(AKBenchmarkError):
+    """A descriptor is invalid, unknown, duplicated or conflicting."""
+
+    failure_class = FailureClass.CONFIGURATION
+
+
 class WorkspaceError(AKBenchmarkError):
     """A run workspace could not be prepared."""
 

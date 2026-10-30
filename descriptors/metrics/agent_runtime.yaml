@@ -1,0 +1,98 @@
+# Agent and runtime observability (plan section 18.3).
+schema_version: "1.0"
+id: agent_identity
+version: "1.0.0"
+title: Agent and adapter version
+metric:
+  group: agent_runtime
+  direction: none
+  availability: computed
+  requires: [run.agent_id, run.agent_version, run.adapter_version]
+  notes: Recorded per run; descriptor digests pin the definition behind it.
+---
+schema_version: "1.0"
+id: session_id
+version: "1.0.0"
+title: Agent session id
+metric:
+  group: agent_runtime
+  direction: none
+  availability: computed
+  requires: [agent.session_id]
+  notes: thread.started.thread_id for Codex; the key to the rollout trace.
+---
+schema_version: "1.0"
+id: run_status
+version: "1.0.0"
+title: Run status
+metric:
+  group: agent_runtime
+  direction: none
+  availability: computed
+  requires: [run.status]
+  notes: Lifecycle status from the orchestrator, kept separate from the verdict.
+---
+schema_version: "1.0"
+id: observed_model
+version: "1.0.0"
+title: Observed model
+metric:
+  group: agent_runtime
+  direction: none
+  availability: derived
+  requires: [runtime.response.model]
+  notes: >-
+    Only as trustworthy as its source: the agent reports the requested alias,
+    the router response reports what served the request (partial, see
+    docs/ROUTER_INTEGRATION.md section 10). Stored with its provenance.
+---
+schema_version: "1.0"
+id: routing_decision_count
+version: "1.0.0"
+title: Routing decisions
+metric:
+  group: agent_runtime
+  unit: count
+  direction: none
+  availability: unavailable
+  requires: [plugin.agentic_routing_codex.events]
+  unavailable_reason: no per-plugin counter in the router /metrics export
+---
+schema_version: "1.0"
+id: routing_mode_distribution
+version: "1.0.0"
+title: Routing mode distribution
+metric:
+  group: agent_runtime
+  unit: ratio
+  direction: none
+  availability: unavailable
+  requires: [plugin.agentic_routing_codex.events]
+  unavailable_reason: work mode is never surfaced outside the internal payload
+---
+schema_version: "1.0"
+id: routing_escalation_count
+version: "1.0.0"
+title: Routing escalations
+metric:
+  group: agent_runtime
+  unit: count
+  direction: none
+  availability: unavailable
+  requires: [plugin.agentic_routing_codex.events]
+  unavailable_reason: no per-plugin counter in the router /metrics export
+---
+schema_version: "1.0"
+id: routing_latency
+version: "1.0.0"
+title: Routing latency
+metric:
+  group: agent_runtime
+  unit: seconds
+  direction: lower_is_better
+  availability: unavailable
+  requires: [plugin.agentic_routing_codex.events]
+  unavailable_reason: >-
+    Router latency is only available per provider
+    (llm_router_provider_latency_seconds_*), which mixes routing, queueing and
+    generation on a shared instance.

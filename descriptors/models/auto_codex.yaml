@@ -1,0 +1,19 @@
+# The routing trigger. It is an alias, not a model: what serves a request is
+# decided by agentic_routing_codex and is not visible to the agent, which only
+# ever reports the alias back (docs/AGENT_INTEGRATION.md section 10).
+schema_version: "1.0"
+id: auto_codex
+version: "1.0.0"
+title: Agentic routing alias
+description: Declared as a builtin provider in the router model config; rewritten by the routing plugin.
+
+model:
+  provider: builtin
+  runtime_id: llm-router
+  selection: router_alias
+  observable: partial
+  tool_calling: true
+  aliases: []
+  notes: >-
+    Absent from GET /v1/models even though it resolves, so the model inventory is
+    not a complete picture of this dimension's value space.

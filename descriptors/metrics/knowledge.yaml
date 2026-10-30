@@ -1,0 +1,110 @@
+# Knowledge metrics (plan section 18.4). Declared because the experiments in the
+# plan need them; unavailable because the router gives no per-plugin signal
+# today (docs/ROUTER_INTEGRATION.md section 7). They must never be reported as
+# zero: zero claims "knowledge was not used", unavailable says "we cannot tell".
+schema_version: "1.0"
+id: knowledge_write_count
+version: "1.0.0"
+title: Knowledge writes
+metric:
+  group: knowledge
+  unit: count
+  direction: none
+  availability: unavailable
+  requires: [plugin.agentic_knowledge.events]
+  unavailable_reason: no per-plugin counter in the router /metrics export
+---
+schema_version: "1.0"
+id: knowledge_retrieval_count
+version: "1.0.0"
+title: Knowledge retrievals
+metric:
+  group: knowledge
+  unit: count
+  direction: none
+  availability: unavailable
+  requires: [plugin.agentic_knowledge.events]
+  unavailable_reason: >-
+    The retrieval annotation lands in routing.knowledge inside the internal
+    payload, not in the HTTP response; reading it would require
+    LLM_ROUTER_VERBOSE, which logs unmasked payloads.
+---
+schema_version: "1.0"
+id: knowledge_hit_rate
+version: "1.0.0"
+title: Knowledge hit rate
+metric:
+  group: knowledge
+  unit: ratio
+  direction: higher_is_better
+  availability: unavailable
+  requires: [plugin.agentic_knowledge.events]
+  unavailable_reason: needs retrieval events, which are not exported
+---
+schema_version: "1.0"
+id: knowledge_retrieval_latency
+version: "1.0.0"
+title: Knowledge retrieval latency
+metric:
+  group: knowledge
+  unit: seconds
+  direction: lower_is_better
+  availability: unavailable
+  requires: [plugin.agentic_knowledge.events]
+  unavailable_reason: no per-plugin timing in the router /metrics export
+---
+schema_version: "1.0"
+id: knowledge_utilization
+version: "1.0.0"
+title: Knowledge utilization
+metric:
+  group: knowledge
+  unit: ratio
+  direction: higher_is_better
+  availability: unavailable
+  requires: [plugin.agentic_knowledge.events, agent.trace]
+  unavailable_reason: >-
+    Requires correlating injected knowledge with the agent's actions; the
+    injection is invisible to the agent's own trace.
+---
+schema_version: "1.0"
+id: knowledge_false_positive_retrieval
+version: "1.0.0"
+title: False positive retrievals
+metric:
+  group: knowledge
+  unit: ratio
+  direction: lower_is_better
+  availability: unavailable
+  requires: [plugin.agentic_knowledge.events, judgement.ground_truth]
+  unavailable_reason: no retrieval events and no ground truth for relevance
+---
+schema_version: "1.0"
+id: knowledge_indexing_latency
+version: "1.0.0"
+title: Knowledge indexing latency
+metric:
+  group: knowledge
+  unit: seconds
+  direction: lower_is_better
+  availability: unavailable
+  requires: [kb.write_timestamp, kb.indexed_timestamp]
+  unavailable_reason: >-
+    Indexing is asynchronous in llm-router-agentic-kb-worker and its readiness
+    cannot be read on the external instance. A measured lag was observed
+    indirectly (a document registry that did not yet list files present on disk
+    for several minutes), but an observation is not a measurement; reading KB
+    state directly is a prerequisite.
+  notes: Decides when a Replay run may legitimately start.
+---
+schema_version: "1.0"
+id: knowledge_size
+version: "1.0.0"
+title: Knowledge base size
+metric:
+  group: knowledge
+  unit: documents
+  direction: none
+  availability: unavailable
+  requires: [kb.state_readback]
+  unavailable_reason: /knowledge/stats is refused by the router access policy

@@ -1,0 +1,133 @@
+# Efficiency metrics (plan section 18.2). Token counts were verified in the
+# phase 0 spike; cost is not available and stays unavailable (see notes).
+schema_version: "1.0"
+id: execution_time
+version: "1.0.0"
+title: Execution time
+metric:
+  group: efficiency
+  unit: seconds
+  direction: lower_is_better
+  availability: computed
+  requires: [run.started_at, run.finished_at]
+  notes: Wall clock of the run. A shorter run is not a success on its own (plan section 18).
+---
+schema_version: "1.0"
+id: active_time
+version: "1.0.0"
+title: Active time
+metric:
+  group: efficiency
+  unit: seconds
+  direction: lower_is_better
+  availability: unavailable
+  requires: [agent.activity_breakdown]
+  unavailable_reason: >-
+    Neither the Codex JSONL stream nor the rollout distinguishes working time
+    from waiting on the provider; only wall clock is measurable today.
+---
+schema_version: "1.0"
+id: input_tokens
+version: "1.0.0"
+title: Input tokens
+metric:
+  group: efficiency
+  unit: tokens
+  direction: lower_is_better
+  availability: computed
+  requires: [agent.usage.input_tokens]
+  notes: Verified in phase 0 (usage keys of turn.completed / token_usage_record).
+---
+schema_version: "1.0"
+id: cached_input_tokens
+version: "1.0.0"
+title: Cached input tokens
+metric:
+  group: efficiency
+  unit: tokens
+  direction: none
+  availability: computed
+  requires: [agent.usage.cached_input_tokens]
+  notes: Reported apart from input tokens; caching changes cost, not difficulty.
+---
+schema_version: "1.0"
+id: output_tokens
+version: "1.0.0"
+title: Output tokens
+metric:
+  group: efficiency
+  unit: tokens
+  direction: lower_is_better
+  availability: computed
+  requires: [agent.usage.output_tokens]
+---
+schema_version: "1.0"
+id: reasoning_output_tokens
+version: "1.0.0"
+title: Reasoning output tokens
+metric:
+  group: efficiency
+  unit: tokens
+  direction: none
+  availability: computed
+  requires: [agent.usage.reasoning_output_tokens]
+  notes: Not a quality signal; a reasoning-heavy run can still fail.
+---
+schema_version: "1.0"
+id: total_tokens
+version: "1.0.0"
+title: Total tokens
+metric:
+  group: efficiency
+  unit: tokens
+  direction: lower_is_better
+  availability: derived
+  requires: [agent.usage.total_tokens]
+  baseline_relative: true
+  notes: Taken from the agent when present; token_saving is relative to a baseline run.
+---
+schema_version: "1.0"
+id: total_cost
+version: "1.0.0"
+title: Total cost
+metric:
+  group: efficiency
+  unit: currency
+  direction: lower_is_better
+  availability: unavailable
+  requires: [pricing.per_run]
+  unavailable_reason: >-
+    No cost field exists anywhere in the agent stream or rollout, and the router
+    does not expose a per-run price list (docs/AGENT_INTEGRATION.md section 9,
+    docs/ROUTER_INTEGRATION.md section 3). Reported as unavailable, never as
+    zero: a price computed from an external table would be an assumption
+    presented as a measurement.
+---
+schema_version: "1.0"
+id: tool_call_count
+version: "1.0.0"
+title: Tool call count
+metric:
+  group: efficiency
+  unit: count
+  direction: none
+  availability: computed
+  requires: [agent.tool_calls]
+  notes: >-
+    Verified in phase 0 (6 exec_command calls in the spike run). Direction is
+    deliberately none, because fewer calls is not better without an outcome.
+---
+schema_version: "1.0"
+id: model_call_count
+version: "1.0.0"
+title: Model call count
+metric:
+  group: efficiency
+  unit: count
+  direction: none
+  availability: unavailable
+  requires: [runtime.per_request_model_counter]
+  unavailable_reason: >-
+    The agent does not report how many provider requests a turn made, and the
+    router counter llm_router_provider_calls_total is global to the instance,
+    not attributable to one run on a shared router.

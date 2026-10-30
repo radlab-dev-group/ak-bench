@@ -1,0 +1,21 @@
+# Generic escape hatch (plan section 16): any command that exits 0 on success.
+schema_version: "1.0"
+id: command_evaluator
+version: "1.0.0"
+title: Command evaluator
+description: >-
+  Runs a declared command outside the agent workspace; a zero exit code is a
+  pass, a non-zero code is a failure, and an inability to run the command is an
+  evaluator error rather than an agent failure.
+
+evaluator:
+  kind: command
+  runs_outside_workspace: true
+  result_kind: pass_fail
+  inputs: [workspace]
+  outputs: [stdout, stderr, exit_code]
+  requires:
+    - command available in the evaluation environment
+  notes: >-
+    The command is part of the task definition and is versioned with it, so a
+    historical verdict can always be reproduced.

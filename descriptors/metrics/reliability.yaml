@@ -1,0 +1,68 @@
+# Reliability metrics (plan section 18.5). Failure classes must stay distinct:
+# an infrastructure failure is not an agent failure (plan rule 11).
+schema_version: "1.0"
+id: timeout_rate
+version: "1.0.0"
+title: Timeout rate
+metric:
+  group: reliability
+  unit: ratio
+  direction: lower_is_better
+  availability: computed
+  requires: [run.status]
+  notes: >-
+    Timeout is enforced by the orchestrator: the agent has no timeout flag of
+    its own (docs/AGENT_INTEGRATION.md section 7), so the harness owns this.
+---
+schema_version: "1.0"
+id: infrastructure_failure_rate
+version: "1.0.0"
+title: Infrastructure failure rate
+metric:
+  group: reliability
+  unit: ratio
+  direction: lower_is_better
+  availability: computed
+  requires: [run.failure_class]
+  notes: Runs whose failure_class is infrastructure; excluded from quality aggregates.
+---
+schema_version: "1.0"
+id: agent_crash_rate
+version: "1.0.0"
+title: Agent crash rate
+metric:
+  group: reliability
+  unit: ratio
+  direction: lower_is_better
+  availability: computed
+  requires: [run.failure_class, agent.stream.error_event]
+  notes: Agent-side failure; a non-zero exit code alone is not enough to classify it.
+---
+schema_version: "1.0"
+id: router_error_rate
+version: "1.0.0"
+title: Router error rate
+metric:
+  group: reliability
+  unit: ratio
+  direction: lower_is_better
+  availability: derived
+  requires: [runtime.metrics.http_request_exceptions_total]
+  notes: >-
+    Global to the shared instance, so it describes the environment during the
+    run, not the run itself; recorded as context, never as a task outcome.
+---
+schema_version: "1.0"
+id: incomplete_trace_rate
+version: "1.0.0"
+title: Incomplete trace rate
+metric:
+  group: reliability
+  unit: ratio
+  direction: lower_is_better
+  availability: computed
+  requires: [agent.trace, run.status]
+  notes: >-
+    Traces that cannot be fully parsed. The rollout is a side effect of session
+    persistence and disappears with --ephemeral, so this metric guards a
+    critical dependency (docs/AGENT_INTEGRATION.md section 13).

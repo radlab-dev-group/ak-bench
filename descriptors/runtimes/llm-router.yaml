@@ -1,0 +1,41 @@
+# LLM Router as an optional execution layer (never part of an agent definition).
+# Capability statuses come from docs/ROUTER_INTEGRATION.md; several are
+# unsupported because the HTTP surface refuses them, not because we did not look.
+schema_version: "1.0"
+id: llm-router
+version: "1.0.0"
+title: LLM Router
+description: >-
+  Open-source gateway in front of local and cloud providers, with a utils plugin
+  pipeline (agentic routing, agentic knowledge).
+
+runtime:
+  adapter: llm_router
+  execution_modes: [direct, runtime, router]
+  supported_lifecycles: [managed, external]
+  base_url: http://192.168.100.65:8081
+  healthcheck_path: /health
+  metrics_path: /metrics
+
+  configuration_sources:
+    - "env LLM_ROUTER_MODELS_CONFIG (JSON, active_models required)"
+    - "env LLM_ROUTER_UTILS_PLUGINS_PIPELINE (ordered plugin ids)"
+    - "llm_router_plugins/resources/<type>/<plugin>.json plus env overrides"
+
+  capabilities:
+    healthcheck: verified                    # GET /health -> 200 healthy
+    model_inventory: verified                # GET /v1/models, but omits aliases
+    effective_configuration_read: unsupported  # /config etc. -> 403 by policy
+    configuration_write: unsupported         # no write endpoint at all
+    per_run_plugin_control: unsupported      # needs a managed instance
+    plugin_activity_signals: unsupported     # /metrics has no per-plugin counter
+    model_identification: partial            # chat/completions reports model;
+                                             # /v1/responses not verified
+    logs: unverified                         # host-side, not reachable from here
+
+  required_env: [LLM_ROUTER_API_KEY]
+  notes: >-
+    The shared instance reachable at the address above is lifecycle=external:
+    AK-Bench can neither read its effective configuration nor pin plugin state
+    per run, so Knowledge and Auto Codex experiments must run against a managed
+    instance to be recorded as valid.

@@ -1,0 +1,62 @@
+# Models verified live on the router under test (GET /v1/models -> 200, 6 ids).
+# This list is a snapshot of that instance: it changes with the router config,
+# which is why an experiment pins descriptor digests rather than trusting it.
+schema_version: "1.0"
+id: qwen/Qwen3.8-Flash-Next
+version: "1.0.0"
+title: Qwen3.8 Flash Next
+model:
+  provider: openai-compatible
+  runtime_id: llm-router
+  selection: explicit
+  observable: supported
+---
+schema_version: "1.0"
+id: qwen/Qwen3.8-27B
+version: "1.0.0"
+title: Qwen3.8 27B
+model:
+  provider: openai-compatible
+  runtime_id: llm-router
+  selection: explicit
+  observable: supported
+---
+schema_version: "1.0"
+id: qwen3-coder:30b
+version: "1.0.0"
+title: Qwen3 Coder 30B
+model:
+  provider: ollama
+  runtime_id: llm-router
+  selection: explicit
+  observable: supported
+---
+schema_version: "1.0"
+id: google/gemma-4-12b-it
+version: "1.0.0"
+title: Gemma 4 12B IT
+model:
+  provider: openai-compatible
+  runtime_id: llm-router
+  selection: explicit
+  observable: supported
+---
+schema_version: "1.0"
+id: google/gemma-4-12b-it-playground
+version: "1.0.0"
+title: Gemma 4 12B IT (playground)
+model:
+  provider: openai-compatible
+  runtime_id: llm-router
+  selection: explicit
+  observable: supported
+---
+schema_version: "1.0"
+id: google/gemini-3.1-flash-lite-preview
+version: "1.0.0"
+title: Gemini 3.1 Flash Lite Preview
+model:
+  provider: google
+  runtime_id: llm-router
+  selection: explicit
+  observable: supported

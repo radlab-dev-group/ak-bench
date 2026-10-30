@@ -1,0 +1,13 @@
+# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+schema_version: "1.0"
+id: performance
+version: "1.0.0"
+title: Performance
+description: Improve a measurable performance characteristic without regressions.
+
+category:
+  enabled: false
+  difficulties: [medium, hard, expert]
+  task_requirements:
+    - repository with a pinned commit
+    - deterministic measurement harness

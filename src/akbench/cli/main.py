@@ -1,8 +1,9 @@
-"""``akbench`` command line interface (Phase 1 scope).
+"""``akbench`` command line interface.
 
-Implemented here: version, init, doctor, config show/validate. The remaining
-commands from the plan (agent, dataset, experiment, report, export) arrive with
-their own phases and are intentionally absent rather than stubbed.
+Implemented here: version, init, doctor, config, descriptor, agent and category
+commands. The remaining commands from the plan (dataset, runtime, experiment,
+report, export) arrive with their own phases and are intentionally absent rather
+than stubbed.
 """
 
 from __future__ import annotations
@@ -23,18 +24,22 @@ from akbench.cli.common import (
     handle_errors,
     show_json,
 )
+from akbench.cli.descriptors import agent_app, category_app, descriptor_app
 from akbench.config.loader import build_app_paths, resolve_database_url
 from akbench.doctor import CheckStatus, run_diagnostics
 
 app = typer.Typer(
     name="akbench",
-    help="AK-Bench: repeatabalna ocena agentow programistycznych, routerow i pluginow.",
+    help="AK-Bench: repeatable evaluation of coding agents, LLM routers and plugins.",
     no_args_is_help=True,
     invoke_without_command=True,
     pretty_exceptions_show_locals=False,
 )
 config_app = typer.Typer(help="Inspect the configuration.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
+app.add_typer(descriptor_app, name="descriptor")
+app.add_typer(agent_app, name="agent")
+app.add_typer(category_app, name="category")
 
 STATUS_MARKS = {
     CheckStatus.OK: "[green]ok[/green]",

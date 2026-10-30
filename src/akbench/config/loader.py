@@ -175,6 +175,7 @@ def build_app_paths(settings: Settings, environ: dict[str, str] | None = None) -
         workspaces_dir=resolve_path(paths.workspaces_dir, root),
         runtime_instances_dir=resolve_path(paths.runtime_instances_dir, root),
         reports_dir=resolve_path(paths.reports_dir, root),
+        descriptors_dir=resolve_path(paths.descriptors_dir, root),
         database_file=resolve_path(paths.database_file, root),
         logs_dir=resolve_path(paths.logs_dir, root) if paths.logs_dir else None,
     )

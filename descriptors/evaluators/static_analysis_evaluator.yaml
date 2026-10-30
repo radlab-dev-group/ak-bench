@@ -1,0 +1,18 @@
+# Supplementary evaluator (plan section 16): static analysis is a signal, not a
+# verdict, so it never replaces hidden tests.
+schema_version: "1.0"
+id: static_analysis_evaluator
+version: "1.0.0"
+title: Static analysis evaluator
+description: >-
+  Runs a static analyser declared by the task and records findings as a score.
+  Supplementary by design: it must never be the only evidence that a task passed.
+
+evaluator:
+  kind: static_analysis
+  runs_outside_workspace: true
+  result_kind: score
+  inputs: [workspace]
+  outputs: [report]
+  requires:
+    - analyser declared by the task

@@ -1,0 +1,16 @@
+# Supplementary evaluator (plan section 16): compares the produced change with
+# a reference change. Diff similarity is informational, not a success criterion.
+schema_version: "1.0"
+id: diff_evaluator
+version: "1.0.0"
+title: Diff evaluator
+description: >-
+  Compares the agent's diff with a reference patch and reports overlap. Used as
+  a qualitative signal only; correctness is decided by tests.
+
+evaluator:
+  kind: diff
+  runs_outside_workspace: true
+  result_kind: score
+  inputs: [workspace, reference_patch]
+  outputs: [diff, overlap_score]

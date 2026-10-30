@@ -1,0 +1,19 @@
+# Rule-based half of agentic routing.
+schema_version: "1.0"
+id: routing_heuristic_enabled
+version: "1.0.0"
+title: Agentic routing heuristic enabled
+description: Enables the heuristic classifier of the agentic routing plugin.
+
+dimension:
+  type: plugin_configuration
+  source: plugin.agentic_routing_codex.env
+  values: [false, true]
+  controllable: true
+  observed: true
+  configure_via: env LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_ENABLED
+  verify_via: >-
+    indirect: the model field of a router response shows whether routing fired,
+    verified for chat/completions only.
+  depends_on:
+    - request carries the trigger alias auto_codex

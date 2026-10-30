@@ -1,0 +1,13 @@
+# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+schema_version: "1.0"
+id: testing
+version: "1.0.0"
+title: Testing
+description: Write tests that expose a specified defect or cover a specified area.
+
+category:
+  enabled: false
+  difficulties: [easy, medium, hard]
+  task_requirements:
+    - repository with a pinned commit
+    - hidden reference tests
