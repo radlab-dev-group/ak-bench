@@ -19,7 +19,8 @@ task execution through a chosen agent and verifies the outcome independently.
 | 4 | Agent adapter framework (contract, registry, Codex adapter) | done |
 | 5 | Runtime and Router Manager (modes, LLM Router adapter) | done |
 | 6 | Evaluator Engine (pytest + command evaluators, hidden tests) | done |
-| 7 | Run Orchestrator and Scheduler | next |
+| 7 | Run Orchestrator (lifecycle, isolation, retries, run records) | done |
+| 8 | Experiment Descriptor and Planner | next |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -63,6 +64,7 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench runtime config REF [--config-file F] [--json]` | requested/effective/observed config with trust level |
 | `akbench runtime state REF [--json]` | health, models, metrics snapshot |
 | `akbench evaluate task REF --workspace D [--evaluator E] [--json]` | judge a produced workspace; exit 2 when the harness broke |
+| `akbench run single TASK --agent A [--mode M] [--runtime R] [--param k=v] [--json]` | orchestrate one run: prepare, execute, evaluate, record |
 | `akbench category list [--json]` | task categories and whether they are enabled |
 | `akbench dataset list [--category C] [--json]` | registered tasks |
 | `akbench dataset validate [--check-repositories] [--verify-mutations] [--json]` | validate tasks; exit 1 on failure |
@@ -100,6 +102,7 @@ src/akbench/
   agents/       # adapter contract, agent registry, catalog, Codex adapter
   runtime/      # runtime manager contract, LLM Router adapter, execution modes
   evaluators/   # evaluator engine, pytest + command evaluators, isolation
+  orchestration/  # run lifecycle state machine, the run orchestrator
   storage/      # SQLAlchemy, models, Alembic migrations, migration runner
   datasets/     # task descriptors, dataset validation, repositories, workspaces
   bootstrap.py  # `akbench init` logic
@@ -126,6 +129,7 @@ spike/          # Phase 0 code (flow validation)
 - `docs/AGENT_ADAPTERS.md` — the adapter contract, agent registry, capability gating, contract tests
 - `docs/RUNTIME_MANAGER.md` — execution modes, the runtime manager, the LLM Router adapter, the configuration triad
 - `docs/EVALUATORS.md` — the evaluator engine, verdicts, hidden-test isolation, raw results
+- `docs/RUN_ORCHESTRATOR.md` — the run lifecycle, isolation, retry policy and run records
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions
