@@ -41,6 +41,7 @@ testpaths = ["tests"]
 addopts = "-q --strict-markers"
 markers = [
     "integration: tests that touch the filesystem or a real SQLite database",
+    "live: tests that run the real Codex CLI against the LLM router (set AKBENCH_RUN_LIVE=1)",
 ]
 
 [tool.ruff]

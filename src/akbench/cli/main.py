@@ -16,6 +16,7 @@ from rich.table import Table
 
 from akbench import __version__
 from akbench.bootstrap import initialize
+from akbench.cli.agents import agent_run_cmd  # noqa: F401 - registers agent run
 from akbench.cli.common import (
     EXIT_ERROR,
     EXIT_OK,
