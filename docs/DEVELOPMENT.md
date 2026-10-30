@@ -1,77 +1,75 @@
-# Środowisko developerskie
+# Development environment
 
 ## 1. Setup
 
 ```bash
-uv venv --python 3.12 .venv          # systemowy python to 3.10 — nie wystarczy
+uv venv --python 3.12 .venv          # the system Python is 3.10 — not enough
 uv pip install -e ".[dev]"
 akbench init
 akbench doctor
 ```
 
-`uv` nie jest wymagany przez pakiet, ale system nie ma Pythona 3.12, a
-`requires-python` to `>=3.12`. Alternatywa: dowolne `venv` na Pythonie 3.12.
+`uv` is not required by the package, but this machine has no Python 3.12 and
+`requires-python` is `>=3.12`. Any `venv` on Python 3.12 works as well.
 
-## 2. Testy i lintowanie
+## 2. Tests and linting
 
 ```bash
-.venv/bin/python -m pytest -q          # całość
+.venv/bin/python -m pytest -q          # everything
 .venv/bin/python -m pytest tests/unit -q
 .venv/bin/ruff check src tests
 .venv/bin/ruff check src tests --fix
 ```
 
-Testy nie wymagają sieci ani agenta: działają na tymczasowych katalogach i
-bazach SQLite. Testy integracyjne (CLI) używają `typer.testing.CliRunner`.
+Tests need neither network nor an agent: they run against temporary
+directories and SQLite files. Integration tests (the CLI) use
+`typer.testing.CliRunner`.
 
-Kontrakty warte uwagi:
+Contract tests worth knowing about:
 
-- `tests/unit/test_migrations_match_models.py` — porównuje schemat po migracji
-  z `Base.metadata` przez `alembic.autogenerate.compare_metadata`. Migracja,
-  która rozjedzie się z modelami, psuje ten test.
-- `tests/integration/test_cli.py` — kody wyjścia i kształt wyjścia `--json`.
+- `tests/unit/test_migrations_match_models.py` — compares the schema produced
+  by the migrations with `Base.metadata` through
+  `alembic.autogenerate.compare_metadata`. A migration that drifts from the
+  models breaks this test.
+- `tests/integration/test_cli.py` — exit codes and the shape of `--json`
+  output.
 
-## 3. Migracje
+## 3. Migrations
 
-Skrypty Alembic mieszkają **wewnątrz pakietu**
-(`src/akbench/storage/migrations/`), więc działają po `pip install` bez
-`alembic.ini`. Wywołanie programowe: `akbench.storage.migrator`.
+The Alembic scripts live **inside the package**
+(`src/akbench/storage/migrations/`), so they work after `pip install` without
+an `alembic.ini`. Programmatic entry point: `akbench.storage.migrator`.
 
-Nowa migracja:
+Because `script_location` points into the package, in practice you add a file
+under `versions/` following `0001_core_tables.py`, then run `akbench init`
+(which applies migrations) and the contract test above.
 
-```bash
-AKBENCH_MIGRATION_DATABASE_URL="sqlite:///$PWD/data/akbench.sqlite" \
-  .venv/bin/alembic -c /dev/stdin revision --autogenerate --name "coś"
-```
+Rules:
+- SQLite with `render_as_batch=True` (the `ALTER TABLE` limitations),
+- `task_uid` in `task_runs` is a plain string for now — the real foreign key to
+  `tasks` arrives in Phase 3,
+- the complete data model (metrics, observations, descriptor snapshots,
+  events) lands in Phase 11.
 
+## 4. Code conventions
 
-Ponieważ `script_location` wskazuje na pakiet, najczęściej wystarczy jednak
-ręcznie dodać plik w `versions/` na wzorzec `0001_core_tables.py`, a potem
-uruchomić `akbench init` (stosuje migracje) i test kontraktowy powyżej.
+- Python 3.12 (PEP 695 generics), `from __future__ import annotations`, every
+  signature typed.
+- Exceptions from `akbench.core.errors` carry a `failure_class` — an
+  infrastructure error must never look like an agent error (plan rule 11).
+- Agent names (for example `codex`) never appear in the generic runner,
+  scheduler or evaluator; external tools are configured through
+  `doctor.required_tools`.
+- `--json` writes pure JSON to stdout (not through rich, which wraps lines
+  inside strings); logs go to stderr. This keeps
+  `akbench doctor --json | jq` working, including with `2>&1`.
+- Line length 100 (`ruff`, `E501`).
+- **Language:** code, comments, docstrings, documentation and commit messages
+  are English. Only `.plans/` is Polish.
 
-Zasady:
-- SQLite + `render_as_batch=True` (limit ALTER TABLE),
-- `task_uid` w `task_runs` to na razie plain string — właściwy FK do `tasks`
-  pojawi się w Fazie 3,
-- pełny model danych (metryki, obserwacje, snapshoty deskryptorów, zdarzenia)
-  w Faza 11.
+## 5. Deliberately unfinished
 
-## 4. Konwencje kodu
-
-- Python 3.12 (PEP 695 w generykach), `from __future__ import annotations`,
-  typowane wszystkie sygnatury.
-- Wyjątki z `akbench.core.errors` niosą `failure_class` — błąd infrastruktury
-  nie może wyglądać jak błąd agenta (plan, zasada 11).
-- Nazwy agentów (np. `codex`) nie pojawiają się w ogólnym runnerze, schedulerze
-  ani evaluatorze; narzędzia zewnętrzne konfiguruje `doctor.required_tools`.
-- Wyjście `--json` pisze czysty JSON na stdout (bez rich — rich łamie linie),
-  logi idą na stderr. Dzięki temu `akbench doctor --json | jq` działa, także z
-  `2>&1`.
-- Linie do 100 znaków (`ruff`, `E501`).
-
-## 5. Co jest celowo niedokończone
-
-- Komendy `agent`, `dataset`, `experiment`, `report`, `export` — Fazy 2+.
-- Tabela `tasks` i relacje — Faza 3.
-- Warstwa obserwabilności i metryk — Fazy 9 i 11.
-- Sandbox Docker — Faza 3/7 (sprawdzona dostępność Dockera, brak implementacji).
+- The `agent`, `dataset`, `experiment`, `report` and `export` commands — Phase 2+.
+- The `tasks` table and its relations — Phase 3.
+- The observability and metrics layer — Phases 9 and 11.
+- Docker sandboxing — Phases 3/7 (Docker availability verified, not implemented).

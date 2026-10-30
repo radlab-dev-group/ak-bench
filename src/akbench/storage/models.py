@@ -1,8 +1,8 @@
-"""Core persistence model for Faza 1.
+"""Core persistence model for Phase 1.
 
 Deliberately small: the complete data model (metrics, observations, descriptor
-snapshots, events) lands in Faza 11. ``task_uid`` is a plain identifier here
-and becomes a real foreign key when the dataset layer exists in Faza 3.
+snapshots, events) lands in Phase 11. ``task_uid`` is a plain identifier here
+and becomes a real foreign key when the dataset layer exists in Phase 3.
 """
 
 from __future__ import annotations

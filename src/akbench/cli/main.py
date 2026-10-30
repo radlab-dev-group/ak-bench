@@ -1,4 +1,4 @@
-"""``akbench`` command line interface (Faza 1 scope).
+"""``akbench`` command line interface (Phase 1 scope).
 
 Implemented here: version, init, doctor, config show/validate. The remaining
 commands from the plan (agent, dataset, experiment, report, export) arrive with
@@ -33,7 +33,7 @@ app = typer.Typer(
     invoke_without_command=True,
     pretty_exceptions_show_locals=False,
 )
-config_app = typer.Typer(help="Inspekcja konfiguracji.", no_args_is_help=True)
+config_app = typer.Typer(help="Inspect the configuration.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 
 STATUS_MARKS = {
@@ -48,13 +48,13 @@ ConfigOption = typer.Option(
     "--config",
     "-c",
     exists=False,
-    help="Sciezka do pliku konfiguracji YAML.",
+    help="Path to a YAML configuration file.",
 )
 ProjectOption = typer.Option(
     None,
     "--project-root",
     exists=False,
-    help="Katalog glowny projektu (nadpisuje AKBENCH_HOME i autowykrywanie).",
+    help="Project root (overrides AKBENCH_HOME and auto-detection).",
 )
 
 
@@ -72,9 +72,9 @@ def cli(
     ctx: typer.Context,
     config: Path | None = ConfigOption,
     project_root: Path | None = ProjectOption,
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Logi w poziomie DEBUG."),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Tylko bledy."),
-    version: bool = typer.Option(False, "--version", help="Wersja AK-Bench i wyjscie."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Log at DEBUG level."),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Only log errors."),
+    version: bool = typer.Option(False, "--version", help="Print the AK-Bench version and exit."),
 ) -> None:
     if version:
         console.print(f"ak-bench {__version__}")
@@ -94,9 +94,9 @@ def cli(
 @handle_errors
 def version_cmd(
     ctx: typer.Context,
-    as_json: bool = typer.Option(False, "--json", help="Wynik jako JSON."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the result as JSON."),
 ) -> None:
-    """Wersja AK-Bench i wersje kluczowych zaleznosci."""
+    """Print the AK-Bench version and key dependency versions."""
     import importlib.metadata as md
 
     deps = {}
@@ -123,12 +123,12 @@ def version_cmd(
 @handle_errors
 def init_cmd(
     ctx: typer.Context,
-    as_json: bool = typer.Option(False, "--json", help="Wynik jako JSON."),
-    no_config: bool = typer.Option(False, help="Nie tworz pliku konfiguracji."),
-    no_migrate: bool = typer.Option(False, help="Nie stosuj migracji."),
-    force_config: bool = typer.Option(False, help="Nadpisz istniejacy plik konfiguracji."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the result as JSON."),
+    no_config: bool = typer.Option(False, help="Do not write a configuration file."),
+    no_migrate: bool = typer.Option(False, help="Do not apply migrations."),
+    force_config: bool = typer.Option(False, help="Overwrite an existing configuration file."),
 ) -> None:
-    """Tworzy katalogi, konfiguracje i baze danych (migracje do head)."""
+    """Create directories, configuration and the database (migrations to head)."""
     context: CliContext = ctx.obj
     if as_json:
         context.apply_logging(min_level="WARNING")
@@ -144,13 +144,13 @@ def init_cmd(
         show_json(report.as_dict())
     else:
         root = build_app_paths(loaded.settings).project_root
-        console.print(f"[green]zainicjalizowano[/green] projekt w {root}")
-        console.print(f"  katalogi utworzone: {len(report.created_dirs)}")
+        console.print(f"[green]initialized[/green] project at {root}")
+        console.print(f"  directories created: {len(report.created_dirs)}")
         if report.config_written:
-            console.print(f"  konfiguracja: {report.config_path}")
+            console.print(f"  configuration: {report.config_path}")
         else:
-            console.print(f"  konfiguracja: bez zmian ({report.config_path})")
-        console.print(f"  baza danych: {report.schema_summary or 'pominieta'}")
+            console.print(f"  configuration: unchanged ({report.config_path})")
+        console.print(f"  database: {report.schema_summary or 'skipped'}")
         for message in report.messages:
             console.print(f"  [dim]{message}[/dim]")
     raise typer.Exit(EXIT_OK)
@@ -160,10 +160,10 @@ def init_cmd(
 @handle_errors
 def doctor_cmd(
     ctx: typer.Context,
-    as_json: bool = typer.Option(False, "--json", help="Wynik jako JSON."),
-    strict: bool = typer.Option(False, help="Traktuj ostrzezenia jak bledy."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the result as JSON."),
+    strict: bool = typer.Option(False, help="Treat warnings as errors."),
 ) -> None:
-    """Sprawdza gotowosc srodowiska (python, pakiety, katalogi, baza, narzedzia)."""
+    """Check environment readiness (Python, packages, directories, database, tools)."""
     context: CliContext = ctx.obj
     report = run_diagnostics(context.loaded())
 
@@ -179,9 +179,9 @@ def doctor_cmd(
             table.add_row(STATUS_MARKS[check.status], check.name, check.detail, check.hint or "")
         console.print(table)
         if report.ok:
-            console.print("[green]srodowisko gotowe[/green]")
+            console.print("[green]environment ready[/green]")
         else:
-            console.print(f"[red]zgloszone bledy: {len(report.failed)}[/red]")
+            console.print(f"[red]reported errors: {len(report.failed)}[/red]")
 
     if report.failed or (strict and report.warnings):
         raise typer.Exit(EXIT_ERROR)
@@ -192,12 +192,12 @@ def doctor_cmd(
 @handle_errors
 def config_show_cmd(
     ctx: typer.Context,
-    as_json: bool = typer.Option(False, "--json", help="Wynik jako JSON."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the result as JSON."),
     show_all: bool = typer.Option(
-        False, "--all", help="Rowniez pozostale sekcje konfiguracji."
+        False, "--all", help="Also show the remaining configuration sections."
     ),
 ) -> None:
-    """Pokazuje efektywna konfiguracje wraz ze zrodlami."""
+    """Show the effective configuration together with its sources."""
     context: CliContext = ctx.obj
     loaded = context.loaded()
     settings = loaded.settings
@@ -212,12 +212,12 @@ def config_show_cmd(
         show_json(payload)
         return
 
-    console.print(f"[bold]sciezki[/bold] (zrodlo: {payload['source']})")
+    console.print(f"[bold]paths[/bold] (source: {payload['source']})")
     for key, value in payload["resolved_paths"].items():
         console.print(f"  {key:<22} {value}")
     console.print(f"  {'database_url':<22} {payload['database_url']}")
     if show_all:
-        console.print("[bold]ustawienia[/bold]")
+        console.print("[bold]settings[/bold]")
         for section, values in payload["settings"].items():
             if section == "project_root":
                 continue
@@ -227,10 +227,10 @@ def config_show_cmd(
 @config_app.command("validate")
 @handle_errors
 def config_validate_cmd(ctx: typer.Context) -> None:
-    """Waliduje plik konfiguracji; nie tworzy zadnych katalogow."""
+    """Validate the configuration file; creates no directories."""
     context: CliContext = ctx.obj
     loaded = context.loaded()
-    console.print(f"[green]konfiguracja poprawna[/green] · {loaded.describe()}")
+    console.print(f"[green]configuration is valid[/green] · {loaded.describe()}")
 
 
 def main() -> None:  # pragma: no cover - console entry point

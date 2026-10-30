@@ -1,96 +1,101 @@
 # AK-Bench
 
-**Agentic Knowledge Benchmark** — rozszerzalna platforma do powtarzalnej oceny
-agentów programistycznych, routerów LLM, modeli i pluginów rozszerzających ich
-możliwości (bazy wiedzy, routing, optymalizacje).
+**Agentic Knowledge Benchmark** — an extensible platform for repeatable
+evaluation of coding agents, LLM routers, models, and the plugins that extend
+their capabilities (knowledge bases, routing, optimizations).
 
-Zasada nadrzędna: **testowany agent jest wymiennym komponentem**. AK-Bench nie
-implementuje agenta, pamięci ani routingu — orkiestruje wykonanie zadań przez
-wybranego agenta i niezależnie weryfikuje wynik.
+Overriding principle: **the agent under test is a replaceable component**.
+AK-Bench does not implement an agent, a memory, or routing. It orchestrates
+task execution through a chosen agent and verifies the outcome independently.
 
 ## Status
 
-| Faza | Zakres | Status |
+| Phase | Scope | Status |
 |---|---|---|
-| 0 | Integracyjny spike (Codex CLI + LLM Router) | ukończona |
-| 1 | Szkielet: CLI, konfiguracja, logging, SQLite, migracje | ukończona |
-| 2 | Deskryptory i registry | następna |
+| 0 | Integration spike (Codex CLI + LLM Router) | done |
+| 1 | Skeleton: CLI, configuration, logging, SQLite, migrations | done |
+| 2 | Descriptors and registries | next |
 
-Pełny plan: `.plans/AK-Bench-implementation-plan.md`.
+The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
-## Wymagania
+## Requirements
 
-- Python 3.12+ (najłatwiej przez [`uv`](https://docs.astral.sh/uv/))
+- Python 3.12+ (easiest through [`uv`](https://docs.astral.sh/uv/))
 - Git
-- Docker — opcjonalnie, tylko do sandboxowania runów
+- Docker — optional, only for sandboxing runs
 
-## Szybki start
+## Quick start
 
 ```bash
 uv venv --python 3.12 .venv
 uv pip install -e ".[dev]"
 
-akbench init          # katalogi + konfiguracja + baza (migracje do head)
-akbench doctor        # gotowość środowiska
-akbench config show   # efektywna konfiguracja i ścieżki
+akbench init          # directories + configuration + database (migrations to head)
+akbench doctor        # environment readiness
+akbench config show   # effective configuration and paths
 ```
 
-## Polecenia (Faza 1)
+## Commands (Phase 1)
 
-| Polecenie | Opis |
+| Command | Description |
 |---|---|
-| `akbench version [--json]` | wersja AK-Bench i kluczowych zależności |
-| `akbench init [--json] [--force-config] [--no-migrate]` | tworzy katalogi, konfigurację i schemat bazy |
-| `akbench doctor [--json] [--strict]` | diagnostyka środowiska; exit 1 przy błędach |
-| `akbench config show [--json] [--all]` | efektywna konfiguracja, ścieżki, URL bazy |
-| `akbench config validate` | walidacja pliku konfiguracji bez zapisu |
+| `akbench version [--json]` | AK-Bench version and key dependency versions |
+| `akbench init [--json] [--force-config] [--no-migrate]` | create directories, configuration and schema |
+| `akbench doctor [--json] [--strict]` | environment diagnostics; exit 1 on failures |
+| `akbench config show [--json] [--all]` | effective configuration, paths, database URL |
+| `akbench config validate` | validate the configuration file without writing |
 
-Opcje globalne: `--config/-c`, `--project-root`, `--verbose/-v`, `--quiet/-q`, `--version`.
+Global options: `--config/-c`, `--project-root`, `--verbose/-v`, `--quiet/-q`, `--version`.
 
-## Konfiguracja
+## Configuration
 
-Plik `configs/defaults.yaml`, nadpisywany zmiennymi środowiskowymi
-`AKBENCH__SEKCJA__POLE`:
+`configs/defaults.yaml`, overridable through `AKBENCH__SECTION__FIELD`
+environment variables:
 
 ```bash
 export AKBENCH__LOGGING__LEVEL=DEBUG
 export AKBENCH__DATABASE__URL=sqlite:////tmp/akbench.sqlite
 ```
 
-Wyszukiwanie konfiguracji: `--config` → `AKBENCH_CONFIG` →
-`<korzeń projektu>/configs/defaults.yaml` → wartości wbudowane.
-Korzeń projektu: `AKBENCH_HOME` → najbliższy przodek z `pyproject.toml` o nazwie
-`ak-bench` → bieżący katalog.
+Configuration lookup: `--config` → `AKBENCH_CONFIG` →
+`<project root>/configs/defaults.yaml` → built-in defaults.
+Project root: `AKBENCH_HOME` → the nearest ancestor whose `pyproject.toml`
+declares the project name `ak-bench` → the current directory.
 
-Nieznane klucze są odrzucane — opcja milcząco zignorowana wyglądałaby na
-skuteczną, a nie jest.
+Unknown keys are rejected: an option that is silently ignored looks effective
+while it is not.
 
-## Struktura
+## Layout
 
 ```text
 src/akbench/
-  cli/         # warstwa CLI (typer)
-  config/      # modele Pydantic + ładowanie YAML/ENV
-  core/        # błędy, ścieżki, czas, logowanie
-  storage/     # SQLAlchemy, modele, migracje Alembic, runner migracji
-  bootstrap.py # logika `akbench init`
-  doctor.py    # diagnostyka środowiska
+  cli/         # CLI layer (typer)
+  config/      # Pydantic models + YAML/ENV loading
+  core/        # errors, paths, time, logging
+  storage/     # SQLAlchemy, models, Alembic migrations, migration runner
+  bootstrap.py # `akbench init` logic
+  doctor.py    # environment diagnostics
 tests/
-  unit/         # konfiguracja, ścieżki, storage, doctor
+  unit/         # paths, configuration, storage, doctor
   integration/  # CLI
-data/           # katalogi runów i baza (ignorowane przez git)
-docs/           # dokumentacja integracji i rozwoju
-spike/          # kod Fazy 0 (protokół przepływu)
+data/           # run directories and database (git-ignored)
+docs/           # integration and development documentation
+spike/          # Phase 0 code (flow validation)
 ```
 
-## Dokumentacja
+## Documentation
 
-- `docs/AGENT_INTEGRATION.md` — zweryfikowane możliwości Codex CLI jako agenta
-  (w tym to, czego API **nie** zapewnia: koszt, anulowanie, reset sesji)
-- `docs/ROUTER_INTEGRATION.md` — LLM Router: healthcheck, modele, pluginy,
-  metryki i ograniczenia weryfikacji
-- `docs/DEVELOPMENT.md` — środowisko dev, testy, migracje
+- `docs/AGENT_INTEGRATION.md` — verified Codex CLI capabilities, including what
+  its interface does **not** provide (cost, cancellation, session reset)
+- `docs/ROUTER_INTEGRATION.md` — LLM Router: healthcheck, models, plugins,
+  metrics and verification limits
+- `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
-## Licencja
+## Conventions
 
-MIT — patrz `LICENSE`.
+Code, comments, docstrings, docs and commit messages are in English. Only the
+implementation plan (`.plans/`) is written in Polish.
+
+## License
+
+MIT — see `LICENSE`.

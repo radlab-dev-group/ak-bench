@@ -1,34 +1,30 @@
-# Faza 0 — integracyjny spike
+# Phase 0 — integration spike
 
-Miniaturowy, samodzielny prototyp (wyłącznie biblioteka standardowa Pythona)
-potwierdzający rzeczywiste możliwości integracji z agentem i routerem, zanim
-powstanie właściwa platforma.
+A tiny, self-contained prototype (Python standard library only) that confirms
+the real integration capabilities of an agent and a router before the actual
+platform is built.
 
-## Co robi
+## What it does
 
-1. Tworzy izolowany workspace z fixture repo (`spike/repo`) i inicjuje repozytorium Git.
-2. Tworzy izolowany `CODEX_HOME` z minimalnym `config.toml` (auth przez `env_key`,
-   bez logowania) — dowód, że `fresh_agent_session` + `clean_agent_context` są wykonalne.
-3. Uruchamia `codex exec --json` na zadaniu `spike/task.yaml` z timeoutem.
-4. Parsuje strumień JSONL i rollout sesji: identyfikator sesji, tokeny,
-   wywołania narzędzi, obserwowany model/sandbox.
-5. Zapisuje `git diff` i ocenia wynik pytestem **poza** workspace agenta
-   (wzorzec izolacji hidden tests).
-6. Zapisuje Reproducibility Manifest z hashami artefaktów i rozdzieleniem
-   `requested` / `effective` / `observed`.
+1. Creates an isolated workspace from the fixture repo (`spike/repo`) and initializes a Git repository.
+2. Creates an isolated `CODEX_HOME` with a minimal `config.toml` (authentication via `env_key`, no login) — proof that `fresh_agent_session` + `clean_agent_context` are feasible.
+3. Runs `codex exec --json` on the `spike/task.yaml` task with a timeout.
+4. Parses the JSONL stream and the session rollout: session id, tokens, tool calls, observed model/sandbox.
+5. Records the `git diff` and evaluates the result with pytest run **outside** the agent workspace (the hidden-test isolation pattern).
+6. Writes a Reproducibility Manifest with artifact hashes and `requested` / `effective` / `observed` separated.
 
-## Uruchomienie
+## Running it
 
 ```bash
-# wymagane: LLM_ROUTER_API_KEY w środowisku
-python3 spike/run_spike.py --dry-run       # tylko przygotowanie środowisk
-python3 spike/run_spike.py --timeout 420   # pełny run E2E
+# required: LLM_ROUTER_API_KEY in the environment
+python3 spike/run_spike.py --dry-run       # prepare environments only
+python3 spike/run_spike.py --timeout 420   # full E2E run
 ```
 
-Artefakty trafiają do `data/artifacts/spike/<run_id>/` (katalog ignorowany przez Git).
+Artifacts land in `data/artifacts/spike/<run_id>/` (a Git-ignored directory).
 
-## Wynik
+## Outcome
 
-Zweryfikowane fakty opisują: `docs/AGENT_INTEGRATION.md` oraz
-`docs/ROUTER_INTEGRATION.md`. Dowód ostatniego udanego runu (manifest, diff,
-ewaluacja, wywołania narzędzi) znajduje się w `spike/evidence/`.
+The verified facts are documented in `docs/AGENT_INTEGRATION.md` and
+`docs/ROUTER_INTEGRATION.md`. Evidence of the last successful run (manifest,
+diff, evaluation, tool calls) lives in `spike/evidence/`.

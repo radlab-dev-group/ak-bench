@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AK-Bench Faza 0 spike: end-to-end prototype.
+"""AK-Bench Phase 0 spike: end-to-end prototype.
 
 Runs the Codex CLI (via Agent-Adapter-shaped code) on a tiny fixture task,
 in an isolated workspace and isolated CODEX_HOME, collects JSONL events,

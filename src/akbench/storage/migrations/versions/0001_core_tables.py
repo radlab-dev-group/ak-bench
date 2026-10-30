@@ -4,8 +4,8 @@ Revision ID: 0001
 Revises:
 Create Date: 2026-10-30
 
-Faza 1 scope. Metrics, observations, descriptor snapshots and events arrive in
-Faza 11; ``task_uid`` becomes a foreign key when the dataset layer exists.
+Phase 1 scope. Metrics, observations, descriptor snapshots and events arrive in
+Phase 11; ``task_uid`` becomes a foreign key when the dataset layer exists.
 """
 
 from __future__ import annotations
