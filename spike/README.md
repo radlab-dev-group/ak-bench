@@ -21,7 +21,17 @@ python3 spike/run_spike.py --dry-run       # prepare environments only
 python3 spike/run_spike.py --timeout 420   # full E2E run
 ```
 
-Artifacts land in `data/artifacts/spike/<run_id>/` (a Git-ignored directory).
+Each run also creates scratch state under `data/` (all Git-ignored):
+
+- `data/workspaces/<run_id>/repo` — an isolated copy of the fixture with its own
+  `git init -b main`, because Codex requires a Git repository and the diff base
+  must be clean;
+- `data/runtime_instances/<run_id>` — the isolated `CODEX_HOME` for that run.
+
+Artifacts land in `data/artifacts/spike/<run_id>/`. Nothing there is precious:
+the durable evidence is committed under `spike/evidence/`, and the whole
+`data/` tree can be deleted at any time. A real Workspace Manager with garbage
+collection arrives in Phase 3.
 
 ## Outcome
 
