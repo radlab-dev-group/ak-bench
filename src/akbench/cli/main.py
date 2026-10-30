@@ -1,7 +1,7 @@
 """``akbench`` command line interface.
 
-Implemented here: version, init, doctor, config, descriptor, agent and category
-commands. The remaining commands from the plan (dataset, runtime, experiment,
+Implemented here: version, init, doctor, config, descriptor, agent, category and
+dataset commands. The remaining commands from the plan (runtime, experiment,
 report, export) arrive with their own phases and are intentionally absent rather
 than stubbed.
 """
@@ -24,6 +24,7 @@ from akbench.cli.common import (
     handle_errors,
     show_json,
 )
+from akbench.cli.dataset import dataset_app
 from akbench.cli.descriptors import agent_app, category_app, descriptor_app
 from akbench.config.loader import build_app_paths, resolve_database_url
 from akbench.doctor import CheckStatus, run_diagnostics
@@ -38,6 +39,7 @@ app = typer.Typer(
 config_app = typer.Typer(help="Inspect the configuration.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 app.add_typer(descriptor_app, name="descriptor")
+app.add_typer(dataset_app, name="dataset")
 app.add_typer(agent_app, name="agent")
 app.add_typer(category_app, name="category")
 
