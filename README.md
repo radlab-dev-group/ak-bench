@@ -17,7 +17,8 @@ task execution through a chosen agent and verifies the outcome independently.
 | 2 | Descriptors and registries | done |
 | 3 | Dataset, tasks, repositories, workspaces | done |
 | 4 | Agent adapter framework (contract, registry, Codex adapter) | done |
-| 5 | Runtime and Router Manager | next |
+| 5 | Runtime and Router Manager (modes, LLM Router adapter) | done |
+| 6 | Evaluator Engine | next |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -54,7 +55,12 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench descriptor show REF --kind K [--json]` | one descriptor: content, digest, derived facts |
 | `akbench agent list [--json]` | registered agents with usable-capability counts |
 | `akbench agent inspect REF [--json]` | agent capabilities, statuses, controllable parameters |
-| `akbench agent run REF [--task T] [--workspace D] [--runtime R] [--param k=v] [--json]` | run one task through an agent adapter |
+| `akbench agent run REF [--task T] [--workspace D] [--runtime R] [--mode M] [--param k=v] [--json]` | run one task through an agent adapter |
+| `akbench runtime list [--json]` | registered runtimes |
+| `akbench runtime health REF [--json]` | healthcheck; exit 1 if down |
+| `akbench runtime models REF [--json]` | served models (aliases not included) |
+| `akbench runtime config REF [--config-file F] [--json]` | requested/effective/observed config with trust level |
+| `akbench runtime state REF [--json]` | health, models, metrics snapshot |
 | `akbench category list [--json]` | task categories and whether they are enabled |
 | `akbench dataset list [--category C] [--json]` | registered tasks |
 | `akbench dataset validate [--check-repositories] [--verify-mutations] [--json]` | validate tasks; exit 1 on failure |
@@ -90,6 +96,7 @@ src/akbench/
   core/         # errors, paths, time, logging
   descriptors/  # descriptor models, ENV allowlist, registry
   agents/       # adapter contract, agent registry, catalog, Codex adapter
+  runtime/      # runtime manager contract, LLM Router adapter, execution modes
   storage/      # SQLAlchemy, models, Alembic migrations, migration runner
   datasets/     # task descriptors, dataset validation, repositories, workspaces
   bootstrap.py  # `akbench init` logic
@@ -114,6 +121,7 @@ spike/          # Phase 0 code (flow validation)
 - `docs/DESCRIPTOR_SYSTEM.md` — descriptor kinds, registries, ENV allowlist, dimension rules
 - `docs/DATASETS.md` — tasks, repositories, repeatable workspaces, mutation verification
 - `docs/AGENT_ADAPTERS.md` — the adapter contract, agent registry, capability gating, contract tests
+- `docs/RUNTIME_MANAGER.md` — execution modes, the runtime manager, the LLM Router adapter, the configuration triad
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions
