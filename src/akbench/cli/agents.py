@@ -15,7 +15,7 @@ from pathlib import Path
 
 import typer
 
-from akbench.agents.catalog import binding_from_runtime, build_agent_registry
+from akbench.agents.catalog import build_agent_registry
 from akbench.agents.contract import AgentConfig
 from akbench.agents.registry import AgentEntry, validate_agent_config
 from akbench.cli.common import CliContext, console, handle_errors, show_json
@@ -25,12 +25,7 @@ from akbench.cli.common import CliContext, console, handle_errors, show_json
 from akbench.cli.descriptors import agent_app
 from akbench.config.loader import build_app_paths
 from akbench.datasets import Dataset, RepositoryManager, TaskLoadError, WorkspaceManager
-from akbench.descriptors import (
-    AgentDescriptor,
-    DescriptorKind,
-    RuntimeDescriptor,
-    load_registry,
-)
+from akbench.descriptors import AgentDescriptor, DescriptorKind, load_registry
 
 JSON_OPTION = typer.Option(False, "--json", help="Emit the result as JSON.")
 
@@ -79,15 +74,34 @@ def _split_reference(reference: str) -> tuple[str, str | None]:
     return reference, None
 
 
-def _runtime_binding(context: CliContext, runtime: str | None):
-    if runtime is None:
-        return None
+def _runtime_plan(context: CliContext, mode: str | None, runtime: str | None):
+    """Resolve the declared execution mode (plan 7.1).
+
+    ``direct`` means the agent talks to its model without a runtime; the
+    runtime modes require a registered runtime that supports the mode. When no
+    mode is declared but a runtime is, ``router`` is assumed and the output says
+    the mode was not declared — nothing is silently assumed downstream.
+    """
+    from akbench.descriptors.runtime import RuntimeDescriptor
+    from akbench.runtime import build_runtime_registry, plan_execution
+
     registry = _descriptor_registry(context)
-    loaded = registry.get(DescriptorKind.RUNTIME, runtime)
-    if loaded is None or not isinstance(loaded.descriptor, RuntimeDescriptor):
-        console.print(f"[red]runtime {runtime!r} is not registered[/red]")
-        raise typer.Exit(1)
-    return binding_from_runtime(loaded.descriptor)  # type: ignore[arg-type]
+    runtimes = build_runtime_registry(
+        [
+            entry.descriptor
+            for entry in registry.entries(DescriptorKind.RUNTIME)
+            if isinstance(entry.descriptor, RuntimeDescriptor)
+        ],
+        allow_missing_adapter=True,
+    )
+    declared = mode is not None
+    resolved_mode = mode or ("router" if runtime else "direct")
+    try:
+        plan = plan_execution(resolved_mode, runtime, runtimes)
+    except Exception as exc:
+        console.print(f"[red]execution mode is not usable[/red] {exc}")
+        raise typer.Exit(1) from exc
+    return plan, declared
 
 
 def _prepared_workspace(
@@ -186,6 +200,12 @@ def agent_run_cmd(
     runtime: str | None = typer.Option(
         None, "--runtime", help="Runtime id to bind (provides base_url and credential)."
     ),
+    mode: str | None = typer.Option(
+        None,
+        "--mode",
+        help="Execution mode: direct, runtime or router (plan 7.1). "
+        "Defaults to direct, or router when --runtime is given.",
+    ),
     timeout: float | None = typer.Option(
         None, "--timeout", help="Wall-clock seconds before the run is cancelled."
     ),
@@ -205,7 +225,8 @@ def agent_run_cmd(
 
     entry = _agent_entry(context, reference)
     descriptor = entry.descriptor
-    binding = _runtime_binding(context, runtime)
+    plan, declared = _runtime_plan(context, mode, runtime)
+    binding = plan.binding
 
     parameters: dict[str, object] = {}
     if model is not None:
@@ -264,6 +285,7 @@ def agent_run_cmd(
     payload["workspace"] = str(workspace_path)
     payload["workspace_provenance"] = provenance
     payload["agent"] = reference
+    payload["execution"] = {**plan.as_dict(), "mode_declared": declared}
 
     if as_json:
         show_json(payload)
