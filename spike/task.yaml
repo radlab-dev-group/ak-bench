@@ -1,0 +1,7 @@
+id: spike-001
+description: |
+  Simple task for the AK-Bench phase 0 spike.
+  The repository contains a small Python package with one intentional bug:
+  the sum_of_squares function in math_utils.py is wrong.
+  Fix the bug so that the test in test_math.py passes, and run the test to verify.
+  Do not modify test_math.py.

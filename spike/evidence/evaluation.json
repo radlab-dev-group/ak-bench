@@ -1,0 +1,6 @@
+{
+  "command": "/usr/local/bin/python3 -m pytest -q test_math.py",
+  "exit_code": 0,
+  "stdout": ".                                                                        [100%]\n1 passed in 0.36s\n",
+  "stderr": ""
+}
