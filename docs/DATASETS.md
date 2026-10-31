@@ -90,6 +90,20 @@ throwaway workspaces and reports:
 A pytest exit code of 5 ("no tests collected") is treated as an error, not a
 pass.
 
+## Shipped tasks
+
+The repository ships one task per convention, as the reference examples:
+
+| task | category | base state vs. hidden tests |
+|---|---|---|
+| `wordcount-001` | `bug_fix` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `slugify-001` | `new_feature` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+
+`slugify-001` declares no mutation, so `--verify-mutations` reports
+`no_mutation` for it. Its honesty check lives in
+`tests/integration/test_workspaces.py`: the hidden tests must fail on the base
+state and pass against a reference implementation.
+
 ## CLI
 
 ```bash

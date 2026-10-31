@@ -6,11 +6,11 @@
 # knowledge at all. Only knowledge access differs between replay and fresh —
 # the plan compares their fingerprints and refuses any other difference.
 #
-# This ships with one exact-replay scenario because the dataset has one task.
-# A related-transfer or negative-transfer scenario names a task the learning
-# arm never worked, which is a second task in the dataset; the plan builder
-# rejects a transfer scenario that points at a learning task, so adding one
-# without a second task fails instead of measuring the wrong thing.
+# This ships with one exact-replay scenario because the selector above matches
+# one task. A related-transfer or negative-transfer scenario names a task the
+# learning arm never worked; the plan builder rejects a transfer scenario that
+# points at a learning task, so adding one without a second matching task fails
+# instead of measuring the wrong thing.
 schema_version: "1.0"
 id: knowledge-replay
 version: "1.0.0"
