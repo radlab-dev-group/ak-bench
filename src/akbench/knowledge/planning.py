@@ -133,8 +133,17 @@ class MemoryPlanBuilder:
         self.lifecycle = lifecycle
         self.readiness_probe = readiness_probe
 
-    def plan(self, experiment: LoadedExperiment) -> MemoryExperimentPlan:
-        """Build the plan; an invalid definition raises (plan 12.1)."""
+    def plan(
+        self,
+        experiment: LoadedExperiment,
+        allow_unverified: bool = False,
+    ) -> MemoryExperimentPlan:
+        """Build the plan; an invalid definition raises (plan 12.1).
+
+        ``allow_unverified`` relaxes the replay gate for this invocation only:
+        the experiment file is not modified, and the plan records the
+        relaxation so a reader sees the replay was never confirmed.
+        """
         report = self.validate(experiment)
         if not report.ok:
             codes = ", ".join(issue.code for issue in report.errors)
@@ -142,7 +151,7 @@ class MemoryPlanBuilder:
                 f"memory experiment {experiment.identity} is not runnable: {codes}",
                 details={"issues": [issue.as_dict() for issue in report.errors]},
             )
-        return self._build(experiment, report)
+        return self._build(experiment, report, allow_unverified=allow_unverified)
 
     def validate(self, experiment: LoadedExperiment) -> ValidationReport:
         """Every check a memory experiment must pass, as findings."""
@@ -250,7 +259,7 @@ class MemoryPlanBuilder:
     def _check_isolation(self, report: ValidationReport) -> None:
         isolation = build_isolation_report(self.plugin, self.lifecycle)
         if not isolation.comparable:
-            report.warning(
+            report.warn(
                 "knowledge_namespace_shared",
                 "the knowledge namespace is not isolated on this deployment: every "
                 "experiment on this router instance shares one knowledge base. The "
@@ -266,6 +275,7 @@ class MemoryPlanBuilder:
         self,
         experiment: LoadedExperiment,
         report: ValidationReport,
+        allow_unverified: bool = False,
     ) -> MemoryExperimentPlan:
         descriptor = experiment.descriptor
         knowledge = descriptor.experiment.knowledge
@@ -285,7 +295,7 @@ class MemoryPlanBuilder:
         gate = build_readiness_gate(
             session,
             self.readiness_probe,
-            allow_unverified=knowledge.replay.allow_unverified,
+            allow_unverified=allow_unverified or knowledge.replay.allow_unverified,
         )
 
         arms = self._build_arms(experiment, knowledge, gate, session, learning)
