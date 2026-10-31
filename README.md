@@ -20,7 +20,8 @@ task execution through a chosen agent and verifies the outcome independently.
 | 5 | Runtime and Router Manager (modes, LLM Router adapter) | done |
 | 6 | Evaluator Engine (pytest + command evaluators, hidden tests) | done |
 | 7 | Run Orchestrator (lifecycle, isolation, retries, run records) | done |
-| 8 | Experiment Descriptor and Planner | next |
+| 8 | Experiment Descriptor and Planner | done |
+| 9 | Plugin Configuration and Observability | next |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -65,6 +66,9 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench runtime state REF [--json]` | health, models, metrics snapshot |
 | `akbench evaluate task REF --workspace D [--evaluator E] [--json]` | judge a produced workspace; exit 2 when the harness broke |
 | `akbench run single TASK --agent A [--mode M] [--runtime R] [--param k=v] [--json]` | orchestrate one run: prepare, execute, evaluate, record |
+| `akbench experiment list [--json]` | the experiment definitions under `configs/experiments` |
+| `akbench experiment validate [FILE...] [--json]` | validate experiments; exit 1 when one is not runnable |
+| `akbench experiment plan FILE [--variants] [--json]` | expand an experiment into tasks, variants and runs |
 | `akbench category list [--json]` | task categories and whether they are enabled |
 | `akbench dataset list [--category C] [--json]` | registered tasks |
 | `akbench dataset validate [--check-repositories] [--verify-mutations] [--json]` | validate tasks; exit 1 on failure |
@@ -103,6 +107,7 @@ src/akbench/
   runtime/      # runtime manager contract, LLM Router adapter, execution modes
   evaluators/   # evaluator engine, pytest + command evaluators, isolation
   orchestration/  # run lifecycle state machine, the run orchestrator
+  experiments/  # experiment descriptor, dimension registry, matrix strategies, planner
   storage/      # SQLAlchemy, models, Alembic migrations, migration runner
   datasets/     # task descriptors, dataset validation, repositories, workspaces
   bootstrap.py  # `akbench init` logic
@@ -113,6 +118,7 @@ tests/
   contract/     # shared adapter contract suite, fake agent, CLI stub
 descriptors/    # component definitions (agents, plugins, models, ...)
 datasets/       # task definitions, hidden tests and mutation patches
+configs/        # configuration and experiment definitions
 data/           # run directories, repository cache and database (git-ignored)
 docs/           # integration and development documentation
 spike/          # Phase 0 code (flow validation)
@@ -130,6 +136,7 @@ spike/          # Phase 0 code (flow validation)
 - `docs/RUNTIME_MANAGER.md` — execution modes, the runtime manager, the LLM Router adapter, the configuration triad
 - `docs/EVALUATORS.md` — the evaluator engine, verdicts, hidden-test isolation, raw results
 - `docs/RUN_ORCHESTRATOR.md` — the run lifecycle, isolation, retry policy and run records
+- `docs/EXPERIMENTS.md` — experiment descriptors, validation, matrix strategies and planning
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions

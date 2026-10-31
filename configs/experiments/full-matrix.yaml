@@ -1,0 +1,57 @@
+# Knowledge on/off x model (plan section 25, example E), as a full factorial.
+#
+# The plan's example adds Auto Codex as a third axis; it is left out here
+# because the router in this installation refuses per-run plugin control over
+# the routing alias, which would make the axis unverifiable. A smaller matrix
+# whose cells are all real beats a larger one whose cells are assumed.
+schema_version: "1.0"
+id: full-matrix
+version: "1.0.0"
+title: Knowledge and model full factorial
+
+experiment:
+  type: configuration
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories: [bug_fix]
+
+  factors:
+    strategy: full_factorial
+    dimensions:
+      - id: knowledge_enabled
+      - id: model
+        values: [auto_codex, qwen/Qwen3.8-27B, google/gemma-4-12b-it]
+    baseline:
+      knowledge_enabled: false
+      model: auto_codex
+
+  execution_policy:
+    repetitions: 3
+    concurrency: 1
+    timeout_seconds: 900
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    max_runs: 64

@@ -1,0 +1,54 @@
+# The smallest runnable experiment: one agent, one task, no factors.
+#
+# Its purpose is to prove the pipeline (plan section 25, the reference case
+# every comparison is measured against). With no factors the matrix has exactly
+# one variant, so any difference from a later experiment is attributable to the
+# factors that experiment adds.
+schema_version: "1.0"
+id: wordcount-direct-sanity
+version: "1.0.0"
+title: Wordcount sanity run without factors
+
+experiment:
+  type: configuration
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: direct
+
+  dataset:
+    filters:
+      categories: [bug_fix]
+      task_ids: [wordcount-001]
+
+  factors:
+    strategy: full_factorial
+
+  execution_policy:
+    repetitions: 2
+    concurrency: 1
+    timeout_seconds: 600
+    evaluation_timeout_seconds: 300
+    retry_infrastructure_errors: 1
+
+  isolation:
+    workspace_per_run: true
+    fresh_agent_session: true
+    clean_agent_context: true
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    max_runs: 8

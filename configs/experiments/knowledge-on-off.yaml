@@ -1,0 +1,56 @@
+# Knowledge ON/OFF against one agent, model and task set (plan section 25,
+# example B).
+#
+# The factor is a router-plugin configuration, so the experiment names a
+# managed runtime: AK-Bench starts the instance and owns its environment, which
+# is the only way the value can be pinned to a run. On the shared external
+# router the same factor is refused at validation, because a configuration that
+# cannot be pinned or verified is not an experimental control.
+schema_version: "1.0"
+id: knowledge-on-off
+version: "1.0.0"
+title: Knowledge plugin on/off
+
+experiment:
+  type: configuration
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories: [bug_fix]
+
+  factors:
+    strategy: full_factorial
+    dimensions:
+      - id: knowledge_enabled
+    baseline:
+      knowledge_enabled: false
+
+  execution_policy:
+    repetitions: 3
+    concurrency: 1
+    timeout_seconds: 900
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - input_tokens
+    - output_tokens
+
+  limits:
+    max_runs: 64
