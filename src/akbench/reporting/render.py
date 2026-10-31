@@ -38,44 +38,104 @@ CSS_TOKEN = "{{css}}"
 ROOT_TOKEN = "{{root}}"
 
 STYLE = """
+/* AK-Bench report — a phosphor terminal look, deliberately CSS only, no script.
+   The palette is CRT, the content is not: every value stays as it was measured.
+   A light scheme is used for print, because a black page wastes a toner. */
 :root {
-  --bg: #ffffff; --fg: #16181d; --muted: #5b6472; --line: #d8dde5;
-  --pass: #1a7f37; --fail: #b3261e; --warn: #8a6100; --head: #f3f5f8;
+  --bg: #06090a; --panel: #0b1214; --fg: #b8f5c8; --bright: #eafff0;
+  --muted: #5f8a72; --line: #1d3a2c; --head: #10201a;
+  --pass: #46f08a; --fail: #ff6b5e; --warn: #ffc857; --accent: #35e0c0;
+  --glow: 0 0 6px rgba(70, 240, 138, .25);
 }
 * { box-sizing: border-box; }
+html { background: var(--bg); }
 body {
   margin: 0; padding: 2rem 1.5rem 4rem; background: var(--bg); color: var(--fg);
-  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 14px/1.55 ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  text-shadow: var(--glow);
 }
-main { max-width: 68rem; margin: 0 auto; }
-h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
-h2 { font-size: 1.15rem; margin: 2rem 0 .5rem; }
-a { color: #1f4fbf; text-decoration: none; }
-a:hover { text-decoration: underline; }
-.nav { font-size: .9rem; color: var(--muted); margin-bottom: 1.25rem; }
-.subtitle { color: var(--muted); margin: 0 0 1.25rem; }
-table { border-collapse: collapse; width: 100%; margin: .35rem 0 1rem; }
+/* scanlines and the vignette of a tube, both behind the content */
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 2;
+  background: repeating-linear-gradient(
+    to bottom, rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, .22) 2px 4px);
+}
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 3;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, .55) 100%);
+}
+main {
+  position: relative; z-index: 1; max-width: 72rem; margin: 0 auto;
+  border: 1px solid var(--line); background: var(--panel); padding: 1.5rem 1.6rem 2rem;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, .6);
+}
+h1 {
+  font-size: 1.15rem; margin: 0 0 .35rem; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--bright);
+}
+h1::before { content: "> "; color: var(--accent); }
+h2 {
+  font-size: .85rem; margin: 2.2rem 0 .6rem; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--accent); border-bottom: 1px dashed var(--line); padding-bottom: .3rem;
+}
+h2::before { content: "── "; color: var(--line); }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--line); }
+a:hover { color: var(--bright); background: rgba(53, 224, 192, .12); text-decoration: none; }
+.nav { font-size: .8rem; color: var(--muted); margin-bottom: 1.4rem; letter-spacing: .08em; }
+.nav::before { content: "PATH "; color: var(--muted); }
+.subtitle { color: var(--muted); margin: 0 0 1.4rem; font-size: .85rem; }
+table { border-collapse: collapse; width: 100%; margin: .5rem 0 1.2rem; font-size: .85rem; }
 th, td {
-  border-bottom: 1px solid var(--line); padding: .4rem .55rem;
+  border-bottom: 1px solid var(--line); padding: .45rem .6rem;
   text-align: left; vertical-align: top; font-variant-numeric: tabular-nums;
 }
-th { background: var(--head); font-weight: 600; }
+th {
+  background: var(--head); color: var(--accent); font-weight: 600;
+  font-size: .72rem; letter-spacing: .12em; text-transform: uppercase;
+  border-bottom: 1px solid var(--accent);
+}
+tbody tr:hover { background: rgba(53, 224, 192, .06); }
 td.num, th.num { text-align: right; }
-.cards { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0 1.5rem; }
-.card { border: 1px solid var(--line); border-radius: 6px; padding: .6rem .8rem; min-width: 9rem; }
-.card .label { color: var(--muted); font-size: .75rem; text-transform: uppercase; }
-.card .value { font-size: 1.25rem; font-weight: 600; }
+.cards { display: flex; flex-wrap: wrap; gap: .7rem; margin: 1.1rem 0 1.7rem; }
+.card {
+  border: 1px solid var(--line); padding: .65rem .85rem; min-width: 9.5rem;
+  background: rgba(53, 224, 192, .04); box-shadow: inset 0 0 18px rgba(0, 0, 0, .45);
+}
+.card .label {
+  color: var(--muted); font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+}
+.card .value { font-size: 1.3rem; color: var(--bright); }
 .pass { color: var(--pass); }
-.fail { color: var(--fail); }
+.fail { color: var(--fail); text-shadow: 0 0 6px rgba(255, 107, 94, .3); }
 .warn { color: var(--warn); }
 .muted { color: var(--muted); }
-.badge { border: 1px solid var(--line); border-radius: 10px; padding: 0 .45rem; font-size: .78rem; }
-.notice {
-  border-left: 3px solid var(--warn); background: #fffaf0;
-  padding: .6rem .8rem; margin: .75rem 0;
+.badge {
+  border: 1px solid var(--line); padding: 0 .45rem; font-size: .72rem;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--muted); white-space: nowrap;
 }
-code { font: .8rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
-footer { margin-top: 2.5rem; color: var(--muted); font-size: .85rem; }
+.badge.warn { border-color: var(--warn); color: var(--warn); }
+.badge.pass { border-color: var(--pass); color: var(--pass); }
+.notice {
+  border-left: 3px solid var(--warn); background: rgba(255, 200, 87, .07);
+  padding: .7rem .9rem; margin: .9rem 0; font-size: .85rem;
+}
+code {
+  font: .8rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all; color: var(--bright); background: rgba(0, 0, 0, .35); padding: 0 .2rem;
+}
+footer {
+  margin-top: 2.5rem; color: var(--muted); font-size: .75rem;
+  letter-spacing: .1em; border-top: 1px dashed var(--line); padding-top: .7rem;
+}
+footer::before { content: "└─ "; color: var(--line); }
+@media print {
+  :root { --bg: #fff; --panel: #fff; --fg: #111; --bright: #000; --muted: #555;
+          --line: #bbb; --head: #eee; --accent: #00664f; --pass: #0a7d38; --warn: #8a6100;
+          --fail: #b3261e; --glow: none; }
+  body { font-size: 11px; }
+  body::before, body::after { display: none; }
+  main { border: none; box-shadow: none; padding: 0; }
+}
 """
 
 
