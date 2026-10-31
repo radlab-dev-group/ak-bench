@@ -1,0 +1,24 @@
+# Learning half of the knowledge plugin: writes knowledge from traffic.
+# Excluded from factor generation on a shared router: it mutates persistent
+# state that later runs inherit, which would contaminate a comparison.
+schema_version: "1.0"
+id: knowledge_write_enabled
+version: "1.0.0"
+title: Knowledge write enabled
+description: Allows the knowledge plugin to learn from a session.
+
+dimension:
+  type: plugin_configuration
+  source: plugin.agentic_knowledge.env
+  values: [false, true]
+  default: true
+  controllable: true
+  observed: true
+  configure_via: env LLM_ROUTER_KNOWLEDGE_AGENTIC_WRITE_ENABLED
+  verify_via: same limitation as knowledge_enabled (unverified on an external router)
+  depends_on: [knowledge_enabled]
+  notes: >-
+    Indexing is asynchronous, so a Replay experiment must additionally confirm
+    that the write and index steps finished (docs/ROUTER_INTEGRATION.md
+    section 6). Enabling this against a shared KB also breaks isolation between
+    runs (docs/AGENT_INTEGRATION.md section 13).

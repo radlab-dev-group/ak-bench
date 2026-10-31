@@ -1,0 +1,23 @@
+# Primary evaluator (plan section 16): pytest against hidden tests. Hidden
+# tests live outside the agent workspace, so the agent can neither read nor
+# modify them (plan 8.6, 23).
+schema_version: "1.0"
+id: pytest_evaluator
+version: "1.0.0"
+title: Pytest evaluator
+description: >-
+  Runs pytest over the task's hidden tests in an isolated copy of the produced
+  workspace and records raw results together with the evaluator version.
+
+evaluator:
+  kind: pytest
+  runs_outside_workspace: true
+  result_kind: pass_fail
+  inputs: [workspace, hidden_tests]
+  outputs: [pytest_report]
+  requires:
+    - python with pytest available in the evaluation environment
+  notes: >-
+    Raw test output is kept so a pass/fail claim can always be re-examined.
+    An evaluator error is recorded as an evaluation failure, never as an agent
+    failure.

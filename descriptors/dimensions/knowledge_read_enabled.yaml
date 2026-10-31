@@ -1,0 +1,17 @@
+# Retrieval half of the knowledge plugin: reads knowledge into the request.
+schema_version: "1.0"
+id: knowledge_read_enabled
+version: "1.0.0"
+title: Knowledge read enabled
+description: Allows the knowledge plugin to retrieve and inject knowledge.
+
+dimension:
+  type: plugin_configuration
+  source: plugin.agentic_knowledge.env
+  values: [false, true]
+  default: true
+  controllable: true
+  observed: true
+  configure_via: env LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_ENABLED
+  verify_via: same limitation as knowledge_enabled (unverified on an external router)
+  depends_on: [knowledge_enabled]

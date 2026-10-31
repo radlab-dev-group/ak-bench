@@ -1,0 +1,38 @@
+# Sample bug-fix task (plan sections 8.3 to 8.6).
+#
+# The repository is a seed directory shipped with this repository: the cache is
+# built from its content with a fixed identity and timestamp, so the pinned
+# commit is reproducible without a remote. Real datasets should point at a real
+# git URL and pin a real commit hash.
+schema_version: "1.0"
+id: wordcount-001
+version: "1.0.0"
+title: Word counting must ignore repeated whitespace
+description: >-
+  count_words splits on single spaces, so empty strings and runs of whitespace
+  are counted wrong. The agent restores the documented behaviour.
+
+task:
+  category: bug_fix
+  difficulty: easy
+
+  repository:
+    source: datasets/_sources/wordcount
+    ref: HEAD
+    notes: seed fixture directory
+
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      Replaces split() with split(" "). The repository's own tests still pass,
+      so only the hidden tests prove the defect exists.
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 300
+  constraints:
+    - do not change the public API of the wordcount package
+    - do not modify the tests

@@ -1,0 +1,19 @@
+# Observed-only: which repetition of a task this run is. Not a factor - it is a
+# sampling axis declared by the experiment policy (plan section 12 repetitions).
+schema_version: "1.0"
+id: repetition
+version: "1.0.0"
+title: Repetition index
+description: Index of the repetition of a task within an experiment.
+
+dimension:
+  type: integer
+  source: experiment.execution_policy.repetitions
+  minimum: 1
+  maximum: 100
+  default: 1
+  controllable: false
+  observed: true
+  notes: >-
+    Declared here so reports can name the axis, but the planner must not treat
+    it as a factor: repetitions are governed by execution_policy.repetitions.

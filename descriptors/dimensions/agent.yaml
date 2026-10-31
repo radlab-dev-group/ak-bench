@@ -1,0 +1,15 @@
+# Which agent is under test. Reference type: values are Agent Descriptor ids.
+schema_version: "1.0"
+id: agent
+version: "1.0.0"
+title: Agent under test
+description: Selects the agent (and therefore the adapter) that executes a task.
+
+dimension:
+  type: agent_reference
+  source: experiment.agent.id
+  values: [codex]
+  controllable: true
+  observed: true
+  configure_via: experiment descriptor agent.id resolved through the registry
+  verify_via: adapter identity recorded in the run

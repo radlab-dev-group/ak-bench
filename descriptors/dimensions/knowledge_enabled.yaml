@@ -1,0 +1,26 @@
+# Master switch of the knowledge plugin. Controllable in principle; on the
+# shared external router it cannot be pinned or verified per run.
+schema_version: "1.0"
+id: knowledge_enabled
+version: "1.0.0"
+title: Knowledge plugin enabled
+description: Turns the agentic knowledge layer on or off for a run.
+
+dimension:
+  type: plugin_configuration
+  source: plugin.agentic_knowledge.env
+  values: [false, true]
+  default: true
+  controllable: true
+  observed: true
+  configure_via: env LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED on the router process
+  verify_via: >-
+    requires effective_router_config or plugin_runtime_events. Neither is
+    reachable on the external instance (configuration reads are refused and no
+    per-plugin counter is exported), so a run against it stays unverified and
+    needs a managed router to become verified.
+  depends_on:
+    - plugin agentic_knowledge present in LLM_ROUTER_UTILS_PLUGINS_PIPELINE
+  notes: >-
+    Knowledge experiments compare knowledge_enabled against the same task and
+    repository state; the flag alone is never evidence that knowledge was used.

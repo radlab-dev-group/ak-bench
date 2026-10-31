@@ -1,0 +1,35 @@
+# Requested model. Controllable: it is passed to the agent as a parameter.
+# The value space is the verified inventory of the router under test plus the
+# routing alias, NOT a general list of models: /v1/models returned these six ids
+# (docs/ROUTER_INTEGRATION.md section 2) and auto_codex resolves although it is
+# absent from that list. The value space moves with the router configuration,
+# which is why experiments pin descriptor digests.
+schema_version: "1.0"
+id: model
+version: "1.0.0"
+title: Requested model
+description: Model identifier requested from the agent; the router may rewrite it.
+
+dimension:
+  type: model_reference
+  source: agent.configuration.model
+  values:
+    - auto_codex
+    - qwen/Qwen3.8-Flash-Next
+    - qwen/Qwen3.8-27B
+    - qwen3-coder:30b
+    - google/gemma-4-12b-it
+    - google/gemma-4-12b-it-playground
+    - google/gemini-3.1-flash-lite-preview
+  controllable: true
+  observed: true
+  configure_via: "codex -m/--model MODEL (agent descriptor: model)"
+  verify_via: >-
+    partial only: the agent reports the requested value (turn_context.model),
+    which is an alias when routing is enabled. The model that actually served
+    the request is observable on the router side, not in agent data
+    (docs/AGENT_INTEGRATION.md section 10).
+  notes: >-
+    Use routed_model to record what really served a request; this dimension
+    records what was asked for. Conflating them would turn a request into a
+    measurement.

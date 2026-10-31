@@ -22,8 +22,8 @@ akbench doctor
 ```
 
 Tests need neither network nor an agent: they run against temporary
-directories and SQLite files. Integration tests (the CLI) use
-`typer.testing.CliRunner`.
+directories, real local git repositories and SQLite files. Integration tests
+ (the CLI) use `typer.testing.CliRunner`.
 
 Contract tests worth knowing about:
 
@@ -33,6 +33,15 @@ Contract tests worth knowing about:
   models breaks this test.
 - `tests/integration/test_cli.py` — exit codes and the shape of `--json`
   output.
+- `tests/unit/test_descriptor_registry.py` — discovery, versioned identity,
+  digest stability and conflicts; also asserts that every shipped descriptor
+  still loads (and that unavailable metrics carry a reason).
+- `tests/unit/test_env_observation.py` — the ENV allowlist: only declared
+  variables are read, secrets are reduced to `is_set`.
+- `tests/integration/test_workspaces.py` — git worktree workspaces and mutation
+  verification against real repositories (repeatable fingerprints, cleanup,
+  hidden-test isolation, `not_detectable` rejection).
+- `tests/integration/test_dataset_cli.py` — the dataset command group.
 
 ## 3. Migrations
 
@@ -48,6 +57,8 @@ Rules:
 - SQLite with `render_as_batch=True` (the `ALTER TABLE` limitations),
 - `task_uid` in `task_runs` is a plain string for now — the real foreign key to
   `tasks` arrives in Phase 3,
+- `task_runs.task_uid` is a real foreign key to `tasks.uid` from Phase 3 on, so
+  a run can never reference a task that was never registered;
 - the complete data model (metrics, observations, descriptor snapshots,
   events) lands in Phase 11.
 
@@ -69,7 +80,12 @@ Rules:
 
 ## 5. Deliberately unfinished
 
-- The `agent`, `dataset`, `experiment`, `report` and `export` commands — Phase 2+.
-- The `tasks` table and its relations — Phase 3.
-- The observability and metrics layer — Phases 9 and 11.
-- Docker sandboxing — Phases 3/7 (Docker availability verified, not implemented).
+Every command from the plan's CLI sketch is implemented, including
+`akbench runtime`, `akbench experiment` (list, validate, plan, run),
+`akbench run`, `akbench report` and `akbench export`. What remains out of
+scope is:
+
+- The scheduler-facing commands (`resume`, `cancel`) — they need a scheduler
+  and are intentionally absent rather than stubbed.
+- Docker sandboxing — the workspace isolation uses git worktrees; Docker
+  availability is verified by `akbench doctor`, not implemented as a sandbox.

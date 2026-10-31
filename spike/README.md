@@ -16,9 +16,12 @@ platform is built.
 ## Running it
 
 ```bash
-# required: LLM_ROUTER_API_KEY in the environment
-python3 spike/run_spike.py --dry-run       # prepare environments only
-python3 spike/run_spike.py --timeout 420   # full E2E run
+# one-command wrapper (checks for codex and LLM_ROUTER_API_KEY first)
+spike/run.sh --dry-run                     # prepare environments only
+spike/run.sh --timeout 420                 # full E2E run
+
+# or call the runner directly (needs LLM_ROUTER_API_KEY for a full run)
+python3 spike/run_spike.py --dry-run
 ```
 
 Each run also creates scratch state under `data/` (all Git-ignored):

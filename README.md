@@ -14,7 +14,18 @@ task execution through a chosen agent and verifies the outcome independently.
 |---|---|---|
 | 0 | Integration spike (Codex CLI + LLM Router) | done |
 | 1 | Skeleton: CLI, configuration, logging, SQLite, migrations | done |
-| 2 | Descriptors and registries | next |
+| 2 | Descriptors and registries | done |
+| 3 | Dataset, tasks, repositories, workspaces | done |
+| 4 | Agent adapter framework (contract, registry, Codex adapter) | done |
+| 5 | Runtime and Router Manager (modes, LLM Router adapter) | done |
+| 6 | Evaluator Engine (pytest + command evaluators, hidden tests) | done |
+| 7 | Run Orchestrator (lifecycle, isolation, retries, run records) | done |
+| 8 | Experiment Descriptor and Planner | done |
+| 9 | Plugin Configuration and Observability | done |
+| 10 | Knowledge Replay (learning, fresh runs, KB readiness, isolation) | done |
+| 11 | Storage and Metrics (data model, artifacts, hashes, aggregates) | done |
+| 12 | Reporting (static HTML: dashboard, experiment, task, agent, runtime, plugin, model pages) | done |
+| 13 | Export and stabilization (JSON/CSV/HTML export, secret filtering, E2E, reproducibility) | done |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -33,9 +44,11 @@ uv pip install -e ".[dev]"
 akbench init          # directories + configuration + database (migrations to head)
 akbench doctor        # environment readiness
 akbench config show   # effective configuration and paths
+akbench descriptor validate  # component descriptors
+akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 ```
 
-## Commands (Phase 1)
+## Commands
 
 | Command | Description |
 |---|---|
@@ -44,6 +57,44 @@ akbench config show   # effective configuration and paths
 | `akbench doctor [--json] [--strict]` | environment diagnostics; exit 1 on failures |
 | `akbench config show [--json] [--all]` | effective configuration, paths, database URL |
 | `akbench config validate` | validate the configuration file without writing |
+| `akbench descriptor list [--kind K] [--json]` | list registered descriptors |
+| `akbench descriptor validate [--kind K] [--json]` | validate every file; exit 1 on any failure |
+| `akbench descriptor show REF --kind K [--json]` | one descriptor: content, digest, derived facts |
+| `akbench agent list [--json]` | registered agents with usable-capability counts |
+| `akbench agent inspect REF [--json]` | agent capabilities, statuses, controllable parameters |
+| `akbench agent run REF [--task T] [--workspace D] [--runtime R] [--mode M] [--param k=v] [--json]` | run one task through an agent adapter |
+| `akbench runtime list [--json]` | registered runtimes |
+| `akbench runtime health REF [--json]` | healthcheck; exit 1 if down |
+| `akbench runtime models REF [--json]` | served models (aliases not included) |
+| `akbench runtime config REF [--config-file F] [--json]` | requested/effective/observed config with trust level |
+| `akbench runtime state REF [--json]` | health, models, metrics snapshot |
+| `akbench evaluate task REF --workspace D [--evaluator E] [--json]` | judge a produced workspace; exit 2 when the harness broke |
+| `akbench run single TASK --agent A [--mode M] [--runtime R] [--param k=v] [--store] [--experiment E] [--json]` | orchestrate one run: prepare, execute, evaluate, record (store it in the history) |
+| `akbench experiment list [--json]` | the experiment definitions under `configs/experiments` |
+| `akbench experiment validate [FILE...] [--json]` | validate experiments; exit 1 when one is not runnable |
+| `akbench experiment plan FILE [--variants] [--store] [--json]` | expand an experiment into tasks, variants and runs (store the plan in the history) |
+| `akbench plugin list [--json]` | the plugin descriptors this project ships |
+| `akbench plugin status [REF] [--env NAME=VALUE] [--json]` | observed plugin configuration, secrets as presence only |
+| `akbench plugin verify [REF] [--config-file F] [--json]` | verify a plugin against available evidence |
+| `akbench metrics catalog [--group G] [--json]` | the metric catalog with every metric's availability |
+| `akbench metrics run RECORD [--baseline B] [--json]` | aggregate recorded runs, with baseline deltas |
+| `akbench knowledge plan [FILE] [--allow-unverified] [--json]` | build the memory plan: arms, fingerprints, readiness gate |
+| `akbench knowledge readiness [--session F] [--json]` | KB readiness for a replay, honestly reported |
+| `akbench category list [--json]` | task categories and whether they are enabled |
+| `akbench dataset list [--category C] [--json]` | registered tasks |
+| `akbench dataset validate [--check-repositories] [--verify-mutations] [--json]` | validate tasks; exit 1 on failure |
+| `akbench dataset show REF [--json]` | one task with its resolved repository and digest |
+| `akbench dataset prepare REF [--no-mutation] [--json]` | create a repeatable workspace for a task |
+| `akbench history experiments [--json]` | recorded experiments with run counts and verdicts |
+| `akbench history runs [EXPERIMENT] [--json]` | recorded runs, optionally for one experiment |
+| `akbench history show RUN [--json]` | one run: evaluation, artifacts, manifest digest |
+| `akbench history metrics EXPERIMENT [--json]` | the recorded aggregates of an experiment |
+| `akbench history verify RUN [--json]` | re-checksum the run's artifacts; exit 1 on mismatch |
+| `akbench report all [--output DIR] [--json]` | write the static HTML report tree |
+| `akbench report experiment UID [--output DIR] [--json]` | write the report of one experiment |
+| `akbench report task UID [--output DIR] [--json]` | write the report of one task |
+| `akbench experiment run FILE [--store] [--only N] [--json]` | execute the experiment's matrix and record it |
+| `akbench export experiment UID [--format json\|csv\|html] [--output DIR] [--json]` | export one experiment, screened for secrets |
 
 Global options: `--config/-c`, `--project-root`, `--verbose/-v`, `--quiet/-q`, `--version`.
 
@@ -69,16 +120,27 @@ while it is not.
 
 ```text
 src/akbench/
-  cli/         # CLI layer (typer)
-  config/      # Pydantic models + YAML/ENV loading
-  core/        # errors, paths, time, logging
-  storage/     # SQLAlchemy, models, Alembic migrations, migration runner
-  bootstrap.py # `akbench init` logic
-  doctor.py    # environment diagnostics
+  cli/          # CLI layer (typer)
+  config/       # Pydantic models + YAML/ENV loading
+  core/         # errors, paths, time, logging
+  descriptors/  # descriptor models, ENV allowlist, registry
+  agents/       # adapter contract, agent registry, catalog, Codex adapter
+  runtime/      # runtime manager contract, LLM Router adapter, execution modes
+  evaluators/   # evaluator engine, pytest + command evaluators, isolation
+  orchestration/  # run lifecycle state machine, the run orchestrator
+  experiments/  # experiment descriptor, dimension registry, matrix strategies, planner
+  storage/      # SQLAlchemy, models, Alembic migrations, migration runner
+  datasets/     # task descriptors, dataset validation, repositories, workspaces
+  bootstrap.py  # `akbench init` logic
+  doctor.py     # environment diagnostics
 tests/
-  unit/         # paths, configuration, storage, doctor
+  unit/         # paths, configuration, storage, doctor, descriptors, agents
   integration/  # CLI
-data/           # run directories and database (git-ignored)
+  contract/     # shared adapter contract suite, fake agent, CLI stub
+descriptors/    # component definitions (agents, plugins, models, ...)
+datasets/       # task definitions, hidden tests and mutation patches
+configs/        # configuration and experiment definitions
+data/           # run directories, repository cache and database (git-ignored)
 docs/           # integration and development documentation
 spike/          # Phase 0 code (flow validation)
 ```
@@ -89,6 +151,21 @@ spike/          # Phase 0 code (flow validation)
   its interface does **not** provide (cost, cancellation, session reset)
 - `docs/ROUTER_INTEGRATION.md` — LLM Router: healthcheck, models, plugins,
   metrics and verification limits
+- `docs/DESCRIPTOR_SYSTEM.md` — descriptor kinds, registries, ENV allowlist, dimension rules
+- `docs/DATASETS.md` — tasks, repositories, repeatable workspaces, mutation verification
+- `docs/AGENT_ADAPTERS.md` — the adapter contract, agent registry, capability gating, contract tests
+- `docs/RUNTIME_MANAGER.md` — execution modes, the runtime manager, the LLM Router adapter, the configuration triad
+- `docs/EVALUATORS.md` — the evaluator engine, verdicts, hidden-test isolation, raw results
+- `docs/RUN_ORCHESTRATOR.md` — the run lifecycle, isolation, retry policy and run records
+- `docs/EXPERIMENTS.md` — experiment descriptors, validation, matrix strategies and planning
+- `docs/PLUGINS.md` — the plugin adapter contract, verification and what a plugin can honestly report
+- `docs/METRICS.md` — the metric catalog, per-run collection, aggregation and baseline deltas
+- `docs/KNOWLEDGE_REPLAY.md` — the memory experiment: arms, scenarios, the readiness gate and isolation
+- `docs/STORAGE.md` — the experiment history: tables, artifacts, the reproducibility manifest, verification
+- `docs/REPORTING.md` — the static HTML reports: layout, the rules the numbers obey, cost and verification
+- `docs/EXPORT.md` — the JSON, CSV and HTML export and the secret screening that precedes it
+- `docs/REPRODUCIBILITY.md` — what "the same conditions" means here and where it is tested
+- `docs/CLI.md` — every implemented command and the interface facts that go with it
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions

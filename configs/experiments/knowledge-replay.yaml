@@ -1,0 +1,83 @@
+# Memory experiment (plan section 17): learning, replay and a fresh control.
+#
+# The learning arm works a task with knowledge write on; the replay arm works
+# the same task again in a new session with read access to what the learning
+# arm wrote and no session history; the fresh arm does the same with no
+# knowledge at all. Only knowledge access differs between replay and fresh —
+# the plan compares their fingerprints and refuses any other difference.
+#
+# This ships with one exact-replay scenario because the selector above matches
+# one task. A related-transfer or negative-transfer scenario names a task the
+# learning arm never worked; the plan builder rejects a transfer scenario that
+# points at a learning task, so adding one without a second matching task fails
+# instead of measuring the wrong thing.
+schema_version: "1.0"
+id: knowledge-replay
+version: "1.0.0"
+title: Knowledge replay against a fresh control
+
+experiment:
+  type: knowledge_replay
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories: [bug_fix]
+
+  factors:
+    strategy: full_factorial
+    dimensions: []
+    baseline: {}
+
+  execution_policy:
+    repetitions: 1
+    concurrency: 1
+    timeout_seconds: 900
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  knowledge:
+    plugin: agentic_knowledge
+
+    learning:
+      tasks:
+        - wordcount-001@1.0.0
+      write_enabled: true
+      read_enabled: true
+
+    replay:
+      # A replay must wait for the knowledge base to settle; the plan blocks
+      # it unless readiness is confirmed. allow_unverified releases the gate
+      # and records the replay as unverified, never as verified.
+      requires_readiness: true
+      allow_unverified: false
+
+    fresh_control: true
+
+    scenarios:
+      - id: same-task
+        type: exact_replay
+        task: wordcount-001@1.0.0
+        note: the same task, a new session, no session history
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    max_runs: 16

@@ -1,0 +1,13 @@
+# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+schema_version: "1.0"
+id: refactoring
+version: "1.0.0"
+title: Refactoring
+description: Restructure code without changing externally visible behaviour.
+
+category:
+  enabled: false
+  difficulties: [easy, medium, hard]
+  task_requirements:
+    - repository with a pinned commit
+    - behaviour-preserving acceptance tests

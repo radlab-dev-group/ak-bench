@@ -1,0 +1,135 @@
+# Agentic routing plugin. Env names come from the plugin's documented override
+# table (llm_router_plugins/utils/routing/agentic_routing/codex/config.py,
+# prefix LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_).
+schema_version: "1.0"
+id: agentic_routing_codex
+version: "1.0.0"
+title: Agentic routing for Codex traffic
+description: >-
+  Classifies each request that arrives with the trigger model alias, decides the
+  Codex work mode and rewrites payload["model"]. Stateless unless Redis memory
+  is enabled.
+
+plugin:
+  provider: llm-router
+  type: routing
+  capabilities: [request_classification, work_mode_detection, model_selection, escalation]
+  dependencies: [llm-router]
+
+benchmark:
+  enabled: true
+
+  activation:
+    method: router_configuration
+    detail: >-
+      Present in LLM_ROUTER_UTILS_PLUGINS_PIPELINE; fires when payload["model"]
+      equals the trigger alias (default auto_codex), which must be declared as a
+      builtin provider in the router model config.
+
+  verification:
+    required: true
+    methods:
+      - response_model_field
+      - effective_router_config
+      - plugin_runtime_events
+    note: >-
+      response_model_field is verified for chat/completions (a request for
+      auto_codex answered with qwen/Qwen3.8-Flash-Next) but unverified for the
+      /v1/responses wire API that Codex itself uses, so routing evidence is
+      partial rather than assumed.
+
+  observed_env:
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_TRIGGER
+      type: string
+      role: identifier
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+      note: the alias that activates routing; fixed to auto_codex by config
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_ENABLED
+      type: boolean
+      role: feature_toggle
+      observed: true
+      dimension: true
+      controllable: true
+      sensitive: false
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SEMANTIC_ENABLED
+      type: boolean
+      role: feature_toggle
+      observed: true
+      dimension: true
+      controllable: true
+      sensitive: false
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_MIN_SCORE
+      type: float
+      role: threshold
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SIMILARITY_THRESHOLD
+      type: float
+      role: threshold
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODELS
+      type: string
+      role: identifier
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+      note: per-mode model mapping, e.g. plan=model_a|test=model_b
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODES
+      type: string
+      role: identifier
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_FALLBACK_MODE
+      type: string
+      role: identifier
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_CLASSIFY_MAX_CHARS
+      type: integer
+      role: threshold
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODEL
+      type: string
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+      note: embedding model of the semantic similarity layer
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_PERSIST_DIR
+      type: string
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_CONFIG
+      type: string
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+      note: full config as raw JSON or a file path
+
+  metrics:
+    - routing_decision_count
+    - routing_mode_distribution
+    - routing_escalation_count
+    - routing_latency

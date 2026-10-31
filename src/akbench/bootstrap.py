@@ -24,6 +24,9 @@ paths:
   workspaces_dir: data/workspaces
   runtime_instances_dir: data/runtime_instances
   reports_dir: reports
+  descriptors_dir: descriptors
+  datasets_dir: datasets
+  repositories_dir: data/repositories
   database_file: data/akbench.sqlite
   logs_dir: data/logs
 

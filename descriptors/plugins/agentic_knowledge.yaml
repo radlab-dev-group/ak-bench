@@ -1,0 +1,179 @@
+# Knowledge layer plugin, verified against the plugin code (no invented names:
+# every env name below appears in the override table of
+# llm_router_plugins/utils/knowledge/agentic_knowledge/config.py, prefix
+# LLM_ROUTER_KNOWLEDGE_AGENTIC_).
+schema_version: "1.0"
+id: agentic_knowledge
+version: "1.0.0"
+title: Agentic knowledge layer
+description: >-
+  Retrieves repository knowledge into the request and learns from traffic.
+  Runs behind agentic_routing_codex because it reads the routing decision.
+
+plugin:
+  provider: llm-router
+  type: knowledge
+  capabilities: [knowledge_read, knowledge_write, retrieval, context_injection, escalation]
+  dependencies: [llm-router, sse_client, redis]
+
+benchmark:
+  enabled: true
+
+  activation:
+    method: router_configuration
+    detail: >-
+      Loaded through LLM_ROUTER_UTILS_PLUGINS_PIPELINE, after
+      agentic_routing_codex; the plugin itself is enabled by
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED.
+
+  verification:
+    required: true
+    methods:
+      - effective_router_config
+      - plugin_runtime_events
+      - kb_state_readback
+    note: >-
+      None of these is reachable on the shared external instance today: the
+      router refuses configuration reads and exports no per-plugin counter.
+      Until one becomes available a Knowledge run stays unverified, and its
+      knowledge metrics stay unavailable rather than zero.
+
+  # The plugin-level toggle: the only honest source of "is this plugin on".
+  enabled_when: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
+
+  observed_env:
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
+      type: boolean
+      role: feature_toggle
+      observed: true
+      dimension: true
+      controllable: true
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_ENABLED
+      type: boolean
+      role: feature_toggle
+      observed: true
+      dimension: true
+      controllable: true
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_WRITE_ENABLED
+      type: boolean
+      role: feature_toggle
+      observed: true
+      dimension: true
+      controllable: true
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED
+      type: boolean
+      role: feature_toggle
+      observed: true
+      dimension: false
+      controllable: true
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED
+      type: boolean
+      role: feature_toggle
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_ENABLED
+      type: boolean
+      role: feature_toggle
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_ENABLED
+      type: boolean
+      role: feature_toggle
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX
+      type: string
+      role: identifier
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+      note: scopes the knowledge namespace; changing it changes which KB is read
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_LAYOUT
+      type: string
+      role: identifier
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_KEY_PREFIX
+      type: string
+      role: identifier
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_HOST
+      type: string
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PREFIX
+      type: string
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_TOKEN
+      type: string
+      role: secret
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: true
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_USERNAME
+      type: string
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: true
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD
+      type: string
+      role: secret
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: true
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_VERIFY
+      type: boolean
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_TIMEOUT
+      type: float
+      role: threshold
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_TIMEOUT_SECONDS
+      type: float
+      role: threshold
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+
+  metrics:
+    - knowledge_write_count
+    - knowledge_retrieval_count
+    - knowledge_hit_rate
+    - knowledge_retrieval_latency
+    - knowledge_indexing_latency
+    - knowledge_size

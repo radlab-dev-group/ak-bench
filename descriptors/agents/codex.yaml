@@ -1,0 +1,77 @@
+# Codex CLI as a benchmarkable agent.
+# Every capability status below comes from the phase 0 verification in
+# docs/AGENT_INTEGRATION.md (sections 1-12). Nothing here is assumed: an
+# unverified capability is marked unverified, a missing one unsupported.
+schema_version: "1.0"
+id: codex
+version: "1.0.0"
+title: Codex CLI
+description: >-
+  Codex CLI driven in non-interactive mode (codex exec). Verified against
+  codex-cli 0.166.0 on Linux.
+
+agent:
+  adapter: codex_cli
+  execution_type: process
+
+  capabilities:
+    workspace_binding: verified        # -C, --cd <DIR>
+    fresh_session: verified            # new process, no resume
+    session_reset: unsupported         # only resume / fork exist
+    task_submission: verified          # argument or stdin
+    completion_detection: verified     # turn.completed / turn.failed + exit
+    status_query: partial              # stream of the live process only
+    cancellation: partial              # process signals, no agent-level API
+    timeout_control: unsupported       # no CLI timeout flag
+    token_usage: verified              # stream + rollout token_usage_record
+    cost_usage: unsupported            # no cost field anywhere in the rollout
+    tool_trace: verified               # rollout function_call + item.completed
+    model_observation: partial         # only the requested alias is visible
+    streaming_output: verified         # --json
+    filesystem_control: verified       # -s sandbox, --add-dir
+    network_control: verified          # sandbox_workspace_write.network_access
+    session_export: verified           # rollout JSONL file
+    structured_output: verified        # --output-schema
+    managed_worktree: unverified       # --worktree exists, not exercised
+
+  configuration_schema:
+    model:
+      type: string
+      controllable: true
+      applies_via: "-m/--model MODEL (or -c model=\"...\")"
+      verification: rollout turn_context.model
+    sandbox_mode:
+      type: string
+      controllable: true
+      default: workspace-write
+      allowed: [read-only, workspace-write, danger-full-access]
+      applies_via: "-s/--sandbox MODE"
+      verification: rollout turn_context.sandbox_policy
+    approval_policy:
+      type: string
+      controllable: true
+      default: never
+      allowed: [never, on-request, on-failure]
+      applies_via: "-c approval_policy=\"...\""
+      verification: rollout turn_context.approval_policy
+    reasoning_effort:
+      type: string
+      controllable: false
+      verification: not verified for this build; accepted via -c but effect unconfirmed
+
+  observability:
+    session_id: supported              # thread.started.thread_id
+    token_usage: supported
+    cost: unsupported
+    tool_calls: supported
+    model_selection: partial           # alias only; real model is router-side
+    streaming_output: supported
+    session_export: supported
+
+  required_tools: [codex]
+  version_detection: ["codex --version"]
+  notes: >-
+    Isolation recipe verified in phase 0: one process plus a dedicated
+    CODEX_HOME per run starts the agent with no login, because the provider is
+    configured through env_key. CODEX_HOME also holds the agent's own databases,
+    so memory isolation means isolating the whole directory.

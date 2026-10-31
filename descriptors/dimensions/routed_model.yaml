@@ -1,0 +1,22 @@
+# Observed-only dimension: the model the router actually chose. It cannot be
+# controlled directly (the routing plugin decides), so it must never generate
+# variants (plan section 11) - it is recorded and compared, not scheduled.
+schema_version: "1.0"
+id: routed_model
+version: "1.0.0"
+title: Routed model (observed)
+description: The model identifier returned by the router for a given request.
+
+dimension:
+  type: model_reference
+  source: runtime.response.model
+  controllable: false
+  observed: true
+  verify_via: >-
+    partial: the model field of a chat/completions response was verified
+    (auto_codex answered with qwen/Qwen3.8-Flash-Next); the /v1/responses wire
+    API used by Codex itself is unverified, and the router exports no per-request
+    model counter (docs/ROUTER_INTEGRATION.md sections 7 and 10).
+  notes: >-
+    Observable, never controllable. usable_as_factor is false for this
+    descriptor, and the planner must reject it as a factor even if a config asks.

@@ -1,0 +1,58 @@
+# Comparing models under one agent and one configuration (plan section 25,
+# example D).
+#
+# The model factor is an agent parameter, so the values are checked twice:
+# against the dimension's verified value space (the inventory the router really
+# serves) and against the agent descriptor's own parameter declaration. What the
+# router eventually served is a different fact — recorded by the routed_model
+# dimension, never inferred from the value asked for here.
+schema_version: "1.0"
+id: model-comparison
+version: "1.0.0"
+title: Model comparison on bug-fix tasks
+
+experiment:
+  type: model_comparison
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories: [bug_fix]
+
+  factors:
+    strategy: one_factor_at_a_time
+    dimensions:
+      - id: model
+        values:
+          - auto_codex
+          - qwen/Qwen3.8-27B
+          - google/gemma-4-12b-it
+    baseline:
+      model: auto_codex
+
+  execution_policy:
+    repetitions: 2
+    concurrency: 1
+    timeout_seconds: 900
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  metrics:
+    - task_success_rate
+    - total_tokens
+    - tool_call_count
+
+  limits:
+    max_runs: 24

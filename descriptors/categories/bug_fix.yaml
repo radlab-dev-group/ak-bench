@@ -1,0 +1,20 @@
+# Task category (plan section 8.1): a correct repository is modified by a
+# controlled, versioned patch; the mutation must be verified by tests before
+# the task is exposed to the agent (plan 8.4).
+schema_version: "1.0"
+id: bug_fix
+version: "1.0.0"
+title: Bug fix
+description: >-
+  The repository at the pinned commit contains a controlled defect introduced
+  by a versioned mutation patch; the agent restores correct behaviour.
+
+category:
+  enabled: true
+  difficulties: [easy, medium, hard, expert]
+  default_evaluators: [pytest_evaluator]
+  task_requirements:
+    - repository with a pinned commit
+    - versioned mutation patch applied to the base repository
+    - mutation verified by the hidden tests before publication
+    - hidden tests and evaluator kept outside the agent workspace
