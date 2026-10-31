@@ -130,6 +130,7 @@ class RunContext:
     session_id: str | None = None
     agent_version: str | None = None
     agent_status: str | None = None
+    observations: dict[str, Any] | None = None
     evaluation: dict[str, Any] | None = None
     failure_class: str | None = None
     error_message: str | None = None
@@ -169,6 +170,9 @@ class RunContext:
             "session_id": self.session_id,
             "agent_version": self.agent_version,
             "agent_status": self.agent_status,
+            # What the agent itself reported (usage, tool calls, session): the
+            # input to the efficiency and reliability metrics of plan section 18.
+            "observations": self.observations,
             "evaluation": self.evaluation,
             "failure_class": self.failure_class,
             "error_message": self.error_message,

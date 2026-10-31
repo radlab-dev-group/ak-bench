@@ -147,6 +147,7 @@ class RunOrchestrator:
             context.agent_version = result.agent_version
             context.agent_status = result.status.value
             context.exit_code = result.exit_code
+            context.observations = dict(result.observations) or None
 
             context.transition(RunState.COLLECTING, "observations collected")
 

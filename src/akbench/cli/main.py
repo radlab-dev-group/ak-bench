@@ -29,6 +29,8 @@ from akbench.cli.dataset import dataset_app
 from akbench.cli.descriptors import agent_app, category_app, descriptor_app
 from akbench.cli.evaluate import evaluate_app
 from akbench.cli.experiments import experiment_app
+from akbench.cli.metrics import metrics_app
+from akbench.cli.plugins import plugin_app
 from akbench.cli.run import run_app
 from akbench.cli.runtime import runtime_app
 from akbench.config.loader import build_app_paths, resolve_database_url
@@ -51,6 +53,8 @@ app.add_typer(runtime_app, name="runtime")
 app.add_typer(evaluate_app, name="evaluate")
 app.add_typer(experiment_app, name="experiment")
 app.add_typer(run_app, name="run")
+app.add_typer(plugin_app, name="plugin")
+app.add_typer(metrics_app, name="metrics")
 
 STATUS_MARKS = {
     CheckStatus.OK: "[green]ok[/green]",
