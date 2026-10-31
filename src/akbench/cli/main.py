@@ -1,9 +1,9 @@
 """``akbench`` command line interface.
 
-Implemented here: version, init, doctor, config, descriptor, agent, category and
-dataset commands. The remaining commands from the plan (runtime, experiment,
-report, export) arrive with their own phases and are intentionally absent rather
-than stubbed.
+Implemented here: version, init, doctor, config, descriptor, agent, category,
+dataset, runtime, experiment, run, plugin, metrics, knowledge, history and report
+commands. ``export`` arrives with its own phase and is intentionally absent
+rather than stubbed.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from akbench.cli.history import history_app
 from akbench.cli.knowledge import knowledge_app
 from akbench.cli.metrics import metrics_app
 from akbench.cli.plugins import plugin_app
+from akbench.cli.report import report_app
 from akbench.cli.run import run_app
 from akbench.cli.runtime import runtime_app
 from akbench.config.loader import build_app_paths, resolve_database_url
@@ -59,6 +60,7 @@ app.add_typer(plugin_app, name="plugin")
 app.add_typer(metrics_app, name="metrics")
 app.add_typer(knowledge_app, name="knowledge")
 app.add_typer(history_app, name="history")
+app.add_typer(report_app, name="report")
 
 STATUS_MARKS = {
     CheckStatus.OK: "[green]ok[/green]",

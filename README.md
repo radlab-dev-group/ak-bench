@@ -24,6 +24,7 @@ task execution through a chosen agent and verifies the outcome independently.
 | 9 | Plugin Configuration and Observability | done |
 | 10 | Knowledge Replay (learning, fresh runs, KB readiness, isolation) | done |
 | 11 | Storage and Metrics (data model, artifacts, hashes, aggregates) | done |
+| 12 | Reporting (static HTML: dashboard, experiment, task, agent, runtime, plugin, model pages) | done |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -88,6 +89,9 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench history show RUN [--json]` | one run: evaluation, artifacts, manifest digest |
 | `akbench history metrics EXPERIMENT [--json]` | the recorded aggregates of an experiment |
 | `akbench history verify RUN [--json]` | re-checksum the run's artifacts; exit 1 on mismatch |
+| `akbench report all [--output DIR] [--json]` | write the static HTML report tree |
+| `akbench report experiment UID [--output DIR] [--json]` | write the report of one experiment |
+| `akbench report task UID [--output DIR] [--json]` | write the report of one task |
 
 Global options: `--config/-c`, `--project-root`, `--verbose/-v`, `--quiet/-q`, `--version`.
 
@@ -155,6 +159,7 @@ spike/          # Phase 0 code (flow validation)
 - `docs/METRICS.md` — the metric catalog, per-run collection, aggregation and baseline deltas
 - `docs/KNOWLEDGE_REPLAY.md` — the memory experiment: arms, scenarios, the readiness gate and isolation
 - `docs/STORAGE.md` — the experiment history: tables, artifacts, the reproducibility manifest, verification
+- `docs/REPORTING.md` — the static HTML reports: layout, the rules the numbers obey, cost and verification
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions
