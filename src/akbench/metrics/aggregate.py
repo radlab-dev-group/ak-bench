@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from statistics import mean
+from statistics import mean, stdev
 from typing import Any
 
 from akbench.metrics.collect import MetricValue
@@ -54,6 +54,9 @@ class AggregatedMetrics:
     mean: float | None = None
     minimum: float | None = None
     maximum: float | None = None
+    #: Sample deviation over the measured runs; ``None`` below two values,
+    #: because a spread of one run is not a spread.
+    deviation: float | None = None
     values: list[Any] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
 
@@ -68,6 +71,7 @@ class AggregatedMetrics:
             "mean": self.mean,
             "min": self.minimum,
             "max": self.maximum,
+            "deviation": self.deviation,
             "values": list(self.values),
             "reasons": list(self.reasons),
         }
@@ -127,6 +131,7 @@ def aggregate_runs(runs: Iterable[Mapping[str, MetricValue]]) -> dict[str, Aggre
             mean=round(mean(numbers), 6) if numbers else None,
             minimum=min(numbers) if numbers else None,
             maximum=max(numbers) if numbers else None,
+            deviation=round(stdev(numbers), 6) if len(numbers) > 1 else None,
             values=[item.value for item in measured if not isinstance(item.value, (int, float))],
             reasons=sorted({item.reason for item in values if item.reason}),
         )

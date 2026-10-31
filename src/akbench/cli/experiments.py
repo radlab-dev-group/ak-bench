@@ -15,11 +15,17 @@ import typer
 from rich.table import Table
 
 from akbench.cli.common import CliContext, console, handle_errors, show_json
-from akbench.config.loader import build_app_paths
+from akbench.config.loader import build_app_paths, resolve_database_url
 from akbench.datasets import Dataset, TaskLoadError
-from akbench.descriptors import load_registry
+from akbench.descriptors import (
+    DescriptorKind,
+    DescriptorRegistry,
+    LoadedDescriptor,
+    load_registry,
+)
 from akbench.evaluators.registry import default_registry
 from akbench.experiments import (
+    ExperimentPlan,
     ExperimentPlanner,
     ExperimentValidationError,
     LoadedExperiment,
@@ -27,6 +33,10 @@ from akbench.experiments import (
     load_experiment_file,
 )
 from akbench.experiments.validation import ValidationReport
+from akbench.metrics.catalog import MetricCatalog
+from akbench.storage.db import create_db_engine
+from akbench.storage.history import HistoryStore
+from akbench.storage.migrator import upgrade
 
 experiment_app = typer.Typer(
     help="Validate and plan experiment definitions.",
@@ -159,10 +169,16 @@ def experiment_plan_cmd(
     show_variants: bool = typer.Option(
         False, "--variants", help="List every variant, not only the matrix size."
     ),
+    store_plan: bool = typer.Option(
+        False,
+        "--store",
+        help="Record the plan (experiment, variants, pinned descriptors) in the history.",
+    ),
     as_json: bool = JSON_OPTION,
 ) -> None:
     """Expand an experiment into tasks, variants and runs."""
-    planner = _planner(ctx.obj)
+    context: CliContext = ctx.obj
+    planner = _planner(context)
     experiment = load_experiment_file(Path(path))
 
     try:
@@ -173,9 +189,23 @@ def experiment_plan_cmd(
             console.print(f"  [red]error[/red] {issue['message']}")
         raise typer.Exit(1) from exc
 
+    payload = plan.as_dict()
+    if store_plan:
+        payload["stored"] = _store_plan(
+            context, plan, load_registry(build_app_paths(context.loaded().settings).descriptors_dir)
+        )
+
     if as_json:
-        show_json(plan.as_dict())
+        show_json(payload)
         return
+
+    if store_plan:
+        stored = payload["stored"]
+        console.print(
+            f"  [green]stored[/green] {stored['experiment_uid']} "
+            f"({stored['variants']} variants, {stored['snapshots']} snapshots, "
+            f"{stored['metrics']} metrics)"
+        )
 
     counts = plan.counts
     console.print(f"[cyan]plan[/] {plan.experiment.identity}")
@@ -204,3 +234,114 @@ def experiment_plan_cmd(
             console.print(f"    {variant.variant_id} {values or '(reference)'}{mark}")
     for warning in plan.validation.warnings:
         console.print(f"  [yellow]warning[/yellow] {warning.message}")
+
+
+def _snapshot_payload(entry: LoadedDescriptor) -> dict[str, object]:
+    """One pinned descriptor in the shape :meth:`HistoryStore.record_plan` wants."""
+    snapshot = entry.snapshot
+    return {
+        "kind": snapshot.kind.value,
+        "id": snapshot.id,
+        "version": snapshot.version,
+        "digest": snapshot.digest,
+        "source": snapshot.source,
+        "payload": snapshot.payload,
+    }
+
+
+def _pinned_descriptors(
+    descriptors: DescriptorRegistry, plan: ExperimentPlan
+) -> list[LoadedDescriptor]:
+    """Resolve the descriptors a plan pinned, keeping the exact versions it used."""
+    entries: list[LoadedDescriptor] = []
+    wanted: list[tuple[DescriptorKind, str]] = [(DescriptorKind.AGENT, plan.agent_id)]
+    if plan.runtime_id:
+        wanted.append((DescriptorKind.RUNTIME, plan.runtime_id))
+    for kind, identity in wanted:
+        entry = descriptors.get(kind, identity)
+        if entry is not None:
+            entries.append(entry)
+    for pinned in plan.descriptor_snapshots:
+        kind_part, _, rest = pinned.partition(":")
+        try:
+            kind = DescriptorKind(kind_part)
+        except ValueError:
+            continue
+        entry = descriptors.get(kind, rest)
+        if entry is not None and entry not in entries:
+            entries.append(entry)
+    return entries
+
+
+def _metric_rows(
+    catalog: MetricCatalog, metric_ids: list[str]
+) -> dict[str, dict[str, object]]:
+    """Catalog rows for the metrics an experiment declares, version included."""
+    rows: dict[str, dict[str, object]] = {}
+    for metric_id in metric_ids:
+        if not catalog.has(metric_id):
+            continue
+        descriptor = catalog.get(metric_id)
+        rows[metric_id] = {**catalog.as_dict()[metric_id], "version": descriptor.version}
+    return rows
+
+
+def _store_plan(
+    context: CliContext, plan: ExperimentPlan, descriptors: DescriptorRegistry
+) -> dict[str, object]:
+    """Record a plan as history: experiment, variants, pinned descriptors, metrics.
+
+    A plan is stored because a run that was never planned is not reproducible:
+    the variants and the descriptor versions are what make a result mean
+    something after the configuration has moved on.
+    """
+    settings = context.loaded().settings
+    url = resolve_database_url(settings)
+    upgrade(url)
+    store = HistoryStore(create_db_engine(url))
+
+    experiment = plan.experiment
+    body = experiment.descriptor.experiment
+    stored = store.record_plan(
+        experiment_uid=experiment.identity,
+        title=experiment.descriptor.title,
+        experiment_type=body.type.value,
+        descriptor_id=experiment.descriptor.id,
+        descriptor_version=experiment.descriptor.version,
+        config_hash=experiment.digest,
+        variants=[
+            {
+                "uid": variant.variant_id,
+                "index": variant.index,
+                "values": variant.values,
+                "agent_config": variant.agent_config,
+                "environment_requests": variant.environment_requests,
+                "applies": variant.applies,
+                "config_hash": variant.config_hash,
+                "is_baseline": variant.is_baseline,
+            }
+            for variant in plan.variants
+        ],
+        snapshots=[_snapshot_payload(entry) for entry in _pinned_descriptors(descriptors, plan)],
+    )
+    catalog = MetricCatalog.from_registry(descriptors)
+    metrics = store.record_metric_catalog(_metric_rows(catalog, body.metrics))
+    store.record_events(
+        [
+            {
+                "event_type": "planned",
+                "message": (
+                    f"{plan.counts.runs} runs: {plan.counts.tasks} tasks x "
+                    f"{plan.counts.variants} variants x "
+                    f"{plan.counts.repetitions} repetitions"
+                ),
+            }
+        ],
+        experiment_uid=experiment.identity,
+    )
+    return {
+        "experiment_uid": stored["uid"],
+        "variants": len(plan.variants),
+        "snapshots": len(plan.descriptor_snapshots),
+        "metrics": metrics,
+    }
