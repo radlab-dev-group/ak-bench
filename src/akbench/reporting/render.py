@@ -16,7 +16,7 @@ Three things are deliberate:
 from __future__ import annotations
 
 import html
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from akbench.reporting.data import (
@@ -653,10 +653,18 @@ def write_report_tree(
     root = Path(root)
     written: list[Path] = []
 
-    def write(relative: str, document: str, *, depth: int) -> None:
-        """Write one page, resolving the css and navigation prefixes for its depth."""
+    def write(relative: str, document: str) -> None:
+        """Write one page, resolving the css and navigation prefixes for its path.
+
+        The depth is read back from the path being written rather than passed
+        in: an experiment uid may contain a slash (an ad-hoc run is recorded
+        under ``adhoc/<agent>``), which nests the page one level deeper, and a
+        prefix that is one ``../`` short leaves that page rendering without its
+        stylesheet.
+        """
         target = root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
+        depth = len(PurePosixPath(relative).parent.parts)
         prefix = "../" * depth
         rendered = document.replace(CSS_TOKEN, f"{prefix}{STYLE_NAME}").replace(
             ROOT_TOKEN, prefix
@@ -669,36 +677,32 @@ def write_report_tree(
     stylesheet.write_text(STYLE, encoding="utf-8")
     written.append(stylesheet)
 
-    write("index.html", render_index(data, generated_at=generated_at), depth=0)
+    write("index.html", render_index(data, generated_at=generated_at))
     for experiment in data.experiments:
         uid = str(experiment["uid"])
         write(
             f"experiments/{uid}/index.html",
             render_experiment(build_experiment_report(data, uid), generated_at=generated_at),
-            depth=2,
         )
     for task in data.tasks:
         uid = str(task["uid"])
         write(
             f"tasks/{uid}/index.html",
             render_task(build_task_report(data, uid), generated_at=generated_at),
-            depth=2,
         )
 
     stats = dashboard(data)
-    write("tasks/index.html", _task_listing(data), depth=1)
+    write("tasks/index.html", _task_listing(data))
     write(
         "agents/index.html",
         _group_listing("Agents", "one row per agent identity", stats["agents"], "agent"),
-        depth=1,
     )
     write(
         "runtimes/index.html",
         _group_listing("Runtimes", "one row per runtime", stats["runtimes"], "runtime"),
-        depth=1,
     )
-    write("plugins/index.html", _plugin_listing(stats["plugins"]), depth=1)
-    write("models/index.html", _model_listing(stats["models"]), depth=1)
+    write("plugins/index.html", _plugin_listing(stats["plugins"]))
+    write("models/index.html", _model_listing(stats["models"]))
     return written
 
 

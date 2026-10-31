@@ -256,6 +256,38 @@ def test_pages_link_to_the_stylesheet_at_their_own_depth(database_url: str, tmp_
     assert '{{' not in experiment
 
 
+def test_pages_link_to_the_stylesheet_at_deeper_uids(database_url: str, tmp_path: Path) -> None:
+    """An experiment uid may contain a slash (``adhoc/<agent>``); the page one
+    level deeper still reaches the stylesheet."""
+    store = _seeded(database_url)
+    store.record_plan(
+        experiment_uid="adhoc/codex",
+        title="adhoc codex",
+        experiment_type="adhoc",
+        descriptor_id="codex",
+        descriptor_version="1.0.0",
+        config_hash="sha256:cfg",
+        variants=[{"uid": "v-1", "index": 0, "values": {}, "is_baseline": True}],
+        snapshots=[{"kind": "agent", "id": "codex", "version": "1.0.0", "digest": "sha256:agent"}],
+    )
+    store.record_run(
+        _run("run-adhoc"),
+        experiment_uid="adhoc/codex",
+        variant_uid="v-1",
+        task=_task_stub(),
+    )
+
+    write_report_tree(tmp_path / "reports", collect_history(store))
+    page = (tmp_path / "reports" / "experiments" / "adhoc" / "codex" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'href="../../../assets/style.css"' in page
+    page_directory = tmp_path / "reports" / "experiments" / "adhoc" / "codex"
+    linked = (page_directory / "../../../assets/style.css").resolve()
+    assert linked == (tmp_path / "reports" / "assets" / "style.css").resolve()
+    assert linked.is_file()
+
+
 def test_experiment_page_shows_pass_and_failure(
     database_url: str, tmp_path: Path
 ) -> None:
