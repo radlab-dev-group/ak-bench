@@ -22,7 +22,8 @@ task execution through a chosen agent and verifies the outcome independently.
 | 7 | Run Orchestrator (lifecycle, isolation, retries, run records) | done |
 | 8 | Experiment Descriptor and Planner | done |
 | 9 | Plugin Configuration and Observability | done |
-| 10 | Knowledge Replay (learning, fresh runs, KB readiness, isolation) | next |
+| 10 | Knowledge Replay (learning, fresh runs, KB readiness, isolation) | done |
+| 11 | Storage and Metrics (data model, artifacts, hashes, aggregates) | next |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -75,6 +76,8 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench plugin verify [REF] [--config-file F] [--json]` | verify a plugin against available evidence |
 | `akbench metrics catalog [--group G] [--json]` | the metric catalog with every metric's availability |
 | `akbench metrics run RECORD [--baseline B] [--json]` | aggregate recorded runs, with baseline deltas |
+| `akbench knowledge plan [FILE] [--allow-unverified] [--json]` | build the memory plan: arms, fingerprints, readiness gate |
+| `akbench knowledge readiness [--session F] [--json]` | KB readiness for a replay, honestly reported |
 | `akbench category list [--json]` | task categories and whether they are enabled |
 | `akbench dataset list [--category C] [--json]` | registered tasks |
 | `akbench dataset validate [--check-repositories] [--verify-mutations] [--json]` | validate tasks; exit 1 on failure |
@@ -145,6 +148,7 @@ spike/          # Phase 0 code (flow validation)
 - `docs/EXPERIMENTS.md` — experiment descriptors, validation, matrix strategies and planning
 - `docs/PLUGINS.md` — the plugin adapter contract, verification and what a plugin can honestly report
 - `docs/METRICS.md` — the metric catalog, per-run collection, aggregation and baseline deltas
+- `docs/KNOWLEDGE_REPLAY.md` — the memory experiment: arms, scenarios, the readiness gate and isolation
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions
