@@ -1,0 +1,7 @@
+[project]
+name = "textkit"
+version = "1.0.0"
+description = "Text utility fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

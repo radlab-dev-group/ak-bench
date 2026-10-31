@@ -1,0 +1,35 @@
+# Sample new-feature task (plan sections 8.1 to 8.6): the agent writes a
+# specified function from scratch instead of repairing a defect, so no mutation
+# patch is declared and the base commit is expected to fail the hidden tests.
+#
+# The repository is a seed directory shipped with this repository, cached with a
+# fixed identity so the pinned commit is reproducible without a remote.
+schema_version: "1.0"
+id: slugify-001
+version: "1.0.0"
+title: Implement slugify from the specification
+description: >-
+  textkit.slugify is declared and specified but raises NotImplementedError. The
+  agent implements it from the written contract, keeping casefold_word intact.
+
+task:
+  category: new_feature
+  difficulty: easy
+
+  repository:
+    source: datasets/_sources/textkit
+    ref: HEAD
+    notes: seed fixture directory
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 300
+  constraints:
+    - do not change the public API of the textkit package
+    - do not modify the tests
+    - do not add third-party dependencies
+  notes: >-
+    The base state fails the hidden tests by design: the feature is missing,
+    which is the opposite of the bug-fix convention where hidden tests pass on
+    the base commit.
