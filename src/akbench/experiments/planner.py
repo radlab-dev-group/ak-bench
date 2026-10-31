@@ -379,6 +379,22 @@ class ExperimentPlanner:
             )
         if mode == "direct":
             return
+        # A requested model is an experimental control, not a convenience:
+        # when it is not pinned (in agent.config or a model factor), the agent
+        # silently falls back to its built-in default, which the runtime under
+        # test may not serve. Refuse the plan instead of measuring something
+        # that was never declared (plan 12.1, 13).
+        has_model_factor = any(
+            self.dimensions.resolve(reference.id).id == "model"
+            for reference in body.factors.dimensions
+        )
+        if "model" not in body.agent.config and not has_model_factor:
+            report.error(
+                "model_not_pinned",
+                "no requested model is declared: set execution.agent.config.model or "
+                "add a model factor; without it the agent uses its own default, which "
+                "the runtime under test may not serve",
+            )
         if selection is None:
             report.error(
                 "runtime_required",

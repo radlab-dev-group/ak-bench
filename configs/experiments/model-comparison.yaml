@@ -1,6 +1,10 @@
 # Comparing models under one agent and one configuration (plan section 25,
 # example D).
 #
+# Only the models the router serves and the benchmark wants to compare are
+# listed: the auto_codex alias is the plugin's routing trigger, not a model to
+# be sent in a raw comparison.
+#
 # The model factor is an agent parameter, so the values are checked twice:
 # against the dimension's verified value space (the inventory the router really
 # serves) and against the agent descriptor's own parameter declaration. What the
@@ -35,11 +39,10 @@ experiment:
     dimensions:
       - id: model
         values:
-          - auto_codex
           - qwen/Qwen3.8-27B
-          - google/gemma-4-12b-it
+          - qwen/Qwen3.8-Flash-Next
     baseline:
-      model: auto_codex
+      model: qwen/Qwen3.8-27B
 
   execution_policy:
     repetitions: 2

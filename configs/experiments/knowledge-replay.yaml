@@ -24,6 +24,7 @@ experiment:
     version: "1.0.0"
     config:
       sandbox_mode: workspace-write
+      model: qwen/Qwen3.8-27B
 
   execution:
     mode: router

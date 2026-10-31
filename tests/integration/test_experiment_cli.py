@@ -116,8 +116,8 @@ def test_plan_prints_the_size_of_the_experiment(project: Path) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert "6 variants" in result.output
-    assert "18 runs" in result.output
+    assert "4 variants" in result.output
+    assert "12 runs" in result.output
     assert "wordcount-001@1.0.0" in result.output
 
 

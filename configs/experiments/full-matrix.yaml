@@ -33,10 +33,10 @@ experiment:
     dimensions:
       - id: knowledge_enabled
       - id: model
-        values: [auto_codex, qwen/Qwen3.8-27B, google/gemma-4-12b-it]
+        values: [qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next]
     baseline:
       knowledge_enabled: false
-      model: auto_codex
+      model: qwen/Qwen3.8-27B
 
   execution_policy:
     repetitions: 3
