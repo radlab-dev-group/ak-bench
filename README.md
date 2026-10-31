@@ -23,7 +23,7 @@ task execution through a chosen agent and verifies the outcome independently.
 | 8 | Experiment Descriptor and Planner | done |
 | 9 | Plugin Configuration and Observability | done |
 | 10 | Knowledge Replay (learning, fresh runs, KB readiness, isolation) | done |
-| 11 | Storage and Metrics (data model, artifacts, hashes, aggregates) | next |
+| 11 | Storage and Metrics (data model, artifacts, hashes, aggregates) | done |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -67,10 +67,10 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench runtime config REF [--config-file F] [--json]` | requested/effective/observed config with trust level |
 | `akbench runtime state REF [--json]` | health, models, metrics snapshot |
 | `akbench evaluate task REF --workspace D [--evaluator E] [--json]` | judge a produced workspace; exit 2 when the harness broke |
-| `akbench run single TASK --agent A [--mode M] [--runtime R] [--param k=v] [--json]` | orchestrate one run: prepare, execute, evaluate, record |
+| `akbench run single TASK --agent A [--mode M] [--runtime R] [--param k=v] [--store] [--experiment E] [--json]` | orchestrate one run: prepare, execute, evaluate, record (store it in the history) |
 | `akbench experiment list [--json]` | the experiment definitions under `configs/experiments` |
 | `akbench experiment validate [FILE...] [--json]` | validate experiments; exit 1 when one is not runnable |
-| `akbench experiment plan FILE [--variants] [--json]` | expand an experiment into tasks, variants and runs |
+| `akbench experiment plan FILE [--variants] [--store] [--json]` | expand an experiment into tasks, variants and runs (store the plan in the history) |
 | `akbench plugin list [--json]` | the plugin descriptors this project ships |
 | `akbench plugin status [REF] [--env NAME=VALUE] [--json]` | observed plugin configuration, secrets as presence only |
 | `akbench plugin verify [REF] [--config-file F] [--json]` | verify a plugin against available evidence |
@@ -83,6 +83,11 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench dataset validate [--check-repositories] [--verify-mutations] [--json]` | validate tasks; exit 1 on failure |
 | `akbench dataset show REF [--json]` | one task with its resolved repository and digest |
 | `akbench dataset prepare REF [--no-mutation] [--json]` | create a repeatable workspace for a task |
+| `akbench history experiments [--json]` | recorded experiments with run counts and verdicts |
+| `akbench history runs [EXPERIMENT] [--json]` | recorded runs, optionally for one experiment |
+| `akbench history show RUN [--json]` | one run: evaluation, artifacts, manifest digest |
+| `akbench history metrics EXPERIMENT [--json]` | the recorded aggregates of an experiment |
+| `akbench history verify RUN [--json]` | re-checksum the run's artifacts; exit 1 on mismatch |
 
 Global options: `--config/-c`, `--project-root`, `--verbose/-v`, `--quiet/-q`, `--version`.
 
@@ -149,6 +154,7 @@ spike/          # Phase 0 code (flow validation)
 - `docs/PLUGINS.md` — the plugin adapter contract, verification and what a plugin can honestly report
 - `docs/METRICS.md` — the metric catalog, per-run collection, aggregation and baseline deltas
 - `docs/KNOWLEDGE_REPLAY.md` — the memory experiment: arms, scenarios, the readiness gate and isolation
+- `docs/STORAGE.md` — the experiment history: tables, artifacts, the reproducibility manifest, verification
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions

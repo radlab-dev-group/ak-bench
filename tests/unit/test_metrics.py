@@ -249,6 +249,34 @@ def test_aggregation_keeps_the_missing_runs_visible(catalog: MetricCatalog) -> N
     assert entry.reasons, "the missing run must say why it is missing"
 
 
+def _usage(input_tokens: int) -> dict[str, Any]:
+    return _observations(token_usage={"input_tokens": input_tokens, "total_tokens": input_tokens})
+
+
+def test_aggregation_reports_the_sample_deviation(catalog: MetricCatalog) -> None:
+    runs = [
+        _collect(catalog, _record(), _usage(100)),
+        _collect(catalog, _record(), _usage(200)),
+        _collect(catalog, _record(), _usage(300)),
+    ]
+
+    entry = aggregate_runs(runs)["input_tokens"]
+    assert entry.mean == 200
+    assert entry.deviation is not None
+    assert abs(entry.deviation - 100.0) < 1e-6
+
+
+def test_deviation_needs_two_values_not_one(catalog: MetricCatalog) -> None:
+    runs = [
+        _collect(catalog, _record(), _observations(input_tokens=100)),
+        _collect(catalog, _record(), {}),
+    ]
+
+    entry = aggregate_runs(runs)["input_tokens"]
+    assert entry.measured == 1
+    assert entry.deviation is None
+
+
 def test_aggregation_does_not_average_labels(catalog: MetricCatalog) -> None:
     first = _collect(catalog, _record(agent_id="codex"), _observations())
     second = _collect(catalog, _record(agent_id="claude"), _observations())
