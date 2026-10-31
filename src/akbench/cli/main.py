@@ -1,9 +1,10 @@
 """``akbench`` command line interface.
 
 Implemented here: version, init, doctor, config, descriptor, agent, category,
-dataset, runtime, experiment, run, plugin, metrics, knowledge, history and report
-commands. ``export`` arrives with its own phase and is intentionally absent
-rather than stubbed.
+dataset, runtime, experiment, run, plugin, metrics, knowledge, history, report
+and export commands. Every command from the plan's CLI sketch is implemented
+except the scheduler-facing ones (``resume``/``cancel``), which need a
+scheduler and are intentionally absent rather than stubbed.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from akbench.cli.dataset import dataset_app
 from akbench.cli.descriptors import agent_app, category_app, descriptor_app
 from akbench.cli.evaluate import evaluate_app
 from akbench.cli.experiments import experiment_app
+from akbench.cli.export import export_app
 from akbench.cli.history import history_app
 from akbench.cli.knowledge import knowledge_app
 from akbench.cli.metrics import metrics_app
@@ -61,6 +63,7 @@ app.add_typer(metrics_app, name="metrics")
 app.add_typer(knowledge_app, name="knowledge")
 app.add_typer(history_app, name="history")
 app.add_typer(report_app, name="report")
+app.add_typer(export_app, name="export")
 
 STATUS_MARKS = {
     CheckStatus.OK: "[green]ok[/green]",
