@@ -937,6 +937,7 @@ class HistoryStore:
             "session_id": row.session_id,
             "status": row.status,
             "failure_class": row.failure_class,
+            "error_message": row.error_message,
             "exit_code": row.exit_code,
             "mode": row.mode,
             "runtime_id": row.runtime_id,

@@ -147,22 +147,38 @@ def cards(items: list[tuple[str, str]]) -> str:
     return f'<div class="cards">{rendered}</div>'
 
 
-def page(title: str, body: str, *, generated_at: str | None = None) -> str:
-    nav = (
-        '<p class="nav">'
-        f'<a href="{ROOT_TOKEN}index.html">dashboard</a> · '
-        f'<a href="{ROOT_TOKEN}agents/index.html">agents</a> · '
-        f'<a href="{ROOT_TOKEN}runtimes/index.html">runtimes</a> · '
-        f'<a href="{ROOT_TOKEN}plugins/index.html">plugins</a> · '
-        f'<a href="{ROOT_TOKEN}models/index.html">models</a> · '
-        f'<a href="{ROOT_TOKEN}tasks/index.html">tasks</a></p>'
+def page(
+    title: str,
+    body: str,
+    *,
+    generated_at: str | None = None,
+    standalone: bool = False,
+) -> str:
+    """One page.
+
+    ``standalone`` inlines the stylesheet and drops the navigation, for a file
+    that must read on its own: the HTML form of an export.
+    """
+    nav = ""
+    if not standalone:
+        nav = (
+            '<p class="nav">'
+            f'<a href="{ROOT_TOKEN}index.html">dashboard</a> · '
+            f'<a href="{ROOT_TOKEN}agents/index.html">agents</a> · '
+            f'<a href="{ROOT_TOKEN}runtimes/index.html">runtimes</a> · '
+            f'<a href="{ROOT_TOKEN}plugins/index.html">plugins</a> · '
+            f'<a href="{ROOT_TOKEN}models/index.html">models</a> · '
+            f'<a href="{ROOT_TOKEN}tasks/index.html">tasks</a></p>'
+        )
+    head = (
+        f"<style>{STYLE}</style>" if standalone else f'<link rel="stylesheet" href="{CSS_TOKEN}">'
     )
     stamp = f"<footer>generated {esc(generated_at)} from the recorded history</footer>"
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
         f"<title>{esc(title)}</title>"
-        f'<link rel="stylesheet" href="{CSS_TOKEN}"></head>'
+        f"{head}</head>"
         f"<body><main>{nav}{body}{stamp}</main></body></html>\n"
     )
 
@@ -413,7 +429,9 @@ def _variant_run_count(runs: list[dict[str, Any]], variant_uid: Any) -> int:
     return sum(1 for run in runs if run.get("variant_uid") == variant_uid)
 
 
-def render_experiment(report: ExperimentReport, *, generated_at: str | None = None) -> str:
+def render_experiment(
+    report: ExperimentReport, *, generated_at: str | None = None, standalone: bool = False
+) -> str:
     experiment = report.experiment
     summary = report.summary
     body = [
@@ -507,7 +525,12 @@ def render_experiment(report: ExperimentReport, *, generated_at: str | None = No
         "<h2>Not verified</h2>",
         _notice(report.unverified),
     ]
-    return page(f"Experiment {experiment.get('uid')}", "".join(body), generated_at=generated_at)
+    return page(
+        f"Experiment {experiment.get('uid')}",
+        "".join(body),
+        generated_at=generated_at,
+        standalone=standalone,
+    )
 
 
 def render_task(report: TaskReport, *, generated_at: str | None = None) -> str:
