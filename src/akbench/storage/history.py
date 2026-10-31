@@ -499,6 +499,127 @@ class HistoryStore:
             row = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
             return self._run_dict(session, row) if row else None
 
+    def tasks(self) -> list[dict[str, Any]]:
+        """Every recorded task with how often it was run."""
+        with session_scope(self.engine) as session:
+            rows = session.scalars(select(Task).order_by(Task.uid)).all()
+            runs = session.scalars(select(TaskRun)).all()
+            by_task: dict[str, int] = {}
+            for run in runs:
+                if run.task_uid:
+                    by_task[run.task_uid] = by_task.get(run.task_uid, 0) + 1
+            return [
+                {
+                    "uid": row.uid,
+                    "id": row.task_id,
+                    "version": row.version,
+                    "category": row.category,
+                    "difficulty": row.difficulty,
+                    "evaluator": row.evaluator,
+                    "repository_uid": row.repository_uid,
+                    "base_commit": row.base_commit,
+                    "snapshot_digest": row.snapshot_digest,
+                    "runs": by_task.get(row.uid, 0),
+                }
+                for row in rows
+            ]
+
+    def plugin_observations(
+        self, run_uid: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Plugin states, one row per (run, plugin), for the plugin pages."""
+        with session_scope(self.engine) as session:
+            statement = select(PluginObservation).order_by(
+                PluginObservation.run_id, PluginObservation.plugin_id
+            )
+            if run_uid is not None:
+                run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
+                if run is None:
+                    return []
+                statement = statement.where(PluginObservation.run_id == run.id)
+            runs = {row.id: row.uid for row in session.scalars(select(TaskRun)).all()}
+            return [
+                {
+                    "run_uid": runs.get(row.run_id),
+                    "plugin_id": row.plugin_id,
+                    "plugin_version": row.plugin_version,
+                    "descriptor_digest": row.descriptor_digest,
+                    "enabled": row.enabled,
+                    "verification_status": row.verification_status,
+                    "note": row.note,
+                }
+                for row in session.scalars(statement).all()
+            ]
+
+    def model_observations(self) -> list[dict[str, Any]]:
+        """Requested versus observed model, one row per run that reported one."""
+        with session_scope(self.engine) as session:
+            runs = {row.id: row.uid for row in session.scalars(select(TaskRun)).all()}
+            rows = session.scalars(select(ModelObservation).order_by(ModelObservation.run_id)).all()
+            return [
+                {
+                    "run_uid": runs.get(row.run_id),
+                    "requested_model": row.requested_model,
+                    "observed_model": row.observed_model,
+                    "value_source": row.value_source,
+                    "verification_status": row.verification_status,
+                    "note": row.note,
+                }
+                for row in rows
+            ]
+
+    def variants(self, experiment_uid: str) -> list[dict[str, Any]]:
+        """The variants of one experiment, in matrix order."""
+        with session_scope(self.engine) as session:
+            experiment = session.scalar(
+                select(Experiment).where(Experiment.uid == experiment_uid)
+            )
+            if experiment is None:
+                return []
+            rows = session.scalars(
+                select(ExperimentVariant)
+                .where(ExperimentVariant.experiment_id == experiment.id)
+                .order_by(ExperimentVariant.index, ExperimentVariant.uid)
+            ).all()
+            return [
+                {
+                    "uid": row.uid,
+                    "index": row.index,
+                    "values": _load(row.values_json),
+                    "agent_config": _load(row.agent_config_json),
+                    "environment_requests": _load(row.environment_requests_json),
+                    "applies": _load(row.applies_json),
+                    "config_hash": row.config_hash,
+                    "is_baseline": row.is_baseline,
+                }
+                for row in rows
+            ]
+
+    def snapshots(self, experiment_uid: str) -> list[dict[str, Any]]:
+        """The descriptors a plan pinned, with the payload as it was then."""
+        with session_scope(self.engine) as session:
+            experiment = session.scalar(
+                select(Experiment).where(Experiment.uid == experiment_uid)
+            )
+            if experiment is None:
+                return []
+            rows = session.scalars(
+                select(DescriptorSnapshot)
+                .where(DescriptorSnapshot.experiment_id == experiment.id)
+                .order_by(DescriptorSnapshot.kind, DescriptorSnapshot.descriptor_id)
+            ).all()
+            return [
+                {
+                    "kind": row.kind,
+                    "id": row.descriptor_id,
+                    "version": row.version,
+                    "digest": row.digest,
+                    "source": row.source,
+                    "payload": _load(row.payload_json),
+                }
+                for row in rows
+            ]
+
     def metrics(self, experiment_uid: str) -> list[dict[str, Any]]:
         with session_scope(self.engine) as session:
             experiment = session.scalar(
@@ -698,11 +819,21 @@ class HistoryStore:
         if not isinstance(observations, dict):
             return
         now = utc_now()
-        usage = observations.get("token_usage") or {}
+        usage = observations.get("token_usage")
+        if not isinstance(usage, dict):
+            usage = {}
         tool_names = observations.get("tool_names") or {}
         tool_call_count = observations.get("tool_call_count")
         if tool_call_count is None and isinstance(tool_names, dict):
             tool_call_count = sum(v for v in tool_names.values() if isinstance(v, int))
+
+        def _field(name: str):
+            """A flat field the agent stated wins; the nested block is the fallback."""
+            value = observations.get(name)
+            if value is None:
+                value = usage.get(name)
+            return value if isinstance(value, (int, float)) else None
+
         for row in session.scalars(
             select(AgentObservation).where(AgentObservation.run_id == run.id)
         ):
@@ -713,11 +844,11 @@ class HistoryStore:
                 session_id=observations.get("session_id") or record.get("session_id"),
                 agent_status=record.get("agent_status"),
                 tool_call_count=tool_call_count,
-                input_tokens=usage.get("input_tokens"),
-                cached_input_tokens=usage.get("cached_input_tokens"),
-                output_tokens=usage.get("output_tokens"),
-                reasoning_output_tokens=usage.get("reasoning_output_tokens"),
-                total_tokens=usage.get("total_tokens"),
+                input_tokens=_field("input_tokens"),
+                cached_input_tokens=_field("cached_input_tokens"),
+                output_tokens=_field("output_tokens"),
+                reasoning_output_tokens=_field("reasoning_output_tokens"),
+                total_tokens=_field("total_tokens"),
                 observations_json=_dump(observations),
                 created_at=now,
                 updated_at=now,
@@ -771,6 +902,11 @@ class HistoryStore:
         }
 
     def _run_dict(self, session: Session, row: TaskRun) -> dict[str, Any]:
+        experiment = (
+            session.scalar(select(Experiment).where(Experiment.id == row.experiment_id))
+            if row.experiment_id
+            else None
+        )
         evaluation = session.scalar(
             select(EvaluationRecord).where(EvaluationRecord.run_id == row.id)
         )
@@ -783,7 +919,7 @@ class HistoryStore:
         ).all()
         return {
             "uid": row.uid,
-            "experiment_uid": None,
+            "experiment_uid": experiment.uid if experiment is not None else None,
             "variant_uid": row.variant_uid,
             "task_uid": row.task_uid,
             "agent": f"{row.agent_id}@{row.agent_version}" if row.agent_id else None,
