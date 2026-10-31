@@ -102,11 +102,19 @@ class HistoryStore:
                     updated_at=now,
                 )
                 session.add(experiment)
-            experiment.title = title
-            experiment.experiment_type = experiment_type
-            experiment.descriptor_id = descriptor_id
-            experiment.descriptor_version = descriptor_version
-            experiment.config_hash = config_hash
+            # ``None`` is "leave what was recorded", not "clear it": a run stored
+            # under a planned uid must not erase the descriptor or configuration
+            # hash the plan recorded for it.
+            if title is not None:
+                experiment.title = title
+            if experiment_type is not None:
+                experiment.experiment_type = experiment_type
+            if descriptor_id is not None:
+                experiment.descriptor_id = descriptor_id
+            if descriptor_version is not None:
+                experiment.descriptor_version = descriptor_version
+            if config_hash is not None:
+                experiment.config_hash = config_hash
             experiment.updated_at = now
 
             if benchmark_uid is not None:
@@ -157,6 +165,7 @@ class HistoryStore:
         variant_uid: str | None = None,
         task: Any | None = None,
         observed_model: dict[str, Any] | None = None,
+        repetition: int | None = None,
     ) -> dict[str, Any]:
         """Store one run record and its attached observations.
 
@@ -209,6 +218,8 @@ class HistoryStore:
             run.mode = record.get("mode")
             run.runtime_id = record.get("runtime_id")
             run.manifest_digest = record.get("manifest_digest")
+            if repetition is not None:
+                run.repetition = int(repetition)
             run.started_at = _parse_time(record.get("started_at"))
             run.finished_at = _parse_time(record.get("finished_at"))
             run.updated_at = now

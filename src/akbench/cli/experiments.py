@@ -9,18 +9,24 @@ dataset, and they report.
 
 from __future__ import annotations
 
+import hashlib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
 from rich.table import Table
 
+from akbench.agents.catalog import build_agent_registry
 from akbench.cli.common import CliContext, console, handle_errors, show_json
+from akbench.cli.records import store_run, write_record
 from akbench.config.loader import build_app_paths, resolve_database_url
-from akbench.datasets import Dataset, TaskLoadError
+from akbench.datasets import Dataset, RepositoryManager, TaskLoadError, WorkspaceManager
 from akbench.descriptors import (
+    AgentDescriptor,
     DescriptorKind,
     DescriptorRegistry,
     LoadedDescriptor,
+    RuntimeDescriptor,
     load_registry,
 )
 from akbench.evaluators.registry import default_registry
@@ -34,6 +40,8 @@ from akbench.experiments import (
 )
 from akbench.experiments.validation import ValidationReport
 from akbench.metrics.catalog import MetricCatalog
+from akbench.orchestration import OrchestrationConfig, RunOrchestrator
+from akbench.runtime import build_runtime_registry
 from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
 from akbench.storage.migrator import upgrade
@@ -236,6 +244,210 @@ def experiment_plan_cmd(
         console.print(f"  [yellow]warning[/yellow] {warning.message}")
 
 
+def _agent_registry(context: CliContext):
+    paths = build_app_paths(context.loaded().settings)
+    registry = load_registry(paths.descriptors_dir)
+    return build_agent_registry(
+        [
+            entry.descriptor
+            for entry in registry.entries(DescriptorKind.AGENT)
+            if isinstance(entry.descriptor, AgentDescriptor)
+        ],
+        allow_missing_adapter=True,
+    )
+
+
+def _runtime_registry(context: CliContext):
+    paths = build_app_paths(context.loaded().settings)
+    registry = load_registry(paths.descriptors_dir)
+    return build_runtime_registry(
+        [
+            entry.descriptor
+            for entry in registry.entries(DescriptorKind.RUNTIME)
+            if isinstance(entry.descriptor, RuntimeDescriptor)
+        ],
+        allow_missing_adapter=True,
+    )
+
+
+def _run_experiment(
+    context: CliContext,
+    experiment: LoadedExperiment,
+    plan: ExperimentPlan,
+    *,
+    store: bool,
+    only: int | None = None,
+) -> dict[str, object]:
+    """Execute the runs of a plan through the orchestrator, one after another.
+
+    The runs share the descriptors and the dataset the plan pinned. When
+    ``store`` is set, every run is also recorded in the history under the
+    experiment's own identity and its variant, which is what makes the report
+    and the export traceable back to the plan that produced them.
+    """
+    settings = context.loaded().settings
+    paths = build_app_paths(settings)
+
+    agents = _agent_registry(context)
+    runtimes = _runtime_registry(context)
+    workspaces = WorkspaceManager(
+        RepositoryManager(paths.repositories_dir), paths.workspaces_dir
+    )
+    orchestrator = RunOrchestrator(
+        agents=agents, runtimes=runtimes, workspaces=workspaces, evaluators=default_registry()
+    )
+
+    dataset = Dataset.load(paths.datasets_dir, base_dir=paths.project_root)
+    tasks_by_id = {task.uid: task for task in dataset.tasks}
+
+    url = resolve_database_url(settings)
+    upgrade(url)
+    store_history = HistoryStore(create_db_engine(url))
+    registry = load_registry(paths.descriptors_dir)
+    if store:
+        store_history.record_plan(
+            experiment_uid=experiment.identity,
+            title=experiment.descriptor.title,
+            experiment_type=experiment.descriptor.experiment.type.value,
+            descriptor_id=experiment.descriptor.id,
+            descriptor_version=experiment.descriptor.version,
+            config_hash=experiment.digest,
+            variants=[
+                {
+                    "uid": variant.variant_id,
+                    "index": variant.index,
+                    "values": variant.values,
+                    "agent_config": variant.agent_config,
+                    "environment_requests": variant.environment_requests,
+                    "applies": variant.applies,
+                    "config_hash": variant.config_hash,
+                    "is_baseline": variant.is_baseline,
+                }
+                for variant in plan.variants
+            ],
+            snapshots=[_snapshot_payload(entry) for entry in _pinned_descriptors(registry, plan)],
+        )
+
+    results: list[dict[str, object]] = []
+    index = 0
+    for task in plan.tasks:
+        loaded = tasks_by_id[task.uid]
+        for variant in plan.variants:
+            for repetition in range(plan.counts.repetitions):
+                index += 1
+                if only is not None and index > only:
+                    return {"runs": results, "completed": len(results), "planned": plan.counts.runs}
+                console.print(
+                    f"[dim]{index}/{plan.counts.runs}[/dim] {task.uid} · {variant.variant_id} "
+                    f"(repetition {repetition + 1})"
+                )
+                # Only the agent's own declared parameters go here: the mode and
+                # the runtime are the orchestrator's, not agent configuration.
+                agent_parameters = dict(variant.agent_config)
+                artifacts_dir = paths.artifacts_dir / "runs" / _run_slug(
+                    plan.agent_id, task.uid, variant.variant_id, repetition
+                )
+                policy = experiment.descriptor.experiment.execution_policy
+                config = OrchestrationConfig(
+                    task=dataset.materialize(loaded),
+                    agent_id=variant.agent_id,
+                    agent_version=None,
+                    mode=plan.mode,
+                    runtime_id=plan.runtime_id,
+                    agent_parameters=agent_parameters,
+                    artifacts_dir=artifacts_dir,
+                    evaluation_dir=artifacts_dir / "evaluation",
+                    agent_timeout=policy.timeout_seconds,
+                    evaluation_timeout=policy.evaluation_timeout_seconds,
+                    infrastructure_retries=policy.retry_infrastructure_errors,
+                    apply_mutation=True,
+                    cleanup_workspace=False,
+                    task_text=None,
+                )
+                outcome = orchestrator.run(config)
+                record = outcome.record or {}
+                write_record(artifacts_dir / "run_record.json", record)
+                if store:
+                    store_run(
+                        context,
+                        record,
+                        loaded=loaded,
+                        artifacts_dir=artifacts_dir,
+                        experiment_uid=experiment.identity,
+                        agent_id=variant.agent_id,
+                        agent_parameters=agent_parameters,
+                        variant_uid=variant.variant_id,
+                        repetition=repetition + 1,
+                    )
+                results.append(
+                    {
+                        "task_uid": task.uid,
+                        "variant": variant.variant_id,
+                        "repetition": repetition + 1,
+                        "state": outcome.state.value,
+                        "run_uid": record.get("run_uid"),
+                        "score": (record.get("evaluation") or {}).get("score"),
+                    }
+                )
+    return {"runs": results, "completed": len(results), "planned": plan.counts.runs}
+
+
+def _run_slug(agent_id: str, task_uid: str, variant_uid: str, repetition: int) -> str:
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    short = hashlib.sha256(f"{task_uid}/{variant_uid}/{repetition}".encode()).hexdigest()[:6]
+    return f"{agent_id}-{stamp}-{short}"
+
+
+@experiment_app.command("run")
+@handle_errors
+def experiment_run_cmd(
+    ctx: typer.Context,
+    path: str = typer.Argument(..., help="Experiment file to run."),
+    store_runs: bool = typer.Option(
+        False, "--store", help="Record every run in the history (with its manifest).",
+    ),
+    only: int | None = typer.Option(
+        None, "--only", help="Run at most this many runs of the matrix (for smoke tests).",
+    ),
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Run every run of the experiment's matrix, one after another."""
+    context: CliContext = ctx.obj
+    planner = _planner(context)
+    experiment = load_experiment_file(Path(path))
+
+    try:
+        plan = planner.plan(experiment)
+    except ExperimentValidationError as exc:
+        console.print(f"[red]experiment is not runnable[/red] {exc}")
+        for issue in exc.details.get("issues", []):
+            console.print(f"  [red]error[/red] {issue['message']}")
+        raise typer.Exit(1) from exc
+
+    counts = plan.counts
+    console.print(
+        f"[cyan]running[/] {experiment.identity}: {counts.tasks} tasks x "
+        f"{counts.variants} variants x {counts.repetitions} repetitions = "
+        f"[bold]{counts.runs} runs[/bold]"
+    )
+
+    result = _run_experiment(context, experiment, plan, store=store_runs, only=only)
+
+    if as_json:
+        show_json({"experiment": experiment.identity, **result})
+        return
+
+    states: dict[str, int] = {}
+    for run in result["runs"]:
+        states[str(run["state"])] = states.get(str(run["state"]), 0) + 1
+    summary = ", ".join(f"{count} {state}" for state, count in sorted(states.items()))
+    console.print(
+        f"  [green]done[/green] {result['completed']}/{result['planned']} runs: {summary}"
+    )
+    if store_runs:
+        console.print("  [dim]recorded in the history; `akbench report all` renders it[/dim]")
+
+
 def _snapshot_payload(entry: LoadedDescriptor) -> dict[str, object]:
     """One pinned descriptor in the shape :meth:`HistoryStore.record_plan` wants."""
     snapshot = entry.snapshot
@@ -250,7 +462,7 @@ def _snapshot_payload(entry: LoadedDescriptor) -> dict[str, object]:
 
 
 def _pinned_descriptors(
-    descriptors: DescriptorRegistry, plan: ExperimentPlan
+    registry: DescriptorRegistry, plan: ExperimentPlan
 ) -> list[LoadedDescriptor]:
     """Resolve the descriptors a plan pinned, keeping the exact versions it used."""
     entries: list[LoadedDescriptor] = []
@@ -258,7 +470,7 @@ def _pinned_descriptors(
     if plan.runtime_id:
         wanted.append((DescriptorKind.RUNTIME, plan.runtime_id))
     for kind, identity in wanted:
-        entry = descriptors.get(kind, identity)
+        entry = registry.get(kind, identity)
         if entry is not None:
             entries.append(entry)
     for pinned in plan.descriptor_snapshots:
@@ -267,7 +479,7 @@ def _pinned_descriptors(
             kind = DescriptorKind(kind_part)
         except ValueError:
             continue
-        entry = descriptors.get(kind, rest)
+        entry = registry.get(kind, rest)
         if entry is not None and entry not in entries:
             entries.append(entry)
     return entries
@@ -299,6 +511,7 @@ def _store_plan(
     url = resolve_database_url(settings)
     upgrade(url)
     store = HistoryStore(create_db_engine(url))
+    registry = load_registry(build_app_paths(settings).descriptors_dir)
 
     experiment = plan.experiment
     body = experiment.descriptor.experiment
@@ -322,7 +535,7 @@ def _store_plan(
             }
             for variant in plan.variants
         ],
-        snapshots=[_snapshot_payload(entry) for entry in _pinned_descriptors(descriptors, plan)],
+        snapshots=[_snapshot_payload(entry) for entry in _pinned_descriptors(registry, plan)],
     )
     catalog = MetricCatalog.from_registry(descriptors)
     metrics = store.record_metric_catalog(_metric_rows(catalog, body.metrics))
