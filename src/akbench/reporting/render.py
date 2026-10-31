@@ -28,6 +28,7 @@ from akbench.reporting.data import (
     dashboard,
     duration_seconds,
     unverified_configurations,
+    variant_comparison,
     verdict_of,
 )
 
@@ -79,6 +80,10 @@ h2 {
   color: var(--accent); border-bottom: 1px dashed var(--line); padding-bottom: .3rem;
 }
 h2::before { content: "── "; color: var(--line); }
+h3 {
+  font-size: .74rem; margin: 1.2rem 0 .35rem; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted);
+}
 a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--line); }
 a:hover { color: var(--bright); background: rgba(53, 224, 192, .12); text-decoration: none; }
 .nav { font-size: .8rem; color: var(--muted); margin-bottom: 1.4rem; letter-spacing: .08em; }
@@ -128,7 +133,30 @@ footer {
   letter-spacing: .1em; border-top: 1px dashed var(--line); padding-top: .7rem;
 }
 footer::before { content: "└─ "; color: var(--line); }
+/* the ranking and its bars: a measurement drawn to scale, never decoration */
+.place { font-size: 1.15rem; color: var(--muted); }
+.place.top { color: var(--pass); }
+.place.row1 { color: var(--bright); }
+.bars { display: grid; gap: .4rem; margin: .4rem 0 1.2rem; }
+.bar-row {
+  display: grid; grid-template-columns: minmax(9rem, 22rem) 1fr; gap: .7rem;
+  align-items: center; font-size: .8rem;
+}
+.bar-row .who { color: var(--fg); overflow-wrap: anywhere; }
+.bar {
+  position: relative; height: .8rem; background: rgba(0, 0, 0, .45);
+  border: 1px solid var(--line); min-width: 6rem;
+}
+.bar > span {
+  position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent);
+  box-shadow: 0 0 8px rgba(53, 224, 192, .35);
+}
+.bar.cost > span { background: var(--warn); box-shadow: 0 0 8px rgba(255, 200, 87, .28); }
+.bar-note { color: var(--muted); font-size: .75rem; margin: -.6rem 0 1.2rem; }
 @media print {
+  .bar { border-color: #999; background: #f2f2f2; }
+  .bar > span { background: #00664f; box-shadow: none; }
+  .bar.cost > span { background: #8a6100; box-shadow: none; }
   :root { --bg: #fff; --panel: #fff; --fg: #111; --bright: #000; --muted: #555;
           --line: #bbb; --head: #eee; --accent: #00664f; --pass: #0a7d38; --warn: #8a6100;
           --fail: #b3261e; --glow: none; }
@@ -303,6 +331,136 @@ def _comparison_table(rows: list[dict[str, Any]], label: str) -> str:
     )
 
 
+def _bar(fraction: float | None, *, css: str = "") -> str:
+    """One horizontal bar, drawn from a fraction of the largest value in a column.
+
+    A value that was not measured keeps its width at zero: an empty bar and a
+    zero bar would look the same otherwise.
+    """
+    classes = " ".join(part for part in ("bar", css) if part)
+    if fraction is None:
+        return f'<div class="{classes}"><span style="width: 0"></span></div>'
+    width = max(0.0, min(1.0, fraction)) * 100
+    return f'<div class="{classes}"><span style="width: {width:.1f}%"></span></div>'
+
+
+def _fraction(value: float | None, maximum: float | None) -> float | None:
+    """``value`` against the largest value of the column, ``None`` stays ``None``."""
+    if value is None or not maximum:
+        return None
+    return value / maximum
+
+
+def _chart(rows: list[dict[str, Any]], key: str, *, css: str = "") -> str:
+    """A bar chart of one measure across the ranked configurations."""
+    values = [row.get(key) for row in rows]
+    measured = [value for value in values if value is not None]
+    maximum = max(measured) if measured else None
+    parts = [
+        '<div class="bar-row"><span class="who">'
+        + esc(row.get("config"))
+        + "</span>"
+        + _bar(_fraction(row.get(key), maximum), css=css)
+        + "</div>"
+        for row in rows
+    ]
+    return f'<div class="bars">{"".join(parts)}</div>'
+
+
+def _ranked_rows(rows: list[dict[str, Any]]) -> list[list[str]]:
+    table_rows: list[list[str]] = []
+    for row in rows:
+        place = row.get("place")
+        place_cell = (
+            f'<span class="place top">{place}</span>'
+            if place == 1
+            else f'<span class="place">{place if place is not None else "&mdash;"}</span>'
+        )
+        label = esc(row.get("config"))
+        if row.get("is_baseline"):
+            label += ' <span class="badge">baseline</span>'
+        table_rows.append(
+            [
+                place_cell,
+                label,
+                number(row.get("runs") or 0),
+                number(row.get("evaluated") or 0),
+                percent(row.get("success_rate")),
+                duration(row.get("mean_duration_seconds")),
+                number(row.get("total_tokens")),
+                esc(row.get("vs_baseline") or ""),
+            ]
+        )
+    return table_rows
+
+
+def _ranking(runs: list[dict[str, Any]], variants: list[dict[str, Any]]) -> str:
+    """The place of every configuration, then the same numbers drawn to scale."""
+    rows = variant_comparison(runs, variants)
+    if not rows:
+        return '<p class="muted">nothing recorded</p>'
+    if not any(row.get("place") is not None for row in rows):
+        return (
+            '<p class="muted">no configuration was evaluated, so no place can be '
+            "stated; the runs are listed below as they were recorded</p>"
+        )
+    return (
+        table(
+            [
+                "place",
+                "configuration",
+                "runs #",
+                "evaluated #",
+                "success rate",
+                "mean time",
+                "tokens #",
+                "against the baseline",
+            ],
+            _ranked_rows(rows),
+        )
+        + "<h3>Success rate</h3>"
+        + _chart(rows, "success_rate")
+        + "<h3>Mean wall-clock time</h3>"
+        + _chart(rows, "mean_duration_seconds", css="cost")
+        + '<p class="bar-note">each bar is measured against the largest value in its own '
+        "column; time and tokens are compared only within this experiment</p>"
+    )
+
+
+def _leaderboard(data: HistoryData) -> str:
+    """The leading configuration of every experiment that had more than one."""
+    rows: list[list[str]] = []
+    for experiment in data.experiments:
+        uid = str(experiment.get("uid"))
+        ranked = variant_comparison(data.runs_for_experiment(uid), data.variants_for(uid))
+        leaders = [row for row in ranked if row.get("place") == 1]
+        if not leaders:
+            continue
+        for row in leaders:
+            label = esc(row.get("config"))
+            if row.get("is_baseline"):
+                label += ' <span class="badge">baseline</span>'
+            rows.append(
+                [
+                    _experiment_link(uid),
+                    label,
+                    number(row.get("runs") or 0),
+                    percent(row.get("success_rate")),
+                    duration(row.get("mean_duration_seconds")),
+                    number(row.get("total_tokens")),
+                ]
+            )
+    if not rows:
+        return (
+            '<p class="muted">no experiment has ranked more than one evaluated '
+            "configuration yet</p>"
+        )
+    return table(
+        ["experiment", "leading configuration", "runs #", "success rate", "mean time", "tokens #"],
+        rows,
+    )
+
+
 def _experiment_link(uid: Any) -> str:
     """A link to an experiment report, relative to the page that lists it."""
     return f'<a href="experiments/{esc(uid)}/index.html">{esc(uid)}</a>'
@@ -356,6 +514,8 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
         )
         if data.experiments
         else '<p class="muted">nothing recorded</p>',
+        "<h2>Leading configurations</h2>",
+        _leaderboard(data),
         "<h2>Results by category</h2>",
         _comparison_table(stats["by_category"], "category"),
         "<h2>Results by difficulty</h2>",
@@ -506,6 +666,8 @@ def render_experiment(
                 ("tokens", number(summary.get("total_tokens"))),
             ]
         ),
+        "<h2>Configuration ranking</h2>",
+        _ranking(report.runs, report.variants),
         "<h2>Descriptor and validity</h2>",
         table(
             ["field", "value"],

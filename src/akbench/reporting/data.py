@@ -225,6 +225,104 @@ def _model_comparison(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+def _values_label(values: Any) -> str:
+    """A configuration as one readable string: ``knowledge_enabled=True``."""
+    if isinstance(values, dict):
+        if not values:
+            return "(no factor: the reference configuration)"
+        return ", ".join(f"{key}={value}" for key, value in sorted(values.items()))
+    return str(values) if values else "(no factor: the reference configuration)"
+
+
+def _rank_key(row: dict[str, Any]) -> tuple:
+    """The ordering of one configuration: better first.
+
+    Success rate is the only column that may decide on its own; time and tokens
+    break a tie and never outweigh a verdict. A missing time or token total
+    sorts last rather than first, because "not measured" is not "free".
+    """
+    return (
+        -(row.get("success_rate") if row.get("success_rate") is not None else -1.0),
+        row.get("mean_duration_seconds")
+        if row.get("mean_duration_seconds") is not None
+        else float("inf"),
+        row.get("total_tokens") if row.get("total_tokens") is not None else float("inf"),
+    )
+
+
+def variant_comparison(
+    runs: list[dict[str, Any]], variants: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """One ranked row per variant of an experiment.
+
+    The place is stated honestly: it is 1-based, ties share a place (the next
+    one is skipped, the way a competition ranks), and a variant with nothing
+    evaluated holds no place at all. A run that was never scored says nothing
+    about a configuration, and counting it as a failure would rank a missing
+    evaluation below a measured one.
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for run in runs:
+        groups.setdefault(str(run.get("variant_uid")), []).append(run)
+
+    rows: list[dict[str, Any]] = []
+    for variant in variants:
+        uid = str(variant.get("uid"))
+        rows.append(
+            {
+                "uid": uid,
+                "config": _values_label(variant.get("values")),
+                "is_baseline": bool(variant.get("is_baseline")),
+                **summarize_runs(groups.get(uid, [])),
+            }
+        )
+
+    ranked = sorted(
+        (row for row in rows if row.get("success_rate") is not None),
+        key=_rank_key,
+    )
+    for position, row in enumerate(ranked, start=1):
+        previous = ranked[position - 2] if position > 1 else None
+        row["place"] = (
+            previous["place"] if previous is not None and _rank_key(previous) == _rank_key(row)
+            else position
+        )
+    for row in rows:
+        row.setdefault("place", None)
+
+    rows.sort(key=lambda row: (row.get("place") is None, _rank_key(row)))
+
+    baseline = next((row for row in rows if row.get("is_baseline")), None)
+    for row in rows:
+        row["vs_baseline"] = _vs_baseline(row, baseline)
+    return rows
+
+
+def _vs_baseline(row: dict[str, Any], baseline: dict[str, Any] | None) -> str:
+    """How one configuration differs from the declared baseline, in words."""
+    if baseline is None or row is baseline:
+        return ""
+    parts: list[str] = []
+    rate, base_rate = row.get("success_rate"), baseline.get("success_rate")
+    if rate is not None and base_rate is not None:
+        difference = round(rate - base_rate, 4)
+        parts.append("success " + (f"{difference:+.0%}" if difference else "level"))
+    elif rate is None or base_rate is None:
+        parts.append("success not comparable")
+    seconds, base_seconds = row.get("mean_duration_seconds"), baseline.get(
+        "mean_duration_seconds"
+    )
+    if seconds is not None and base_seconds:
+        ratio = seconds / base_seconds
+        parts.append(f"time {ratio:.2f}x")
+    else:
+        parts.append("time not comparable")
+    tokens, base_tokens = row.get("total_tokens"), baseline.get("total_tokens")
+    if tokens is not None and base_tokens:
+        parts.append(f"tokens {tokens / base_tokens:.2f}x")
+    return ", ".join(parts)
+
+
 def unverified_configurations(data: HistoryData) -> list[dict[str, Any]]:
     """Every "not verified" the history holds, so no page can hide one."""
     findings: list[dict[str, Any]] = []

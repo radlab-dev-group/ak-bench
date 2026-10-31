@@ -26,9 +26,17 @@ Commands:
 ## What the dashboard shows
 
 Experiment and run counts, the success rate with how many runs it rests on,
-verdict breakdown, results grouped by task category and difficulty, wall-clock
-time, token totals, a per-agent, per-runtime, per-plugin and per-model
-comparison, and the recent experiments.
+verdict breakdown, the leading configuration of every experiment, results
+grouped by task category and difficulty, wall-clock time, token totals, a
+per-agent, per-runtime, per-plugin and per-model comparison, and the recent
+experiments.
+
+Each experiment page adds a **Configuration ranking**: every variant with its
+place, its success rate, mean time and token total, and its difference against
+the declared baseline, followed by the same numbers drawn as bars. A place is
+only stated for a configuration that has an evaluated run; a configuration
+that was never scored holds no place rather than reading as a zero, and ties
+share a place the way a competition ranks them.
 
 ## Rules the reports obey
 

@@ -18,6 +18,7 @@ from akbench.reporting.data import (
     duration_seconds,
     summarize_runs,
     unverified_configurations,
+    variant_comparison,
 )
 from akbench.reporting.render import (
     NOT_MEASURED,
@@ -25,6 +26,8 @@ from akbench.reporting.render import (
     esc,
     number,
     percent,
+    render_experiment,
+    render_index,
     write_report_tree,
 )
 from akbench.storage.db import create_db_engine
@@ -286,6 +289,110 @@ def test_pages_link_to_the_stylesheet_at_deeper_uids(database_url: str, tmp_path
     linked = (page_directory / "../../../assets/style.css").resolve()
     assert linked == (tmp_path / "reports" / "assets" / "style.css").resolve()
     assert linked.is_file()
+
+
+# ------------------------------------------------------------------- ranking
+
+
+def _two_variants() -> tuple[list[dict], list[dict]]:
+    variants = [
+        {"uid": "v-on", "values": {"knowledge_enabled": True}, "is_baseline": False},
+        {"uid": "v-off", "values": {"knowledge_enabled": False}, "is_baseline": True},
+    ]
+    runs = [
+        {"uid": "a", "variant_uid": "v-on", "evaluation": {"verdict": "passed"},
+         "started_at": "2026-10-30T10:00:00+00:00", "finished_at": "2026-10-30T10:01:00+00:00"},
+        {"uid": "b", "variant_uid": "v-on", "evaluation": {"verdict": "passed"},
+         "started_at": "2026-10-30T10:00:00+00:00", "finished_at": "2026-10-30T10:01:00+00:00"},
+        {"uid": "c", "variant_uid": "v-off", "evaluation": {"verdict": "failed"},
+         "started_at": "2026-10-30T10:00:00+00:00", "finished_at": "2026-10-30T10:03:00+00:00"},
+    ]
+    return runs, variants
+
+
+def test_variant_comparison_places_the_better_configuration_first() -> None:
+    runs, variants = _two_variants()
+
+    rows = variant_comparison(runs, variants)
+
+    assert [row["uid"] for row in rows] == ["v-on", "v-off"]
+    assert [row["place"] for row in rows] == [1, 2]
+    assert rows[0]["success_rate"] == 1.0
+    assert rows[1]["success_rate"] == 0.0
+    assert rows[0]["is_baseline"] is False
+    assert rows[1]["is_baseline"] is True
+    # the baseline has no delta to itself; the other row states its difference
+    assert rows[1]["vs_baseline"] == ""
+    assert "success +100%" in rows[0]["vs_baseline"]
+    assert "time 0.33x" in rows[0]["vs_baseline"]
+
+
+def test_variant_comparison_shares_a_place_and_skips_the_next_one() -> None:
+    runs, variants = _two_variants()
+    for run in runs:
+        run["evaluation"] = {"verdict": "passed"}
+        run["started_at"] = "2026-10-30T10:00:00+00:00"
+        run["finished_at"] = "2026-10-30T10:01:00+00:00"
+
+    rows = variant_comparison(runs, variants)
+
+    assert [row["place"] for row in rows] == [1, 1]
+    assert rows[0]["uid"] == "v-on"
+    assert rows[1]["uid"] == "v-off"
+
+
+def test_a_configuration_without_evaluation_holds_no_place() -> None:
+    """A run that was never scored says nothing: it is not a failure either."""
+    runs, variants = _two_variants()
+    for run in runs:
+        if run["variant_uid"] == "v-off":
+            run.pop("evaluation")
+
+    rows = variant_comparison(runs, variants)
+
+    assert [(row["uid"], row["place"]) for row in rows] == [("v-on", 1), ("v-off", None)]
+    assert rows[1]["success_rate"] is None
+    # v-on cannot be compared against a baseline that has no measured rate
+    assert "not comparable" in rows[0]["vs_baseline"]
+
+
+def test_comparison_of_no_variants_is_empty() -> None:
+    assert variant_comparison([], []) == []
+
+
+def test_experiment_page_shows_the_ranking_with_bars(database_url: str) -> None:
+    data = collect_history(_seeded(database_url))
+
+    page = render_experiment(build_experiment_report(data, "demo@1.0.0"))
+
+    assert "Configuration ranking" in page
+    assert 'class="place top">1<' in page
+    assert 'class="place">' in page
+    assert "knowledge_enabled=False" in page
+    assert 'class="bar"' in page
+    assert "against the baseline" in page
+
+
+def test_the_index_leads_with_the_best_configuration_of_each_experiment(
+    database_url: str,
+) -> None:
+    data = collect_history(_seeded(database_url))
+
+    page = render_index(data)
+
+    assert "Leading configurations" in page
+    assert "knowledge_enabled=False" in page
+
+
+def test_a_ranking_of_nothing_says_so_rather_than_ranking_nothing() -> None:
+    from akbench.reporting.render import _ranking
+
+    rendered = _ranking([], [])
+    assert rendered == '<p class="muted">nothing recorded</p>'
+    unscored = _ranking(
+        [{"uid": "r", "variant_uid": "v-1"}], [{"uid": "v-1", "values": {}, "is_baseline": True}]
+    )
+    assert "no place can be stated" in unscored
 
 
 def test_experiment_page_shows_pass_and_failure(
