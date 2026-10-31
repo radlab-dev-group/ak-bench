@@ -36,7 +36,12 @@ from akbench.descriptors import (
 )
 from akbench.descriptors.registry import compute_digest
 from akbench.descriptors.runtime import Lifecycle
-from akbench.experiments.descriptor import ExperimentDescriptor, MatrixStrategy, RuntimeSelection
+from akbench.experiments.descriptor import (
+    ExperimentDescriptor,
+    ExperimentType,
+    MatrixStrategy,
+    RuntimeSelection,
+)
 from akbench.experiments.dimensions import DimensionRegistry, Factor
 from akbench.experiments.errors import ExperimentValidationError
 from akbench.experiments.loader import LoadedExperiment
@@ -693,12 +698,14 @@ class ExperimentPlanner:
                 "so the comparison would have no reference",
                 context={"baseline": dict(baseline)},
             )
-        if not baseline:
+        if not baseline and descriptor.experiment.type is not ExperimentType.KNOWLEDGE_REPLAY:
             report.warn(
                 "baseline_undeclared",
                 "no baseline is declared: differences between variants will have no "
                 "reference point in the report",
             )
+        # A memory experiment's reference is the fresh arm of the knowledge
+        # block, not a factor baseline; the planner checks the block itself.
 
     # ------------------------------------------------------------ snapshots
 

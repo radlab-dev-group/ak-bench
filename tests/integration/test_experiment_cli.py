@@ -65,6 +65,7 @@ def test_list_json_is_machine_readable(project: Path) -> None:
     assert {item["id"] for item in payload} == {
         "full-matrix",
         "knowledge-on-off",
+        "knowledge-replay",
         "model-comparison",
         "wordcount-direct-sanity",
     }
@@ -74,7 +75,7 @@ def test_validate_accepts_the_shipped_experiments(project: Path) -> None:
     result = runner.invoke(app, ["experiment", "validate"])
 
     assert result.exit_code == 0, result.output
-    assert result.output.count("ok ") >= 4
+    assert result.output.count("ok ") >= 5
     assert "invalid" not in result.output
 
 
@@ -83,7 +84,7 @@ def test_validate_json_carries_the_findings(project: Path) -> None:
 
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert len(payload) == 4
+    assert len(payload) == 5
     for item in payload:
         assert item["validation"]["ok"] is True
 

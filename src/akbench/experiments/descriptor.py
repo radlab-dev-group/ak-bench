@@ -16,6 +16,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from akbench.descriptors.base import DescriptorBase
+from akbench.knowledge.modes import ScenarioSpec
 
 RESERVED_FACTOR_IDS = frozenset({"repetition"})
 
@@ -216,6 +217,64 @@ class Reporting(_StrictModel):
     generate_csv: bool = False
 
 
+class LearningSelection(_StrictModel):
+    """The learning arm of a memory experiment: which tasks write knowledge."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tasks: list[str] = Field(default_factory=list, min_length=1)
+    write_enabled: bool = True
+    read_enabled: bool = True
+
+
+class ReplaySelection(_StrictModel):
+    """How the replay arm is gated before it starts (plan section 17)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    requires_readiness: bool = True
+    # Explicit opt-in to start a replay without a confirmed knowledge base.
+    # The run is then recorded as unverified (docs/KNOWLEDGE_REPLAY.md).
+    allow_unverified: bool = False
+
+
+class KnowledgeSelection(_StrictModel):
+    """The knowledge block of a memory experiment (plan section 17).
+
+    Only present when the experiment's type is ``knowledge_replay``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    plugin: str = Field("agentic_knowledge", min_length=1, max_length=128)
+    learning: LearningSelection = Field(default_factory=LearningSelection)
+    replay: ReplaySelection = Field(default_factory=ReplaySelection)
+    # A memory experiment without a fresh control measures nothing: the fresh
+    # arm is what separates "knowledge helped" from "the second try helped".
+    fresh_control: bool = True
+    scenarios: list[ScenarioSpec] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_scenarios(self) -> KnowledgeSelection:
+        if not self.scenarios:
+            raise ValueError(
+                "a knowledge_replay experiment needs at least one scenario: the "
+                "relation between the tested task and the learned knowledge"
+            )
+        ids = [scenario.id for scenario in self.scenarios]
+        duplicates = sorted({name for name in ids if ids.count(name) > 1})
+        if duplicates:
+            raise ValueError(
+                f"knowledge.scenarios declare duplicate ids: {', '.join(duplicates)}"
+            )
+        if not self.fresh_control:
+            raise ValueError(
+                "knowledge.fresh_control cannot be false: without the fresh arm the "
+                "replay result is not attributable to knowledge"
+            )
+        return self
+
+
 class ExperimentBody(_StrictModel):
     type: ExperimentType = ExperimentType.CONFIGURATION
     agent: AgentSelection
@@ -228,6 +287,7 @@ class ExperimentBody(_StrictModel):
     metrics: list[str] = Field(default_factory=list)
     limits: Limits = Field(default_factory=Limits)
     reporting: Reporting = Field(default_factory=Reporting)
+    knowledge: KnowledgeSelection | None = None
     required_capabilities: list[str] = Field(default_factory=list)
 
 
@@ -235,6 +295,21 @@ class ExperimentDescriptor(DescriptorBase):
     """One experiment definition (plan section 12)."""
 
     experiment: ExperimentBody = Field(default_factory=ExperimentBody)
+
+    @model_validator(mode="after")
+    def _check_knowledge_block(self) -> ExperimentDescriptor:
+        body = self.experiment
+        if body.knowledge is not None and body.type is not ExperimentType.KNOWLEDGE_REPLAY:
+            raise ValueError(
+                "the knowledge block is only valid for experiments of type "
+                "knowledge_replay"
+            )
+        if body.type is ExperimentType.KNOWLEDGE_REPLAY and body.knowledge is None:
+            raise ValueError(
+                "a knowledge_replay experiment needs a knowledge block: the "
+                "learning tasks, the replay gate and the scenarios"
+            )
+        return self
 
     @property
     def agent_id(self) -> str:
