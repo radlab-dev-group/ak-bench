@@ -21,7 +21,8 @@ task execution through a chosen agent and verifies the outcome independently.
 | 6 | Evaluator Engine (pytest + command evaluators, hidden tests) | done |
 | 7 | Run Orchestrator (lifecycle, isolation, retries, run records) | done |
 | 8 | Experiment Descriptor and Planner | done |
-| 9 | Plugin Configuration and Observability | next |
+| 9 | Plugin Configuration and Observability | done |
+| 10 | Knowledge Replay (learning, fresh runs, KB readiness, isolation) | next |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -69,6 +70,11 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench experiment list [--json]` | the experiment definitions under `configs/experiments` |
 | `akbench experiment validate [FILE...] [--json]` | validate experiments; exit 1 when one is not runnable |
 | `akbench experiment plan FILE [--variants] [--json]` | expand an experiment into tasks, variants and runs |
+| `akbench plugin list [--json]` | the plugin descriptors this project ships |
+| `akbench plugin status [REF] [--env NAME=VALUE] [--json]` | observed plugin configuration, secrets as presence only |
+| `akbench plugin verify [REF] [--config-file F] [--json]` | verify a plugin against available evidence |
+| `akbench metrics catalog [--group G] [--json]` | the metric catalog with every metric's availability |
+| `akbench metrics run RECORD [--baseline B] [--json]` | aggregate recorded runs, with baseline deltas |
 | `akbench category list [--json]` | task categories and whether they are enabled |
 | `akbench dataset list [--category C] [--json]` | registered tasks |
 | `akbench dataset validate [--check-repositories] [--verify-mutations] [--json]` | validate tasks; exit 1 on failure |
@@ -137,6 +143,8 @@ spike/          # Phase 0 code (flow validation)
 - `docs/EVALUATORS.md` — the evaluator engine, verdicts, hidden-test isolation, raw results
 - `docs/RUN_ORCHESTRATOR.md` — the run lifecycle, isolation, retry policy and run records
 - `docs/EXPERIMENTS.md` — experiment descriptors, validation, matrix strategies and planning
+- `docs/PLUGINS.md` — the plugin adapter contract, verification and what a plugin can honestly report
+- `docs/METRICS.md` — the metric catalog, per-run collection, aggregation and baseline deltas
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions
