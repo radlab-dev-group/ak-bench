@@ -148,6 +148,24 @@ def test_record_run_links_evaluation_observations_and_events(database_url: str) 
     assert [event["event_type"] for event in events] == ["started", "completed"]
 
 
+def test_record_run_keeps_the_requested_model(database_url: str) -> None:
+    """What was asked for is a fact of the run, distinct from what served it."""
+    store = _store(database_url)
+    store.record_run(
+        _run_record(requested_model="qwen/Qwen3.8-27B"),
+        task=_task_stub(),
+        observed_model={"observed_model": "gpt-6.1-sol", "verification_status": "unverified"},
+    )
+
+    run = store.run("run-1")
+    assert run is not None
+    assert run["requested_model"] == "qwen/Qwen3.8-27B"
+
+    observations = store.model_observations()
+    assert observations[0]["requested_model"] == "qwen/Qwen3.8-27B"
+    assert observations[0]["observed_model"] == "gpt-6.1-sol"
+
+
 def test_record_run_creates_the_task_and_repository_rows(database_url: str) -> None:
     store = _store(database_url)
 

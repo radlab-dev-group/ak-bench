@@ -240,8 +240,18 @@ class HistoryStore:
             self._record_lifecycle(session, run, record)
             self._record_evaluation(session, run, record.get("evaluation"))
             self._record_agent_observations(session, run, record)
+            # The requested model is a fact of the run (declared by the
+            # experiment); the observed model is what the agent reported. When
+            # the caller did not pass an explicit payload, the record itself is
+            # the source, so neither side of the comparison is lost.
             if observed_model is not None:
-                self._record_model_observation(session, run, observed_model)
+                payload = dict(observed_model)
+                payload.setdefault("requested_model", record.get("requested_model"))
+                self._record_model_observation(session, run, payload)
+            else:
+                derived = HistoryStore._model_payload(record)
+                if derived["requested_model"] or derived["observed_model"]:
+                    self._record_model_observation(session, run, derived)
 
             session.flush()
             return {"run_uid": run_uid, "run_id": run.id, "status": run.status}
@@ -866,6 +876,20 @@ class HistoryStore:
             )
         )
 
+    @staticmethod
+    def _model_payload(record: dict[str, Any]) -> dict[str, Any]:
+        observations = record.get("observations")
+        observed = (
+            observations.get("observed_model") if isinstance(observations, dict) else None
+        )
+        return {
+            "requested_model": record.get("requested_model"),
+            "observed_model": observed,
+            "value_source": "agent_reported" if observed else None,
+            "verification_status": "unverified",
+            "note": None,
+        }
+
     def _record_model_observation(
         self, session: Session, run: TaskRun, payload: dict[str, Any]
     ) -> None:
@@ -925,6 +949,9 @@ class HistoryStore:
             select(AgentObservation).where(AgentObservation.run_id == row.id)
         )
         artifacts = session.scalars(select(Artifact).where(Artifact.run_id == row.id)).all()
+        # The model pair lives in its own table because the two claims differ:
+        # what the experiment asked for and what the agent reported serving it.
+        model = session.scalar(select(ModelObservation).where(ModelObservation.run_id == row.id))
         plugins = session.scalars(
             select(PluginObservation).where(PluginObservation.run_id == row.id)
         ).all()
@@ -941,6 +968,9 @@ class HistoryStore:
             "exit_code": row.exit_code,
             "mode": row.mode,
             "runtime_id": row.runtime_id,
+            "requested_model": model.requested_model if model else None,
+            "observed_model": model.observed_model if model else None,
+            "model_verification": model.verification_status if model else None,
             "repetition": row.repetition,
             "config_hash": row.config_hash,
             "manifest_digest": row.manifest_digest,
