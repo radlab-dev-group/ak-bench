@@ -25,6 +25,7 @@ task execution through a chosen agent and verifies the outcome independently.
 | 10 | Knowledge Replay (learning, fresh runs, KB readiness, isolation) | done |
 | 11 | Storage and Metrics (data model, artifacts, hashes, aggregates) | done |
 | 12 | Reporting (static HTML: dashboard, experiment, task, agent, runtime, plugin, model pages) | done |
+| 13 | Export and stabilization (JSON/CSV/HTML export, secret filtering, E2E, reproducibility) | done |
 
 The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
 
@@ -92,6 +93,8 @@ akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 | `akbench report all [--output DIR] [--json]` | write the static HTML report tree |
 | `akbench report experiment UID [--output DIR] [--json]` | write the report of one experiment |
 | `akbench report task UID [--output DIR] [--json]` | write the report of one task |
+| `akbench experiment run FILE [--store] [--only N] [--json]` | execute the experiment's matrix and record it |
+| `akbench export experiment UID [--format json\|csv\|html] [--output DIR] [--json]` | export one experiment, screened for secrets |
 
 Global options: `--config/-c`, `--project-root`, `--verbose/-v`, `--quiet/-q`, `--version`.
 
@@ -160,6 +163,9 @@ spike/          # Phase 0 code (flow validation)
 - `docs/KNOWLEDGE_REPLAY.md` — the memory experiment: arms, scenarios, the readiness gate and isolation
 - `docs/STORAGE.md` — the experiment history: tables, artifacts, the reproducibility manifest, verification
 - `docs/REPORTING.md` — the static HTML reports: layout, the rules the numbers obey, cost and verification
+- `docs/EXPORT.md` — the JSON, CSV and HTML export and the secret screening that precedes it
+- `docs/REPRODUCIBILITY.md` — what "the same conditions" means here and where it is tested
+- `docs/CLI.md` — every implemented command and the interface facts that go with it
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 
 ## Conventions

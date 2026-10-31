@@ -80,14 +80,12 @@ Rules:
 
 ## 5. Deliberately unfinished
 
-- The `runtime`, `experiment`, `report` and `export` commands — Phases 4 and
-  later.
-- The runtime and plugin *adapters* that act on the runtime/plugin descriptors
-  (configuration read/write, verification, event interpretation) — Phases 5
-  and 9. Until then the descriptors describe the interface; nothing acts on it.
-- The Agent Adapter Framework (the universal contract + the Codex adapter) —
-  Phase 4.
-- The evaluator *engine* that runs hidden tests against an agent's produced
-  workspace — Phase 6 (the dataset layer only verifies mutations today).
-- The observability and metrics layer — Phases 9 and 11.
-- Docker sandboxing — Phases 3/7 (Docker availability verified, not implemented).
+Every command from the plan's CLI sketch is implemented, including
+`akbench runtime`, `akbench experiment` (list, validate, plan, run),
+`akbench run`, `akbench report` and `akbench export`. What remains out of
+scope is:
+
+- The scheduler-facing commands (`resume`, `cancel`) — they need a scheduler
+  and are intentionally absent rather than stubbed.
+- Docker sandboxing — the workspace isolation uses git worktrees; Docker
+  availability is verified by `akbench doctor`, not implemented as a sandbox.
