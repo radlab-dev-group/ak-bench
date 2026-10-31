@@ -110,6 +110,9 @@ class BenchmarkBlock(BaseModel):
     activation: PluginActivation = Field(default_factory=PluginActivation)
     verification: PluginVerification = Field(default_factory=PluginVerification)
     observed_env: list[ObservedEnv] = Field(default_factory=list)
+    # Name of the observed_env entry that says whether the plugin is on. A
+    # plugin without such a toggle cannot report ``enabled`` honestly.
+    enabled_when: str | None = None
     metrics: list[str] = Field(default_factory=list)
     notes: str | None = None
 
@@ -120,6 +123,10 @@ class BenchmarkBlock(BaseModel):
             if entry.name in seen:
                 raise ValueError(f"duplicate observed_env entry: {entry.name}")
             seen.add(entry.name)
+        if self.enabled_when is not None and self.enabled_when not in seen:
+            raise ValueError(
+                f"enabled_when refers to an entry that is not allowlisted: {self.enabled_when}"
+            )
         return self
 
     def env(self, name: str) -> ObservedEnv | None:

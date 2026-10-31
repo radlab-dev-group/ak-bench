@@ -38,6 +38,9 @@ benchmark:
       Until one becomes available a Knowledge run stays unverified, and its
       knowledge metrics stay unavailable rather than zero.
 
+  # The plugin-level toggle: the only honest source of "is this plugin on".
+  enabled_when: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
+
   observed_env:
     - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
       type: boolean
