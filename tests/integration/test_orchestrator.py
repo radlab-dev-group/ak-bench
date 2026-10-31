@@ -258,6 +258,10 @@ def test_a_passed_run_records_the_workspace_and_the_evaluation(harness: dict) ->
     record = context_seen[-1]
     assert Path(record["workspace_path"]).is_dir()
     assert record["state"] == RunState.CREATING_WORKSPACE.value
+    # The record states the configuration the agent was actually given, the
+    # agent descriptor's declared defaults included, not only what a caller
+    # happened to pass: an unrecorded fallback is an unrecorded choice.
+    assert record["agent_parameters"]["sandbox_mode"] == "workspace-write"
 
 
 def test_lifecycle_table_is_explicit() -> None:

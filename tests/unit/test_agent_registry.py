@@ -18,7 +18,11 @@ from akbench.agents.contract import (
     AgentStatus,
 )
 from akbench.agents.errors import AgentError
-from akbench.agents.registry import AgentRegistry, validate_agent_config
+from akbench.agents.registry import (
+    AgentRegistry,
+    effective_parameters,
+    validate_agent_config,
+)
 from akbench.descriptors.agent import AgentDescriptor
 from akbench.descriptors.registry import DescriptorKind
 
@@ -102,6 +106,44 @@ def descriptor(version: str = "1.0.0") -> AgentDescriptor:
 
     document = yaml.safe_load(DESCRIPTOR.replace("1.0.0", version))
     return AgentDescriptor.model_validate(document)
+
+
+def _descriptor_with_default(default: str) -> AgentDescriptor:
+    import yaml
+
+    document = yaml.safe_load(DESCRIPTOR)
+    document["agent"]["configuration_schema"]["sandbox_mode"]["default"] = default
+    return AgentDescriptor.model_validate(document)
+
+
+def test_effective_parameters_apply_the_declared_default() -> None:
+    """A descriptor default is part of the configuration of every run.
+
+    Without it the adapter falls back to a value nobody declared, and the run
+    records a configuration that is not the one the agent was given.
+    """
+    agent = _descriptor_with_default("workspace-write")
+
+    effective = effective_parameters(agent, {"model": "qwen/Qwen3.8-27B"})
+
+    assert effective == {"model": "qwen/Qwen3.8-27B", "sandbox_mode": "workspace-write"}
+
+
+def test_effective_parameters_never_override_an_explicit_value() -> None:
+    agent = _descriptor_with_default("workspace-write")
+
+    effective = effective_parameters(agent, {"sandbox_mode": "read-only"})
+
+    assert effective["sandbox_mode"] == "read-only"
+
+
+def test_effective_parameters_ignore_undeclared_and_fixed_parameters() -> None:
+    agent = _descriptor_with_default("workspace-write")
+
+    effective = effective_parameters(agent, {"model": "m"})
+
+    # `effort` is not controllable, so it is never injected by this code.
+    assert "effort" not in effective
 
 
 def test_register_and_resolve_newest_version() -> None:

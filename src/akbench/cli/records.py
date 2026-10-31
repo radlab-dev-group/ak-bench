@@ -89,6 +89,12 @@ def store_run(
         str(report["plugin_id"]): str(report.get("plugin_version", "")) for report in reports
     }
 
+    # The orchestrator records the parameters it actually handed the adapter,
+    # defaults from the agent descriptor included; the caller's dict is the
+    # fallback for records produced elsewhere.
+    applied = record.get("agent_parameters")
+    if not isinstance(applied, dict) or not applied:
+        applied = agent_parameters
     manifest = build_manifest(
         record,
         experiment_uid=uid,
@@ -99,7 +105,7 @@ def store_run(
         execution_parameters={
             "mode": record.get("mode"),
             "runtime": record.get("runtime_id"),
-            "agent_parameters": agent_parameters,
+            "agent_parameters": applied,
         },
     )
     manifest_path = artifacts_dir / "manifest.json"

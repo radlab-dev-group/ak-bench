@@ -93,6 +93,26 @@ class AgentRegistry:
         return len(self._entries)
 
 
+def effective_parameters(
+    descriptor: AgentDescriptor,
+    parameters: dict[str, object],
+) -> dict[str, object]:
+    """The configuration an agent is actually given: declared defaults included.
+
+    A default in ``configuration_schema`` is a declared fact about the agent, so
+    it belongs to every run. Filling it here keeps the adapter from applying an
+    implicit fallback of its own and keeps the recorded configuration equal to
+    the effective one (plan 6.7, 14).
+    """
+    merged: dict[str, object] = {
+        name: parameter.default
+        for name, parameter in descriptor.agent.configuration_schema.items()
+        if parameter.controllable and parameter.default is not None
+    }
+    merged.update(parameters)
+    return merged
+
+
 def validate_agent_config(descriptor: AgentDescriptor, config: AgentConfig) -> None:
     """Validate an ``AgentConfig`` against the descriptor's schema (plan 6.7).
 
