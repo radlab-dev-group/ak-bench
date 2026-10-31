@@ -157,6 +157,58 @@ def test_shipped_wordcount_task_verifies() -> None:
             shutil.rmtree(scratch, ignore_errors=True)
 
 
+REFERENCE_SLUGIFY = """from __future__ import annotations
+
+
+def slugify(text: str, separator: str = "-") -> str:
+    # Reference solution: keep ASCII alphanumerics, join them with the separator.
+    words: list[str] = []
+    current: list[str] = []
+    for char in text.lower():
+        if char.isascii() and char.isalnum():
+            current.append(char)
+        elif current:
+            words.append("".join(current))
+            current = []
+    if current:
+        words.append("".join(current))
+    return separator.join(words)
+"""
+
+
+def test_shipped_new_feature_task_is_solvable() -> None:
+    """The end-to-end proof for a write-from-scratch task.
+
+    A new_feature task has no mutation, so mutation verification cannot prove
+    it: instead the hidden tests must fail on the base commit (the feature is
+    missing) and pass once the specification is implemented.
+    """
+    import shutil
+
+    scratch = REPO_ROOT / "data" / "test_repos"
+    if scratch.exists():
+        shutil.rmtree(scratch)
+    try:
+        manager = WorkspaceManager(
+            RepositoryManager(scratch / "repos"), scratch / "workspaces"
+        )
+        dataset = Dataset.load(REPO_ROOT / "datasets", base_dir=REPO_ROOT)
+        loaded = dataset.materialize(dataset.require("slugify-001"))
+        assert loaded.task.task.mutation is None
+
+        prepared = manager.prepare(loaded.task, "slugify-base", task_dir=loaded.path)
+        base = run_hidden_tests(prepared.path, loaded.path / "hidden_tests")
+        assert base.passed is False, base.output
+
+        solution = prepared.path / "src" / "textkit" / "slugify.py"
+        solution.write_text(REFERENCE_SLUGIFY, encoding="utf-8")
+        solved = run_hidden_tests(prepared.path, loaded.path / "hidden_tests")
+        assert solved.passed is True, solved.output
+    finally:
+        if scratch.exists():
+            shutil.rmtree(scratch, ignore_errors=True)
+
+
 def test_verification_detects_an_undetectable_mutation(tmp_path: Path) -> None:
     """A mutation that does not break the hidden tests must be rejected."""
     repo = tmp_path / "source"
