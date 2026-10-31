@@ -92,6 +92,7 @@ class RunOrchestrator:
             agent_id=config.agent_id,
             mode=config.mode,
             runtime_id=config.runtime_id,
+            requested_model=_requested_model(config.agent_parameters),
             started_at=utc_now(),
         )
         return self._run_with_retries(config, context)
@@ -392,3 +393,8 @@ def _first_line(text: str | None) -> str | None:
 
 def _run_uid() -> str:
     return f"run-{utc_now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+
+
+def _requested_model(agent_parameters: dict[str, Any]) -> str | None:
+    model = agent_parameters.get("model")
+    return str(model) if model else None
