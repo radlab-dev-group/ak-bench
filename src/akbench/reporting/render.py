@@ -303,11 +303,19 @@ SORT_SCRIPT = """
   function markHeaders(table, index, ascending) {
     var cells = table.tHead ? table.tHead.rows[0].cells : [];
     for (var i = 0; i < cells.length; i += 1) {
-      cells[i].removeAttribute("data-dir");
-      cells[i].setAttribute(
-        "aria-sort",
-        i === index ? (ascending ? "ascending" : "descending") : "none"
-      );
+      // the direction that was applied is remembered on the header, because
+      // the next click has to flip it: without this every click sorts the same
+      // way, which is the bug this line exists to prevent
+      if (i === index) {
+        cells[i].setAttribute("data-dir", ascending ? "asc" : "desc");
+        cells[i].setAttribute(
+          "aria-sort",
+          ascending ? "ascending" : "descending"
+        );
+      } else {
+        cells[i].removeAttribute("data-dir");
+        cells[i].setAttribute("aria-sort", "none");
+      }
     }
   }
 
@@ -516,7 +524,7 @@ def _comparison_table(
             "passed #",
             "success rate",
             "mean time",
-            "tokens #",
+            *TOKEN_HEADERS,
             "statuses",
         ],
         [
@@ -529,7 +537,7 @@ def _comparison_table(
                 number(row.get("passed") or 0),
                 percent(row.get("success_rate")),
                 duration(row.get("mean_duration_seconds")),
-                number(row.get("total_tokens")),
+                *_token_cells(row),
                 esc(", ".join(row.get("statuses") or [])),
             ]
             for row in rows
@@ -578,6 +586,52 @@ def _chart(rows: list[dict[str, Any]], key: str, *, css: str = "") -> str:
     return f'<div class="bars">{"".join(parts)}</div>'
 
 
+# the columns a cost is read from: what was paid for, what the model produced,
+# what the two add up to, and how many times the agent reached for a tool
+TOKEN_HEADERS = [
+    "input tokens #",
+    "generated tokens #",
+    "total tokens #",
+    "tool calls #",
+]
+
+
+def _token_cells(summary: dict[str, Any]) -> list[str]:
+    """The token and tool-call cells of a summarised set of runs."""
+    return [
+        number(summary.get("input_tokens")),
+        number(summary.get("output_tokens")),
+        number(summary.get("total_tokens")),
+        number(summary.get("tool_calls")),
+    ]
+
+
+def _recording_cell(row: dict[str, Any]) -> str:
+    """Which tasks a ranking row rests on and when those runs happened.
+
+    The same experiment is often run more than once, and a configuration row
+    then repeats itself with nothing saying which of the two recordings it
+    came from; the task count and the period of its own runs tell them apart.
+    """
+    tasks = row.get("task_uids") or []
+    if not tasks:
+        return '<span class="muted">no run</span>'
+    started = _short_time(row.get("first_started"))
+    finished = _short_time(row.get("last_finished"))
+    window = f"{started} &rarr; {finished}" if started and finished else "not recorded"
+    shown = ", ".join(str(task).split("@")[0] for task in tasks[:3])
+    if len(tasks) > 3:
+        shown += f" +{len(tasks) - 3}"
+    return f'{esc(shown)}<br /><span class="muted">{window}</span>' 
+
+
+def _short_time(value: Any) -> str:
+    """A timestamp trimmed to what fits a table cell, or an empty string."""
+    if not value:
+        return ""
+    return str(value).replace("T", " ")[:16]
+
+
 def _ranked_rows(rows: list[dict[str, Any]]) -> list[list[str]]:
     table_rows: list[list[str]] = []
     for row in rows:
@@ -594,11 +648,13 @@ def _ranked_rows(rows: list[dict[str, Any]]) -> list[list[str]]:
             [
                 place_cell,
                 label,
+                esc(row.get("uid")),
+                _recording_cell(row),
                 number(row.get("runs") or 0),
                 number(row.get("evaluated") or 0),
                 percent(row.get("success_rate")),
                 duration(row.get("mean_duration_seconds")),
-                number(row.get("total_tokens")),
+                *_token_cells(row),
                 esc(row.get("vs_baseline") or ""),
             ]
         )
@@ -620,11 +676,13 @@ def _ranking(runs: list[dict[str, Any]], variants: list[dict[str, Any]]) -> str:
             [
                 "place",
                 "configuration",
+                "variant",
+                "recording",
                 "runs #",
                 "evaluated #",
                 "success rate",
                 "mean time",
-                "tokens #",
+                *TOKEN_HEADERS,
                 "against the baseline",
             ],
             _ranked_rows(rows),
@@ -665,11 +723,13 @@ def _leaderboard(data: HistoryData) -> str:
                     place_cell,
                     _experiment_link(uid),
                     label,
+                    esc(row.get("uid")),
+                    _recording_cell(row),
                     number(row.get("runs") or 0),
                     number(row.get("evaluated") or 0),
                     _cell_bar(percent(row.get("success_rate")), row.get("success_rate")),
                     duration(row.get("mean_duration_seconds")),
-                    number(row.get("total_tokens")),
+                    *_token_cells(row),
                     esc(row.get("vs_baseline") or ""),
                 ]
             )
@@ -684,11 +744,13 @@ def _leaderboard(data: HistoryData) -> str:
                 "place",
                 "experiment",
                 "configuration",
+                "variant",
+                "recording",
                 "runs #",
                 "evaluated #",
                 "success rate",
                 "mean time",
-                "tokens #",
+                *TOKEN_HEADERS,
                 "against the baseline",
             ],
             rows,
@@ -725,7 +787,10 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
                 ("tasks", number(stats["tasks"])),
                 ("total time", duration(stats["total_duration_seconds"])),
                 ("mean time", duration(stats["mean_duration_seconds"])),
+                ("input tokens", number(stats["input_tokens"])),
+                ("generated tokens", number(stats["output_tokens"])),
                 ("tokens", number(stats["total_tokens"])),
+                ("tool calls", number(stats["tool_calls"])),
                 ("cost", "not recorded"),
             ]
         ),
@@ -863,6 +928,8 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
                 ),
                 ("score", number(evaluation.get("score"), digits=3)),
                 ("time", duration(duration_seconds(run))),
+                ("input tokens", number(observations.get("input_tokens"))),
+                ("generated tokens", number(observations.get("output_tokens"))),
                 ("tokens", number(observations.get("total_tokens"))),
                 ("tool calls", number(observations.get("tool_call_count"))),
                 ("status", esc(run.get("status"))),
@@ -1029,7 +1096,7 @@ RUN_TAIL = [
     "verdict",
     "score #",
     "time",
-    "tokens #",
+    *TOKEN_HEADERS,
     "failure class",
     "error",
 ]
@@ -1081,7 +1148,12 @@ def _run_rows(
             esc(verdict_of(run)),
             number(evaluation.get("score"), digits=3),
             duration(duration_seconds(run)),
+            # what one run cost: what was paid for, what the model produced, the
+            # sum of them, and how often the agent reached for a tool
+            number(observations.get("input_tokens")),
+            number(observations.get("output_tokens")),
             number(observations.get("total_tokens")),
+            number(observations.get("tool_call_count")),
             esc(run.get("failure_class")),
             esc(run.get("error_message") or ""),
         ]
@@ -1136,7 +1208,7 @@ def _subject_listing(title: str, data: HistoryData, attribute: str) -> str:
                 number(row.get("passed") or 0),
                 percent(row.get("success_rate")),
                 duration(row.get("mean_duration_seconds")),
-                number(row.get("total_tokens")),
+                *_token_cells(row),
             ]
             for row in rows
         ],
@@ -1147,7 +1219,7 @@ def _subject_listing(title: str, data: HistoryData, attribute: str) -> str:
             "passed #",
             "success rate",
             "mean time",
-            "tokens #",
+            *TOKEN_HEADERS,
         ],
     )
 
@@ -1227,7 +1299,10 @@ def render_experiment(
                 ("evaluated", number(summary.get("evaluated"))),
                 ("success rate", percent(summary.get("success_rate"))),
                 ("mean time", duration(summary.get("mean_duration_seconds"))),
+                ("input tokens", number(summary.get("input_tokens"))),
+                ("generated tokens", number(summary.get("output_tokens"))),
                 ("tokens", number(summary.get("total_tokens"))),
+                ("tool calls", number(summary.get("tool_calls"))),
             ]
         ),
         "<h2>Configuration ranking</h2>",
@@ -1411,7 +1486,10 @@ def render_task(report: TaskReport, *, generated_at: str | None = None) -> str:
                 ("runs", number(summary.get("runs"))),
                 ("success rate", percent(summary.get("success_rate"))),
                 ("mean time", duration(summary.get("mean_duration_seconds"))),
+                ("input tokens", number(summary.get("input_tokens"))),
+                ("generated tokens", number(summary.get("output_tokens"))),
                 ("tokens", number(summary.get("total_tokens"))),
+                ("tool calls", number(summary.get("tool_calls"))),
             ]
         ),
         _definition_section(report),
@@ -1457,7 +1535,10 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
                 ("evaluated", number(summary.get("evaluated"))),
                 ("success rate", percent(summary.get("success_rate"))),
                 ("mean time", duration(summary.get("mean_duration_seconds"))),
+                ("input tokens", number(summary.get("input_tokens"))),
+                ("generated tokens", number(summary.get("output_tokens"))),
                 ("tokens", number(summary.get("total_tokens"))),
+                ("tool calls", number(summary.get("tool_calls"))),
             ]
         ),
     ]
@@ -1466,7 +1547,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
         body.append(
             table(
                 ["experiment", "title", "type", "runs #", "evaluated #", "passed #",
-                 "success rate", "mean time", "tokens #"],
+                 "success rate", "mean time", *TOKEN_HEADERS],
                 [
                     [
                         _experiment_link(row.get("uid")),
@@ -1477,7 +1558,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
                         number(row.get("passed") or 0),
                         percent(row.get("success_rate")),
                         duration(row.get("mean_duration_seconds")),
-                        number(row.get("total_tokens")),
+                        *_token_cells(row),
                     ]
                     for row in report.experiments
                 ],
@@ -1488,7 +1569,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
         body.append(
             table(
                 ["task", "category", "difficulty", "runs #", "passed #", "success rate",
-                 "mean time", "tokens #"],
+                 "mean time", *TOKEN_HEADERS],
                 [
                     [
                         f'<a href="{ROOT_TOKEN}tasks/{esc(row.get("uid"))}/index.html">'
@@ -1499,7 +1580,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
                         number(row.get("passed") or 0),
                         percent(row.get("success_rate")),
                         duration(row.get("mean_duration_seconds")),
-                        number(row.get("total_tokens")),
+                        *_token_cells(row),
                     ]
                     for row in report.tasks
                 ],
@@ -1644,18 +1725,20 @@ def write_report_tree(
         "agents/index.html",
         _group_listing(
             "Agents",
-            "one row per agent identity; a row opens the runs of that agent",
+            "one row per agent identity; a row opens that agent's experiments and runs",
             stats["agents"],
             "agent",
+            "agents",
         ),
     )
     write(
         "runtimes/index.html",
         _group_listing(
             "Runtimes",
-            "one row per runtime; a row opens the runs of that runtime",
+            "one row per runtime; a row opens that runtime's experiments and runs",
             stats["runtimes"],
             "runtime",
+            "runtimes",
         ),
     )
     write("plugins/index.html", _plugin_listing(stats["plugins"]))
@@ -1755,19 +1838,29 @@ def _task_listing(data: HistoryData) -> str:
     )
 
 
-def _group_listing(title: str, subtitle: str, rows: list[dict[str, Any]], label: str) -> str:
+def _group_listing(
+    title: str, subtitle: str, rows: list[dict[str, Any]], label: str, directory: str
+) -> str:
+    """A listing whose first column opens the subject's own page.
+
+    The directory is passed in because the listing and the page it links to sit
+    next to each other in the tree (``agents/index.html`` links to
+    ``agents/<slug>/index.html``), and a link that guesses the directory is a
+    link to a page that may not exist.
+    """
     return render_listing(
         title,
         subtitle,
         [
             [
-                esc(row.get(label)),
+                f'<a href="{esc(slugify(str(row.get(label))))}/index.html">'
+                f"{esc(row.get(label))}</a>",
                 number(row.get("runs") or 0),
                 number(row.get("evaluated") or 0),
                 number(row.get("passed") or 0),
                 percent(row.get("success_rate")),
                 duration(row.get("mean_duration_seconds")),
-                number(row.get("total_tokens")),
+                *_token_cells(row),
                 esc(", ".join(row.get("statuses") or [])),
             ]
             for row in rows
@@ -1779,7 +1872,7 @@ def _group_listing(title: str, subtitle: str, rows: list[dict[str, Any]], label:
             "passed #",
             "success rate",
             "mean time",
-            "tokens #",
+            *TOKEN_HEADERS,
             "statuses",
         ],
     )

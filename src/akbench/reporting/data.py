@@ -168,6 +168,9 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
     passed = [run for run in evaluated if verdict_of(run) == PASSED_VERDICT]
     durations = [value for value in (duration_seconds(run) for run in runs) if value is not None]
     tokens, token_runs = _sum_tokens(runs, "total_tokens")
+    input_tokens, input_runs = _sum_tokens(runs, "input_tokens")
+    output_tokens, output_runs = _sum_tokens(runs, "output_tokens")
+    tool_calls, tool_call_runs = _sum_tokens(runs, "tool_call_count")
     return {
         "runs": len(runs),
         "evaluated": len(evaluated),
@@ -178,6 +181,15 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "measured_durations": len(durations),
         "total_tokens": tokens,
         "token_runs": token_runs,
+        # the split the cost of a run is read from, each with the number of runs
+        # that actually stated it: a run whose agent reported nothing is missing,
+        # not zero
+        "input_tokens": input_tokens,
+        "input_token_runs": input_runs,
+        "output_tokens": output_tokens,
+        "output_token_runs": output_runs,
+        "tool_calls": tool_calls,
+        "tool_call_runs": tool_call_runs,
         "statuses": sorted({str(run.get("status")) for run in runs if run.get("status")}),
     }
 
@@ -306,12 +318,29 @@ def variant_comparison(
     rows: list[dict[str, Any]] = []
     for variant in variants:
         uid = str(variant.get("uid"))
+        group = groups.get(uid, [])
+        # the same experiment can be run twice, against different task sets and
+        # on different days; the configuration alone then repeats itself and two
+        # rows become indistinguishable, so each row also says which tasks it
+        # rests on and when those runs happened
+        started = sorted(
+            value for value in (run.get("started_at") for run in group) if value
+        )
+        finished = sorted(
+            value for value in (run.get("finished_at") for run in group) if value
+        )
         rows.append(
             {
                 "uid": uid,
                 "config": _values_label(variant.get("values")),
                 "is_baseline": bool(variant.get("is_baseline")),
-                **summarize_runs(groups.get(uid, [])),
+                "tasks": len({str(run.get("task_uid")) for run in group if run.get("task_uid")}),
+                "task_uids": sorted(
+                    {str(run.get("task_uid")) for run in group if run.get("task_uid")}
+                ),
+                "first_started": started[0] if started else None,
+                "last_finished": finished[-1] if finished else None,
+                **summarize_runs(group),
             }
         )
 

@@ -990,7 +990,13 @@ class HistoryStore:
             "observations": (
                 {
                     "tool_call_count": observation.tool_call_count,
+                    # the token split is kept because the three numbers answer
+                    # different questions: what was paid for, what the model
+                    # generated, and what the two add up to
                     "input_tokens": observation.input_tokens,
+                    "cached_input_tokens": observation.cached_input_tokens,
+                    "output_tokens": observation.output_tokens,
+                    "reasoning_output_tokens": observation.reasoning_output_tokens,
                     "total_tokens": observation.total_tokens,
                 }
                 if observation
