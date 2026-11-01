@@ -36,6 +36,7 @@ experiment:
   dataset:
     filters:
       categories: [bug_fix, new_feature]
+      task_ids: [wordcount-001, slugify-001]
 
   factors:
     strategy: custom_matrix

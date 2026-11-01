@@ -27,6 +27,7 @@ experiment:
   dataset:
     filters:
       categories: [bug_fix]
+      task_ids: [wordcount-001, slugify-001]
 
   factors:
     strategy: full_factorial
