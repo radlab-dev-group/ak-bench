@@ -65,17 +65,24 @@ STYLE = """
   --line: #223a30; --line-soft: #17281f; --head: #14201b;
   --pass: #4ade80; --fail: #ff7a6e; --warn: #f5c65b; --accent: #3ddbc0;
   --row: rgba(255, 255, 255, .022);
+  /* the page grows with the window. A run table is fourteen columns of
+     numbers, so the width a report needs is set by its widest table, not by
+     a book measure; the cap exists only so an ultrawide monitor does not
+     scatter a row of numbers across a metre of glass. */
+  --page-min: 22rem; --page-max: 168rem;
 }
 * { box-sizing: border-box; }
 html { background: var(--bg); }
 body {
-  margin: 0; padding: 1.6rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+  margin: 0; padding: 1.4rem clamp(.75rem, 1.6vw, 2rem) 4rem; background: var(--bg);
+  color: var(--fg);
   font: 15px/1.65 ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
   -webkit-font-smoothing: antialiased;
 }
 main {
-  max-width: 78rem; margin: 0 auto; border: 1px solid var(--line);
-  border-radius: 6px; background: var(--panel); padding: 1.6rem 1.8rem 2.2rem;
+  width: min(100%, var(--page-max)); min-width: min(100%, var(--page-min));
+  margin: 0 auto; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--panel); padding: 1.6rem clamp(1rem, 2vw, 2.4rem) 2.2rem;
 }
 h1 {
   font-size: 1.05rem; margin: 0 0 .3rem; letter-spacing: .14em; text-transform: uppercase;
@@ -98,8 +105,11 @@ a:hover { color: var(--bright); border-bottom-color: var(--accent); }
 }
 .nav::before { content: "PATH "; color: var(--muted); }
 .subtitle { color: var(--muted); margin: 0 0 1.4rem; font-size: .88rem; word-break: break-all; }
-/* wide run tables are the common case: they scroll instead of squeezing
-   the numbers until they wrap, and their header stays on screen */
+/* A run table is wide by nature. It is laid out to fit the page: the number
+   columns hug their content, the text columns take what is left and wrap, and
+   the type tightens as columns are added (class dense at ten columns, x-dense
+   at thirteen). Horizontal scroll stays as the fallback for a narrow window,
+   not as the normal way to read a row. */
 .table-wrap { overflow-x: auto; margin: .6rem 0 1.3rem; }
 table { border-collapse: collapse; width: 100%; font-size: .86rem; }
 th, td {
@@ -120,6 +130,25 @@ th[aria-sort="descending"]::after { content: " \\2193"; color: var(--accent); }
 tbody tr:nth-child(even) { background: var(--row); }
 tbody tr:hover { background: rgba(61, 219, 192, .08); }
 td.num, th.num { text-align: right; }
+/* the density classes: written by table() from the column count, so a table of
+   four columns keeps its comfortable size and a table of fourteen fits the page */
+table.dense { font-size: .8rem; }
+table.dense th, table.dense td { padding: .42rem .5rem; }
+table.dense th { white-space: normal; }
+table.dense td { overflow-wrap: anywhere; }
+table.dense td.num, table.dense th.num { width: 1%; white-space: nowrap; }
+table.dense .cell { min-width: 4.4rem; }
+table.x-dense { font-size: .74rem; }
+table.x-dense th, table.x-dense td { padding: .36rem .42rem; }
+table.x-dense th { letter-spacing: .05em; }
+table.x-dense .cell { min-width: 3.8rem; }
+table.x-dense .bar { height: .6rem; }
+/* a text cell keeps a floor. A column that can be squeezed to three
+   characters is a column read by scrolling back and forth, which is what the
+   wider page exists to avoid; below the floor the wrapper scrolls instead. */
+td { overflow-wrap: anywhere; }
+table.dense td:not(.num) { min-width: 6.2rem; }
+table.x-dense td:not(.num) { min-width: 5.6rem; }
 .cards {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
   gap: .7rem; margin: 1.1rem 0 1.8rem;
@@ -154,16 +183,18 @@ code {
 }
 .note { color: var(--muted); font-size: .8rem; margin: -.4rem 0 1.2rem; }
 .task-title { color: var(--bright); font-size: 1rem; margin: 0 0 .5rem; }
-.task-description, .task-notes { max-width: 68rem; }
+/* prose is the one thing that should not stretch: a task description stays at
+   a measure that can be read across without tracking a line back */
+.task-description, .task-notes { max-width: 80rem; }
 pre.prose {
-  max-width: 68rem; margin: .4rem 0 1rem; padding: .8rem .95rem; white-space: pre-wrap;
+  max-width: 80rem; margin: .4rem 0 1rem; padding: .8rem .95rem; white-space: pre-wrap;
   overflow-wrap: anywhere; background: var(--raise); border: 1px solid var(--line);
   border-radius: 4px; font-size: .84rem; color: var(--fg);
 }
 details { margin: .5rem 0 1.1rem; }
 summary { cursor: pointer; color: var(--muted); font-size: .78rem; letter-spacing: .08em;
   text-transform: uppercase; }
-ul.constraints { max-width: 68rem; margin: .3rem 0 1rem; padding-left: 1.2rem; }
+ul.constraints { max-width: 80rem; margin: .3rem 0 1rem; padding-left: 1.2rem; }
 ul.constraints li { margin: .15rem 0; }
 .folded { cursor: help; border-bottom: 1px dotted var(--line); }
 footer {
@@ -374,9 +405,16 @@ def duration(seconds: float | None) -> str:
 
 
 def table(headers: list[str], rows: list[list[str]]) -> str:
-    """A table; a header ending in ``#`` is right-aligned as a number."""
+    """A table; a header ending in ``#`` is right-aligned as a number.
+
+    The table is marked with a density class from its own column count, so the
+    stylesheet can tighten the type exactly when a row of numbers would else
+    overflow the page.
+    """
     if not headers or not rows:
         return '<p class="muted">nothing recorded</p>'
+
+    classes = _density_classes(len(headers))
 
     def is_num(header: str) -> bool:
         return header.endswith("#")
@@ -400,9 +438,18 @@ def table(headers: list[str], rows: list[list[str]]) -> str:
         for row in rows
     )
     return (
-        '<div class="table-wrap"><table><thead><tr>'
+        f'<div class="table-wrap"><table{classes}><thead><tr>'
         f"{head}</tr></thead><tbody>{body}</tbody></table></div>"
     )
+
+
+def _density_classes(columns: int) -> str:
+    """The density attribute for a table of ``columns`` columns."""
+    if columns >= 13:
+        return ' class="dense x-dense"'
+    if columns >= 10:
+        return ' class="dense"'
+    return ""
 
 
 def cards(items: list[tuple[str, str]]) -> str:

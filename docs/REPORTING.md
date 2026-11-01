@@ -71,6 +71,20 @@ and models each have a detail page, and the run uids in every table link to the
 run's own page. A link that pointed at a page that was never written is a
 broken promise, so the report is checked that no href is a dead end.
 
+**The page is as wide as the window.** A run table is fourteen columns of
+numbers, so the report takes the width the window gives it, up to a cap that
+exists only to keep an ultrawide monitor from scattering one row across a
+metre of glass. A narrow window keeps a readable floor. Prose is the one thing
+that does not stretch: task descriptions and notes stay at a measure that can
+be read across without tracking a line back.
+
+**Wide tables fit the page.** A table is marked with a density class from its
+own column count (ten columns and up tighten the type, thirteen and up
+tighten it further). The number columns hug their content, the text columns
+take what is left and wrap, and every text column keeps a floor below which
+the wrapper scrolls instead of the row having to be read by scrolling back and
+forth.
+
 **Run tables sort.** Clicking a column header of a run table reorders its rows
 by that column — the one exception to the no-scripting rule, and a small,
 self-contained script that ships in the page, not an external asset. Clicking

@@ -23,6 +23,7 @@ from akbench.reporting.data import (
 )
 from akbench.reporting.render import (
     NOT_MEASURED,
+    STYLE,
     duration,
     esc,
     number,
@@ -670,3 +671,35 @@ def test_the_sorted_header_remembers_the_direction_it_applied(
     # and a page that has never been clicked ships with no direction marked,
     # so the first click is the ascending one
     assert 'data-dir="' not in page
+
+# ------------------------------------------------------------------- layout
+
+
+def test_a_wide_table_marks_its_own_density(database_url: str, tmp_path: Path) -> None:
+    """A run table is wide, and the page has to be wider than it is.
+
+    The density class is chosen from the column count so the stylesheet can
+    tighten the type exactly where a row of numbers would else run past the
+    edge of the screen.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    runs_page = (root / "runs" / "index.html").read_text(encoding="utf-8")
+    assert '<table class="dense x-dense">' in runs_page
+    verdicts = (root / "verdicts" / "index.html").read_text(encoding="utf-8")
+    assert "<table>" in verdicts
+    assert "x-dense" not in verdicts
+
+
+def test_the_page_grows_with_the_window_rather_than_capping_early() -> None:
+    """A 78rem column on a 2560px monitor wastes half the glass.
+
+    The page is fluid: it fills the window up to a cap set for ultrawide, with
+    the number columns hugging their content so the widest table fits.
+    """
+    assert "max-width: 78rem" not in STYLE
+    assert "--page-max" in STYLE
+    assert "width: min(100%, var(--page-max))" in STYLE
+    assert "table.dense td.num, table.dense th.num { width: 1%; white-space: nowrap; }" in STYLE
