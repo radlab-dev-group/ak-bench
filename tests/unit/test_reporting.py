@@ -7,6 +7,7 @@ from a run record that renders as content.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -452,3 +453,146 @@ def test_report_objects_carry_their_own_scoped_findings(database_url: str) -> No
     assert experiment.metrics[0]["metric"] == "task_success"
     assert any(item["kind"] == "plugin" for item in experiment.unverified)
     assert task.summary["runs"] == 2
+
+
+# ----------------------------------------------------------- link integrity
+
+
+def _resolve_links(root: Path) -> list[tuple[str, str]]:
+    """Every href in the tree that points at a file that was never written."""
+    from urllib.parse import unquote
+
+    broken: list[tuple[str, str]] = []
+    for page in sorted(root.rglob("*.html")):
+        for href in re.findall(r'href="([^"]+)"', page.read_text(encoding="utf-8")):
+            if href.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            if not (page.parent / unquote(href)).resolve().exists():
+                broken.append((str(page.relative_to(root)), href))
+    return broken
+
+
+def test_no_link_in_the_tree_points_at_a_page_that_was_not_written(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A dashboard label that reads like a link has to lead somewhere.
+
+    The dashboard links verdicts, categories, difficulties, agents, runtimes,
+    plugins and models; each of those needs a page, or the report is a wall of
+    dead ends. This walks every written page and resolves every href.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+
+    assert _resolve_links(tmp_path / "reports") == []
+
+
+def test_the_subject_pages_behind_the_dashboard_labels_exist(
+    database_url: str, tmp_path: Path
+) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    relative = {
+        str(path.relative_to(tmp_path / "reports"))
+        for path in (tmp_path / "reports").rglob("index.html")
+    }
+
+    assert "categories/bug-fix/index.html" in relative
+    assert "difficulties/easy/index.html" in relative
+    assert "verdicts/passed/index.html" in relative
+    assert "verdicts/failed/index.html" in relative
+    assert "agents/codex-0.1.0/index.html" in relative
+    assert "runs/index.html" in relative
+
+
+# ---------------------------------------------------------------- run pages
+
+
+def test_every_run_has_its_own_page_with_its_parameters_and_results(
+    database_url: str, tmp_path: Path
+) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+    page = (root / "runs" / "run-pass" / "index.html").read_text(encoding="utf-8")
+
+    assert "run-pass" in page
+    # where the run belongs, with the configuration it was executed under
+    assert "knowledge_enabled=False" in page
+    assert "wordcount-001@1.0.0" in page
+    # and what came out of it
+    assert "passed" in page
+    assert "Evaluation" in page
+
+
+def test_a_run_uid_is_a_link_from_every_table_that_lists_runs(
+    database_url: str, tmp_path: Path
+) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    task_page = (root / "tasks" / "wordcount-001@1.0.0" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'href="../../runs/run-pass/index.html"' in task_page
+    experiment_page = (root / "experiments" / "demo@1.0.0" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'href="../../runs/run-pass/index.html"' in experiment_page
+
+
+def test_a_subject_page_lists_the_experiments_of_that_subject(
+    database_url: str, tmp_path: Path
+) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+    agent_page = (root / "agents" / "codex-0.1.0" / "index.html").read_text(encoding="utf-8")
+
+    assert "Experiments this subject took part in" in agent_page
+    assert "demo@1.0.0" in agent_page
+    assert "Tasks this subject worked" in agent_page
+
+
+# -------------------------------------------------------------- sortability
+
+
+def test_table_headers_are_clickable_and_the_script_ships_with_the_page(
+    database_url: str, tmp_path: Path
+) -> None:
+    """Sorting is the one script a page carries, and only reorders rows.
+
+    A page read with scripting off still shows every row, so the default order
+    has to stay in the document; the script must not be an external asset.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+    page = (root / "tasks" / "wordcount-001@1.0.0" / "index.html").read_text(encoding="utf-8")
+
+    assert 'class="sortable"' in page
+    assert 'aria-sort="none"' in page
+    assert "<script>" in page
+    assert "<script src=" not in page
+    # with scripting off the reader still gets every row, in the order that was
+    # written in: sorting is a view over the recorded history, not a change to it
+    assert page.index("run-fail") < page.index("run-pass")
+    rows = re.findall(r'<a href="[^"]*runs/([^/]+)/index\.html"', page)
+    assert rows == ["run-fail", "run-pass"]
+
+
+def test_runs_are_ordered_by_the_time_they_started() -> None:
+    """Start order, with the uid breaking a tie: no clock, no reordering."""
+    from akbench.reporting.data import order_by_start
+
+    runs = [
+        {"uid": "later", "started_at": "2026-11-01T10:00:00+00:00"},
+        {"uid": "earlier", "started_at": "2026-11-01T09:00:00+00:00"},
+        {"uid": "no-start"},
+        {"uid": "also-earlier", "started_at": "2026-11-01T09:00:00+00:00"},
+    ]
+
+    ordered = [run["uid"] for run in order_by_start(runs)]
+
+    assert ordered == ["also-earlier", "earlier", "later", "no-start"]

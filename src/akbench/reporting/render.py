@@ -23,16 +23,22 @@ from typing import Any
 from akbench.reporting.data import (
     ExperimentReport,
     HistoryData,
+    RunReport,
     SubjectReport,
     TaskReport,
     build_agent_report,
+    build_category_report,
+    build_difficulty_report,
     build_experiment_report,
     build_model_report,
     build_plugin_report,
+    build_run_report,
     build_runtime_report,
     build_task_report,
+    build_verdict_report,
     dashboard,
     duration_seconds,
+    order_by_start,
     unverified_configurations,
     variant_comparison,
     variant_lookup,
@@ -105,6 +111,12 @@ th {
   font-weight: 600; font-size: .71rem; letter-spacing: .1em; text-transform: uppercase;
   border-bottom: 1px solid var(--accent); white-space: nowrap;
 }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable::after { content: " \\2195"; color: var(--line); }
+th.sortable:hover { background: rgba(61, 219, 192, .12); }
+th.sortable:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+th[aria-sort="ascending"]::after { content: " \\2191"; color: var(--accent); }
+th[aria-sort="descending"]::after { content: " \\2193"; color: var(--accent); }
 tbody tr:nth-child(even) { background: var(--row); }
 tbody tr:hover { background: rgba(61, 219, 192, .08); }
 td.num, th.num { text-align: right; }
@@ -191,6 +203,135 @@ footer {
 """
 
 
+SORT_SCRIPT = """
+// Sorting of a report table: clicking a column header reorders the rows.
+// This is the one script a report page carries, and it changes the order of
+// rows and nothing else — no number is computed, fetched or altered here. A
+// page read with scripting off still shows every row, in the order it was
+// written in, which is the order the history recorded.
+(function () {
+  "use strict";
+
+  var MISSING = Object.freeze({ missing: true });
+
+  function text(cell) {
+    return (cell.textContent || "").trim();
+  }
+
+  // A value the report could not measure never sorts as a zero: it goes last.
+  function isMissing(value) {
+    return (
+      value === "" ||
+      value === "not measured" ||
+      value === "not started" ||
+      value === "not recorded" ||
+      value === "not evaluated" ||
+      value === "\u2014"
+    );
+  }
+
+  // "3 m 25 s", "1 h 2 m", "12.5 s", "1,234", "97.9%" -> a number; anything
+  // else is null, so the caller can fall back to comparing the text.
+  function asNumber(raw) {
+    if (isMissing(raw)) return MISSING;
+    var value = raw.replace(/,/g, "");
+    var pattern =
+      "^(?:(\\d+(?:\\.\\d+)?)\\s*h)?\\s*(?:(\\d+(?:\\.\\d+)?)\\s*m)?\\s*(?:(\\d+(?:\\.\\d+)?)\\s*s)?$";
+    var duration = value.match(new RegExp(pattern));
+    if (duration && (duration[1] || duration[2] || duration[3])) {
+      return (
+        (parseFloat(duration[1] || 0) * 3600) +
+        (parseFloat(duration[2] || 0) * 60) +
+        parseFloat(duration[3] || 0)
+      );
+    }
+    var plain = value.replace(/%$/, "");
+    if (/^-?\\d+(?:\\.\\d+)?$/.test(plain)) return parseFloat(plain);
+    return null;
+  }
+
+  function column(table, index) {
+    var out = [];
+    var rows = table.tBodies[0] ? table.tBodies[0].rows : [];
+    for (var i = 0; i < rows.length; i += 1) {
+      out.push(rows[i].cells[index] ? text(rows[i].cells[index]) : "");
+    }
+    return out;
+  }
+
+  function isNumeric(values) {
+    var parsed = false;
+    for (var i = 0; i < values.length; i += 1) {
+      var value = asNumber(values[i]);
+      if (value === null) return false;
+      if (value !== MISSING) parsed = true;
+    }
+    return parsed;
+  }
+
+  function sort(table, index, ascending) {
+    var body = table.tBodies[0];
+    if (!body) return;
+    var values = column(table, index);
+    var numeric = isNumeric(values);
+    var rows = Array.prototype.slice.call(body.rows);
+    var position = new Map();
+    rows.forEach(function (row, index) { position.set(row, index); });
+
+    rows.sort(function (left, right) {
+      var a = values[position.get(left)];
+      var b = values[position.get(right)];
+      if (numeric) {
+        var na = asNumber(a);
+        var nb = asNumber(b);
+        var aMissing = na === MISSING;
+        var bMissing = nb === MISSING;
+        if (aMissing && bMissing) return position.get(left) - position.get(right);
+        if (aMissing) return 1;   // never measured, always after what was
+        if (bMissing) return -1;
+        return ascending ? na - nb : nb - na;
+      }
+      var compared = String(a).localeCompare(String(b), undefined, { numeric: true });
+      if (compared !== 0) return ascending ? compared : -compared;
+      return position.get(left) - position.get(right);
+    });
+
+    rows.forEach(function (row) { body.appendChild(row); });
+    markHeaders(table, index, ascending);
+  }
+
+  function markHeaders(table, index, ascending) {
+    var cells = table.tHead ? table.tHead.rows[0].cells : [];
+    for (var i = 0; i < cells.length; i += 1) {
+      cells[i].removeAttribute("data-dir");
+      cells[i].setAttribute(
+        "aria-sort",
+        i === index ? (ascending ? "ascending" : "descending") : "none"
+      );
+    }
+  }
+
+  function activate(header, index) {
+    var table = header.closest("table");
+    var ascending = header.getAttribute("data-dir") !== "asc";
+    sort(table, index, ascending);
+  }
+
+  document.addEventListener("click", function (event) {
+    var header = event.target.closest ? event.target.closest("th.sortable") : null;
+    if (header) activate(header, Array.prototype.indexOf.call(header.parentNode.cells, header));
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    var header = event.target.closest ? event.target.closest("th.sortable") : null;
+    if (!header) return;
+    event.preventDefault();
+    activate(header, Array.prototype.indexOf.call(header.parentNode.cells, header));
+  });
+})();
+"""
+
 def esc(value: Any) -> str:
     return html.escape("" if value is None else str(value))
 
@@ -233,9 +374,12 @@ def table(headers: list[str], rows: list[list[str]]) -> str:
         return header.endswith("#")
 
     head = "".join(
-        f'<th class="num">{esc(header[:-2].strip())}</th>'
+        f'<th class="num sortable" tabindex="0" aria-sort="none" '
+        f'title="sort by {esc(header[:-2].strip())}">'
+        f"{esc(header[:-2].strip())}</th>"
         if is_num(header)
-        else f"<th>{esc(header)}</th>"
+        else f'<th class="sortable" tabindex="0" aria-sort="none" '
+        f'title="sort by {esc(header)}">{esc(header)}</th>'
         for header in headers
     )
     body = "".join(
@@ -283,18 +427,24 @@ def page(
             f'<a href="{ROOT_TOKEN}runtimes/index.html">runtimes</a> · '
             f'<a href="{ROOT_TOKEN}plugins/index.html">plugins</a> · '
             f'<a href="{ROOT_TOKEN}models/index.html">models</a> · '
-            f'<a href="{ROOT_TOKEN}tasks/index.html">tasks</a></p>'
+            f'<a href="{ROOT_TOKEN}tasks/index.html">tasks</a> · '
+            f'<a href="{ROOT_TOKEN}{RUNS_DIRECTORY}/index.html">runs</a></p>'
         )
     head = (
         f"<style>{STYLE}</style>" if standalone else f'<link rel="stylesheet" href="{CSS_TOKEN}">'
     )
+    if standalone:
+        # a standalone page is one file: there is no tree to address into, and a
+        # token left in an href would be shown to the reader as literal text
+        body = body.replace(ROOT_TOKEN, "")
     stamp = f"<footer>generated {esc(generated_at)} from the recorded history</footer>"
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
         f"<title>{esc(title)}</title>"
         f"{head}</head>"
-        f"<body><main>{nav}{body}{stamp}</main></body></html>\n"
+        f"<body><main>{nav}{body}{stamp}</main>"
+        f"<script>{SORT_SCRIPT}</script></body></html>\n"
     )
 
 
@@ -352,7 +502,12 @@ def _notice(findings: list[dict[str, Any]]) -> str:
     )
 
 
-def _comparison_table(rows: list[dict[str, Any]], label: str) -> str:
+def _comparison_table(
+    rows: list[dict[str, Any]], label: str, directory: str | None = None
+) -> str:
+    """A comparison table; with a directory, the label links to that subject's
+    page. Without one it stays plain text, because a link to a page that was
+    never written is a broken promise, not a navigation aid."""
     return table(
         [
             label,
@@ -366,8 +521,9 @@ def _comparison_table(rows: list[dict[str, Any]], label: str) -> str:
         ],
         [
             [
-                f'<a href="{esc(slugify(str(row.get(label))))}/index.html">'
-                f"{esc(row.get(label))}</a>",
+                _link_to(directory, row.get(label))
+                if directory
+                else esc(row.get(label)),
                 number(row.get("runs") or 0),
                 number(row.get("evaluated") or 0),
                 number(row.get("passed") or 0),
@@ -544,8 +700,14 @@ def _leaderboard(data: HistoryData) -> str:
 
 
 def _experiment_link(uid: Any) -> str:
-    """A link to an experiment report, relative to the page that lists it."""
-    return f'<a href="experiments/{esc(uid)}/index.html">{esc(uid)}</a>'
+    """A link to an experiment report, addressed from the root of the tree.
+
+    The address is a token-prefixed one because the same link appears on the
+    dashboard, on a subject page two directories down and on a run page: a path
+    relative to the page that wrote it is right in one of those and broken in
+    the others.
+    """
+    return f'<a href="{ROOT_TOKEN}experiments/{esc(uid)}/index.html">{esc(uid)}</a>'
 
 
 def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
@@ -575,7 +737,7 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
             ["verdict", "runs #", "share of evaluated"],
             [
                 [
-                    esc(verdict),
+                    _link_to("verdicts", verdict),
                     number(count),
                     percent(count / stats["evaluated"] if stats["evaluated"] else None),
                 ]
@@ -599,19 +761,19 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
         if data.experiments
         else '<p class="muted">nothing recorded</p>',
         "<h2>Results by category</h2>",
-        _comparison_table(stats["by_category"], "category"),
+        _comparison_table(stats["by_category"], "category", directory="categories"),
         "<h2>Results by difficulty</h2>",
-        _comparison_table(stats["by_difficulty"], "difficulty"),
+        _comparison_table(stats["by_difficulty"], "difficulty", directory="difficulties"),
         "<h2>Agent comparison</h2>",
-        _comparison_table(stats["agents"], "agent"),
+        _comparison_table(stats["agents"], "agent", directory="agents"),
         "<h2>Runtime and router comparison</h2>",
-        _comparison_table(stats["runtimes"], "runtime"),
+        _comparison_table(stats["runtimes"], "runtime", directory="runtimes"),
         "<h2>Plugin comparison</h2>",
         table(
             ["plugin", "runs #", "enabled runs #", "versions", "verification"],
             [
                 [
-                    esc(row.get("plugin")),
+                    _link_to("plugins", row.get("plugin")),
                     number(row.get("runs") or 0),
                     number(row.get("enabled_runs") or 0),
                     esc(", ".join(row.get("versions") or []) or NOT_MEASURED),
@@ -625,7 +787,7 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
             ["requested", "observed", "runs #", "source", "verification"],
             [
                 [
-                    esc(row.get("requested")),
+                    _link_to("models", row.get("requested")),
                     esc(row.get("observed")),
                     number(row.get("runs") or 0),
                     esc(", ".join(row.get("sources") or []) or NOT_MEASURED),
@@ -652,6 +814,195 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
     return page("AK-Bench dashboard", "".join(body), generated_at=generated_at)
 
 
+RUNS_DIRECTORY = "runs"
+
+
+def _run_link(run: dict[str, Any]) -> str:
+    """The uid of a run, as a link to that run's own page.
+
+    The page is addressed from the root of the tree, so a run reached from a
+    task page, an experiment page or a subject page opens the same document.
+    """
+    uid = run.get("uid")
+    if not uid:
+        return esc(run.get("uid"))
+    return f'<a href="{ROOT_TOKEN}{RUNS_DIRECTORY}/{esc(uid)}/index.html">{esc(uid)}</a>'
+
+
+def _link_to(directory: str, label: Any, path: str | None = None) -> str:
+    """A link to a page addressed from the root of the tree.
+
+    The directory of a subject page is the slug of its label; a task page is
+    written under the raw task uid, so it passes ``path`` explicitly. Getting
+    this wrong is not cosmetic: it points at a file that was never written.
+    """
+    target = slugify(str(label)) if path is None else str(path)
+    return (
+        f'<a href="{ROOT_TOKEN}{esc(directory)}/{esc(target)}/index.html">'
+        f"{esc(label)}</a>"
+    )
+
+
+def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
+    """Everything that belongs to one run, on one page."""
+    run = report.run
+    evaluation = run.get("evaluation") if isinstance(run.get("evaluation"), dict) else {}
+    observations = (
+        run.get("observations") if isinstance(run.get("observations"), dict) else {}
+    )
+    verdict = verdict_of(run)
+    verdict_css = "pass" if verdict == PASSED else ("fail" if verdict else "muted")
+    body = [
+        "<h1>Run</h1>",
+        f'<p class="subtitle">{esc(run.get("uid"))}</p>',
+        cards(
+            [
+                (
+                    "verdict",
+                    f'<span class="{verdict_css}">{esc(verdict or "not evaluated")}</span>',
+                ),
+                ("score", number(evaluation.get("score"), digits=3)),
+                ("time", duration(duration_seconds(run))),
+                ("tokens", number(observations.get("total_tokens"))),
+                ("tool calls", number(observations.get("tool_call_count"))),
+                ("status", esc(run.get("status"))),
+            ]
+        ),
+        "<h2>Where this run belongs</h2>",
+        table(
+            ["field", "value"],
+            [
+                [
+                    "experiment",
+                    _experiment_link(run.get("experiment_uid"))
+                    if run.get("experiment_uid")
+                    else NOT_MEASURED,
+                ],
+                [
+                    "task",
+                    _link_to("tasks", run.get("task_uid"), path=str(run.get("task_uid"))
+                    )
+                    if run.get("task_uid")
+                    else NOT_MEASURED,
+                ],
+                ["parameters", _parameters_cell(report.parameters)],
+                ["variant", esc(run.get("variant_uid"))],
+                [
+                    "agent",
+                    _link_to("agents", run.get("agent"))
+                    if run.get("agent")
+                    else NOT_MEASURED,
+                ],
+                [
+                    "runtime",
+                    _link_to("runtimes", run.get("runtime_id"))
+                    if run.get("runtime_id")
+                    else NOT_MEASURED,
+                ],
+                ["mode", esc(run.get("mode"))],
+                [
+                    "repetition",
+                    number(run.get("repetition"))
+                    if run.get("repetition") is not None
+                    else NOT_MEASURED,
+                ],
+                ["session", esc(run.get("session_id"))],
+                ["manifest digest", f'<code>{esc(run.get("manifest_digest"))}</code>'],
+            ],
+        ),
+        "<h2>Evaluation</h2>",
+        table(
+            ["field", "value"],
+            [
+                [
+                    "verdict",
+                    f'<span class="{verdict_css}">{esc(verdict or "not evaluated")}</span>',
+                ],
+                ["score", number(evaluation.get("score"), digits=4)],
+                ["tests passed", number(evaluation.get("passed"))],
+                ["tests failed", number(evaluation.get("failed"))],
+                ["tests total", number(evaluation.get("total"))],
+            ],
+        )
+        if evaluation
+        else '<p class="muted">this run was never evaluated: it has no verdict and no score</p>',
+        "<h2>What the agent reported</h2>",
+        table(
+            ["field", "value"],
+            [
+                ["started", esc(run.get("started_at"))],
+                ["finished", esc(run.get("finished_at"))],
+                ["wall clock", duration(duration_seconds(run))],
+                ["input tokens", number(observations.get("input_tokens"))],
+                ["total tokens", number(observations.get("total_tokens"))],
+                ["tool calls", number(observations.get("tool_call_count"))],
+                [
+                    "exit code",
+                    number(run.get("exit_code"))
+                    if run.get("exit_code") is not None
+                    else NOT_MEASURED,
+                ],
+                ["failure class", esc(run.get("failure_class") or "none")],
+                ["error", esc(run.get("error_message") or "")],
+            ],
+        ),
+    ]
+
+    if report.model_state:
+        model = report.model_state
+        body.append("<h2>Model</h2>")
+        body.append(
+            table(
+                ["requested", "observed", "source", "verification"],
+                [
+                    [
+                        esc(model.get("requested_model")),
+                        esc(model.get("observed_model")),
+                        esc(model.get("value_source")),
+                        f'<span class="badge {_badge_css(model.get("verification_status"))}">'
+                        f"{esc(model.get('verification_status'))}</span>",
+                    ]
+                ],
+            )
+        )
+    if report.plugin_states:
+        body.append("<h2>Plugins observed</h2>")
+        body.append(
+            table(
+                ["plugin", "version", "enabled", "verification", "note"],
+                [
+                    [
+                        _link_to("plugins", state.get("plugin_id")),
+                        esc(state.get("plugin_version")),
+                        "yes" if state.get("enabled") else "no",
+                        f'<span class="badge {_badge_css(state.get("verification_status"))}">'
+                        f"{esc(state.get('verification_status'))}</span>",
+                        _note_cell(state.get("note")),
+                    ]
+                    for state in report.plugin_states
+                ],
+            )
+        )
+    if report.run.get("artifacts"):
+        body.append("<h2>Artifacts</h2>")
+        body.append(
+            table(
+                ["kind", "path", "checksum"],
+                [
+                    [
+                        esc(artifact.get("kind")),
+                        f'<code>{esc(artifact.get("path"))}</code>',
+                        esc(artifact.get("checksum")),
+                    ]
+                    for artifact in run.get("artifacts") or []
+                ],
+            )
+        )
+    body.append("<h2>Not verified</h2>")
+    body.append(_notice(report.unverified))
+    return page(f"Run {run.get('uid')}", "".join(body), generated_at=generated_at)
+
+
 def _parameters_cell(values: Any) -> str:
     """The factor values a run was executed under, one readable line."""
     if values is None:
@@ -672,44 +1023,51 @@ def _started_cell(run: dict[str, Any]) -> str:
     return esc(text[:19])
 
 
-def _runs_table(
-    runs: list[dict[str, Any]],
-    variants: list[dict[str, Any]] | None = None,
-    *,
-    show_task: bool = True,
-    show_agent: bool = True,
-) -> str:
-    """Every run as it was recorded, in the order the caller passed them.
+RUN_TAIL = [
+    "repetition #",
+    "status",
+    "verdict",
+    "score #",
+    "time",
+    "tokens #",
+    "failure class",
+    "error",
+]
 
-    The parameters of a run are its variant's factor values: a reader comparing
-    two runs of a task has to see which configuration each of them was, or the
-    table is a list of unexplained numbers.
-    """
-    lookup = variant_lookup(variants or [])
+
+def _runs_headers(*, show_task: bool = True, show_agent: bool = True) -> list[str]:
+    """The columns of a run table; a header ending in ``#`` is a number."""
     headers = ["run", "parameters", "started"]
     if show_task:
         headers.append("task")
     if show_agent:
         headers.append("agent")
-    headers += [
-        "repetition #",
-        "status",
-        "verdict",
-        "score #",
-        "time",
-        "tokens #",
-        "failure class",
-        "error",
-    ]
+    return headers + RUN_TAIL
 
-    rows = []
+
+def _run_rows(
+    runs: list[dict[str, Any]],
+    lookup: dict[str, Any],
+    *,
+    show_task: bool = True,
+    show_agent: bool = True,
+) -> list[list[str]]:
+    """The cells of a run table, in the order the caller passed the runs.
+
+    One definition of a run row, used by every page that lists runs — a task,
+    an experiment, a subject, the listing of all of them — so their columns
+    cannot drift apart. The parameters of a run are its variant's factor
+    values: a reader comparing two runs has to see which configuration each of
+    them was, or the table is a list of unexplained numbers.
+    """
+    rows: list[list[str]] = []
     for run in runs:
         evaluation = run.get("evaluation") if isinstance(run.get("evaluation"), dict) else {}
         observations = (
             run.get("observations") if isinstance(run.get("observations"), dict) else {}
         )
         row = [
-            esc(run.get("uid")),
+            _run_link(run),
             _parameters_cell(lookup.get(str(run.get("variant_uid")))),
             _started_cell(run),
         ]
@@ -728,7 +1086,92 @@ def _runs_table(
             esc(run.get("error_message") or ""),
         ]
         rows.append(row)
-    return table(headers, rows)
+    return rows
+
+
+def _runs_table(
+    runs: list[dict[str, Any]],
+    variants: list[dict[str, Any]] | None = None,
+    *,
+    show_task: bool = True,
+    show_agent: bool = True,
+) -> str:
+    """A run table in the order the caller passed the runs."""
+    return table(
+        _runs_headers(show_task=show_task, show_agent=show_agent),
+        _run_rows(
+            runs,
+            variant_lookup(variants or []),
+            show_task=show_task,
+            show_agent=show_agent,
+        ),
+    )
+
+
+def _all_variants(data: HistoryData) -> dict[str, Any]:
+    """Every variant of every recorded experiment, as one uid to values map."""
+    collected = [
+        variant for rows in (data.variants or {}).values() for variant in rows
+    ]
+    return variant_lookup(collected)
+
+
+def _directory_for(attribute: str) -> str:
+    """The directory a subject page of this attribute lives in."""
+    return {"category": "categories", "difficulty": "difficulties"}[attribute]
+
+
+def _subject_listing(title: str, data: HistoryData, attribute: str) -> str:
+    """A page listing every category or difficulty with its runs."""
+    label_key = {"category": "by_category", "difficulty": "by_difficulty"}[attribute]
+    rows = dashboard(data)[label_key]
+    return render_listing(
+        title,
+        f"every recorded {attribute.lower()}; a row opens its runs",
+        [
+            [
+                _link_to(_directory_for(attribute), row.get(attribute)),
+                number(row.get("runs") or 0),
+                number(row.get("evaluated") or 0),
+                number(row.get("passed") or 0),
+                percent(row.get("success_rate")),
+                duration(row.get("mean_duration_seconds")),
+                number(row.get("total_tokens")),
+            ]
+            for row in rows
+        ],
+        [
+            attribute,
+            "runs #",
+            "evaluated #",
+            "passed #",
+            "success rate",
+            "mean time",
+            "tokens #",
+        ],
+    )
+
+
+def _verdict_listing(data: HistoryData) -> str:
+    """A page listing every verdict with the runs that carry it."""
+    counts: dict[str, int] = {}
+    for run in data.runs:
+        verdict = verdict_of(run)
+        if verdict is not None:
+            counts[verdict] = counts.get(verdict, 0) + 1
+    return render_listing(
+        "Verdicts",
+        "every verdict and the runs that carry it; a row opens those runs",
+        [
+            [
+                _link_to("verdicts", verdict),
+                number(count),
+                percent(count / len(data.runs) if data.runs else None),
+            ]
+            for verdict, count in sorted(counts.items())
+        ],
+        ["verdict", "runs #", "share of all runs"],
+    )
 
 
 def _not_passed(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1018,42 +1461,47 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
             ]
         ),
     ]
-    if report.kind in ("agent", "runtime"):
+    if report.experiments:
+        body.append("<h2>Experiments this subject took part in</h2>")
+        body.append(
+            table(
+                ["experiment", "title", "type", "runs #", "evaluated #", "passed #",
+                 "success rate", "mean time", "tokens #"],
+                [
+                    [
+                        _experiment_link(row.get("uid")),
+                        esc(row.get("title")),
+                        esc(row.get("type")),
+                        number(row.get("runs") or 0),
+                        number(row.get("evaluated") or 0),
+                        number(row.get("passed") or 0),
+                        percent(row.get("success_rate")),
+                        duration(row.get("mean_duration_seconds")),
+                        number(row.get("total_tokens")),
+                    ]
+                    for row in report.experiments
+                ],
+            )
+        )
+    if report.tasks:
         body.append("<h2>Tasks this subject worked</h2>")
         body.append(
             table(
-                ["task", "runs #", "passed #", "success rate", "mean time", "tokens #"],
+                ["task", "category", "difficulty", "runs #", "passed #", "success rate",
+                 "mean time", "tokens #"],
                 [
                     [
-                        esc(task),
-                        number(len(group)),
-                        number(sum(1 for run in group if verdict_of(run) == PASSED)),
-                        percent(
-                            (sum(1 for run in group if verdict_of(run) == PASSED) / len(group))
-                            if group
-                            else None
-                        ),
-                        duration(
-                            sum(
-                                value
-                                for value in (duration_seconds(run) for run in group)
-                                if value is not None
-                            )
-                            / sum(1 for run in group if duration_seconds(run) is not None)
-                            if any(duration_seconds(run) is not None for run in group)
-                            else None
-                        ),
-                        number(
-                            sum(
-                                (run.get("observations") or {}).get("total_tokens") or 0
-                                for run in group
-                            )
-                            or None
-                        ),
+                        f'<a href="{ROOT_TOKEN}tasks/{esc(row.get("uid"))}/index.html">'
+                        f"{esc(row.get('uid'))}</a>",
+                        esc(row.get("category")),
+                        esc(row.get("difficulty")),
+                        number(row.get("runs") or 0),
+                        number(row.get("passed") or 0),
+                        percent(row.get("success_rate")),
+                        duration(row.get("mean_duration_seconds")),
+                        number(row.get("total_tokens")),
                     ]
-                    for task, group in sorted(
-                        _group_by(runs=report.runs, key="task_uid").items()
-                    )
+                    for row in report.tasks
                 ],
             )
         )
@@ -1065,7 +1513,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
                     ["run", "version", "enabled", "verification", "note"],
                     [
                         [
-                            esc(row.get("run_uid")),
+                            _run_link({"uid": row.get("run_uid")}),
                             esc(row.get("plugin_version")),
                             "yes" if row.get("enabled") else "no",
                             f'<span class="badge {_badge_css(row.get("verification_status"))}">'
@@ -1082,7 +1530,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
                     ["run", "requested", "observed", "source", "verification"],
                     [
                         [
-                            esc(row.get("run_uid")),
+                            _run_link({"uid": row.get("run_uid")}),
                             esc(row.get("requested_model")),
                             esc(row.get("observed_model")),
                             esc(row.get("value_source")),
@@ -1212,6 +1660,46 @@ def write_report_tree(
     )
     write("plugins/index.html", _plugin_listing(stats["plugins"]))
     write("models/index.html", _model_listing(stats["models"]))
+    write("categories/index.html", _subject_listing("Categories", data, "category"))
+    write("difficulties/index.html", _subject_listing("Difficulties", data, "difficulty"))
+    write("verdicts/index.html", _verdict_listing(data))
+    write(
+        f"{RUNS_DIRECTORY}/index.html",
+        render_listing(
+            "Runs",
+            "every recorded run, newest first",
+            _run_rows(order_by_start(data.runs)[::-1], _all_variants(data)),
+            _runs_headers(),
+        ),
+    )
+
+    for run in data.runs:
+        uid = str(run["uid"])
+        report = build_run_report(data, uid, dataset=dataset)
+        if report is not None:
+            write(
+                f"{RUNS_DIRECTORY}/{uid}/index.html",
+                render_run(report, generated_at=generated_at),
+            )
+
+    for stats_key, stats_field, kind, directory in (
+        ("by_category", "category", "category", "categories"),
+        ("by_difficulty", "difficulty", "difficulty", "difficulties"),
+    ):
+        builders = {"category": build_category_report, "difficulty": build_difficulty_report}
+        for row in stats[stats_key]:
+            label = str(row.get(stats_field))
+            write(
+                f"{directory}/{slugify(label)}/index.html",
+                render_subject(
+                    builders[kind](data, label), generated_at=generated_at
+                ),
+            )
+    for verdict in sorted(stats["verdicts"]):
+        write(
+            f"verdicts/{slugify(verdict)}/index.html",
+            render_subject(build_verdict_report(data, verdict), generated_at=generated_at),
+        )
 
     for row in stats["agents"]:
         label = str(row.get("agent"))

@@ -453,6 +453,74 @@ def dashboard(data: HistoryData) -> dict[str, Any]:
     }
 
 
+def build_category_report(data: HistoryData, label: str) -> SubjectReport:
+    """Every run of one task category, whichever experiment it came from."""
+    labels = {
+        str(row.get("uid")): str(row.get("category") or "(unknown)") for row in data.tasks
+    }
+    return _subject(
+        data,
+        "category",
+        label,
+        [run for run in data.runs if labels.get(str(run.get("task_uid"))) == label],
+    )
+
+
+def build_difficulty_report(data: HistoryData, label: str) -> SubjectReport:
+    """Every run of one difficulty, whichever experiment it came from."""
+    labels = {
+        str(row.get("uid")): str(row.get("difficulty") or "(unknown)") for row in data.tasks
+    }
+    return _subject(
+        data,
+        "difficulty",
+        label,
+        [run for run in data.runs if labels.get(str(run.get("task_uid"))) == label],
+    )
+
+
+def build_verdict_report(data: HistoryData, label: str) -> SubjectReport:
+    """Every evaluated run that carries one verdict.
+
+    A verdict belongs to an evaluation, not to a run: a run that was never
+    scored has no verdict, so it belongs to none of these pages rather than to
+    an invented one.
+    """
+    return _subject(
+        data,
+        "verdict",
+        label,
+        [run for run in data.runs if verdict_of(run) == label],
+    )
+
+
+def build_run_report(
+    data: HistoryData, run_uid: str, dataset: Any = None
+) -> RunReport | None:
+    """One run as it was recorded, or ``None`` when the history does not hold it."""
+    run = next((row for row in data.runs if str(row.get("uid")) == str(run_uid)), None)
+    if run is None:
+        return None
+    parameters = None
+    for variant in data.variants_for(str(run.get("experiment_uid") or "")):
+        if str(variant.get("uid")) == str(run.get("variant_uid")):
+            parameters = variant.get("values")
+            break
+    task_uid = str(run.get("task_uid") or "")
+    return RunReport(
+        run=run,
+        parameters=parameters,
+        experiment=data.experiment(str(run.get("experiment_uid") or "")),
+        task=data.task(task_uid) if task_uid else None,
+        definition=task_definition(dataset, task_uid) if task_uid else None,
+        plugin_states=[row for row in data.plugins if row.get("run_uid") == run.get("uid")],
+        model_state=next(
+            (row for row in data.models if row.get("run_uid") == run.get("uid")), None
+        ),
+        unverified=unverified_configurations(scope_to_runs(data, [run])),
+    )
+
+
 def scope_to_runs(data: HistoryData, runs: list[dict[str, Any]]) -> HistoryData:
     """The same history narrowed to one set of runs; used by sub-reports."""
     run_uids = {run.get("uid") for run in runs}
@@ -509,6 +577,29 @@ class SubjectReport:
     variants: list[dict[str, Any]] = field(default_factory=list)
     unverified: list[dict[str, Any]] = field(default_factory=list)
     observations: list[dict[str, Any]] = field(default_factory=list)
+    experiments: list[dict[str, Any]] = field(default_factory=list)
+    tasks: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RunReport:
+    """One run, on its own page.
+
+    A run is the smallest piece of evidence this project keeps, and a reader
+    sent to a single run uid wants everything that belongs to it: which
+    experiment and which configuration it was, what task, what the evaluator
+    said, what the agent reported, which plugins were observed next to it and
+    where the raw artifacts live.
+    """
+
+    run: dict[str, Any]
+    parameters: Any = None
+    experiment: dict[str, Any] | None = None
+    task: dict[str, Any] | None = None
+    definition: dict[str, Any] | None = None
+    plugin_states: list[dict[str, Any]] = field(default_factory=list)
+    model_state: dict[str, Any] | None = None
+    unverified: list[dict[str, Any]] = field(default_factory=list)
 
 
 def task_definition(dataset: Any, uid: str) -> dict[str, Any] | None:
@@ -617,7 +708,47 @@ def _subject(
         variants=_variants_of(data, ordered),
         unverified=unverified_configurations(scope_to_runs(data, ordered)),
         observations=list(observations or []),
+        experiments=_group_summary(data, ordered, "experiment_uid", kind="experiment"),
+        tasks=_group_summary(data, ordered, "task_uid", kind="task"),
     )
+
+
+def _group_summary(
+    data: HistoryData,
+    runs: list[dict[str, Any]],
+    key: str,
+    *,
+    kind: str,
+) -> list[dict[str, Any]]:
+    """One summarised row per value of a run field, so a page can answer
+    "which experiments / which tasks was this in" without another click."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for run in runs:
+        value = run.get(key)
+        groups.setdefault(str(value) if value is not None else "(none)", []).append(run)
+    rows: list[dict[str, Any]] = []
+    for name, group in sorted(groups.items()):
+        if kind == "experiment":
+            detail = data.experiment(name) or {}
+            rows.append(
+                {
+                    "uid": name,
+                    "title": detail.get("title"),
+                    "type": detail.get("type"),
+                    **summarize_runs(group),
+                }
+            )
+        else:
+            detail = data.task(name) or {}
+            rows.append(
+                {
+                    "uid": name,
+                    "category": detail.get("category"),
+                    "difficulty": detail.get("difficulty"),
+                    **summarize_runs(group),
+                }
+            )
+    return rows
 
 
 def build_agent_report(data: HistoryData, label: str) -> SubjectReport:
