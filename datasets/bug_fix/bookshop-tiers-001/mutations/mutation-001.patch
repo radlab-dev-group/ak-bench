@@ -1,0 +1,13 @@
+diff --git a/src/bookshop/pricing.py b/src/bookshop/pricing.py
+index 3302860..adc727e 100644
+--- a/src/bookshop/pricing.py
++++ b/src/bookshop/pricing.py
+@@ -66,7 +66,7 @@ class Basket:
+ def discount_tier(subtotal_cents: int) -> tuple[Decimal | None, int]:
+     """The tier a subtotal earns: ``(fraction, threshold)`` or ``(None, 0)``."""
+     for threshold, fraction in TIERS:
+-        if subtotal_cents >= threshold:
++        if subtotal_cents > threshold:
+             return fraction, threshold
+     return None, 0
+ 

@@ -1,0 +1,14 @@
+diff --git a/src/bookshop/orders.py b/src/bookshop/orders.py
+index cb9c1bd..781f6dc 100644
+--- a/src/bookshop/orders.py
++++ b/src/bookshop/orders.py
+@@ -129,9 +129,6 @@ class OrderStore:
+         """Cancel an open or confirmed order, returning any reserved stock."""
+         order = self.get(number)
+         self._require(order, Status.CANCELLED)
+-        if order.status is Status.CONFIRMED:
+-            for line in order.lines:
+-                self.catalog.release(line.sku, line.quantity)
+         order.status = Status.CANCELLED
+         order.events.append("cancelled")
+         return order
