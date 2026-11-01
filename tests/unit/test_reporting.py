@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from akbench.reporting.data import (
     build_experiment_report,
     build_task_report,
+    build_variant_report,
     collect_history,
     configuration_ranking,
     dashboard,
@@ -30,6 +31,7 @@ from akbench.reporting.render import (
     percent,
     render_experiment,
     render_index,
+    render_variant,
     write_report_tree,
 )
 from akbench.storage.db import create_db_engine
@@ -540,6 +542,90 @@ def test_experiment_page_shows_the_ranking_with_bars(database_url: str) -> None:
     assert "knowledge_enabled=False" in page
     assert 'class="bar"' in page
     assert "against the baseline" in page
+
+
+def test_the_experiment_page_links_each_variant_to_its_own_page(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A variant uid is a link only to a page that exists.
+
+    The Variants table names the recordings, and each uid opens its own page:
+    the page the tree writes for that uid, and nothing else.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    page = (root / "experiments" / "demo@1.0.0" / "index.html").read_text(encoding="utf-8")
+    for variant_uid in ("v-1", "v-2"):
+        # root-addressed, so it resolves from this page two directories deep
+        assert (
+            f'href="../../experiments/demo@1.0.0/variants/{variant_uid}/index.html"' in page
+        ), variant_uid
+    for variant_uid in ("v-1", "v-2"):
+        assert (
+            root / "experiments" / "demo@1.0.0" / "variants" / variant_uid / "index.html"
+        ).is_file()
+
+
+def test_the_variant_page_is_one_recording_not_the_pooled_row(
+    database_url: str,
+) -> None:
+    """The variant page states the recording's own numbers, not the merged ones.
+
+    The ranking row it was pooled into is stated too, on its own, because a
+    reader who arrived from a variant uid wants to see where those runs were
+    counted.
+    """
+    store = _seeded(database_url)
+    store.record_plan(
+        experiment_uid="demo@1.0.0",
+        title="demo",
+        experiment_type="configuration",
+        descriptor_id="demo",
+        descriptor_version="1.0.0",
+        config_hash="sha256:cfg2",
+        variants=[
+            {
+                "uid": "v-3",
+                "index": 2,
+                "values": {"knowledge_enabled": False},
+                "is_baseline": False,
+            },
+        ],
+        snapshots=[{"kind": "agent", "id": "codex", "version": "1.0.0", "digest": "sha256:agent"}],
+    )
+    store.record_run(
+        _run(
+            "run-third",
+            started_at="2026-10-31T09:00:00+00:00",
+            finished_at="2026-10-31T09:02:00+00:00",
+            observations={"total_tokens": 50},
+        ),
+        experiment_uid="demo@1.0.0",
+        variant_uid="v-3",
+        task=_task_stub(),
+    )
+
+    data = collect_history(store)
+    report = build_variant_report(data, "demo@1.0.0", "v-3")
+    page = render_variant(report)
+
+    # one run of its own, and its token total is 50, not the pooled 150
+    assert report.summary["runs"] == 1
+    assert "In the configuration ranking" in page
+    assert "The other recordings of this configuration" in page
+    assert "v-1" in page
+    assert "runs of this recording" in page.lower() or "Runs of this recording" in page
+
+
+def test_the_run_page_links_to_its_variant(database_url: str, tmp_path: Path) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    run = (
+        tmp_path / "reports" / "runs" / "run-pass" / "index.html"
+    ).read_text(encoding="utf-8")
+    assert 'href="../../experiments/demo@1.0.0/variants/v-1/index.html"' in run
 
 
 def test_the_experiment_page_pools_a_configuration_into_one_row(database_url: str) -> None:

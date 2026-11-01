@@ -8,6 +8,8 @@ works from a USB stick as well as from a web server.
 data/reports/
   index.html                    dashboard
   experiments/<uid>/index.html  one page per experiment
+  experiments/<uid>/variants/<vuid>/index.html  one recording of a configuration,
+                                                 its runs and where it was ranked
   tasks/<uid>/index.html        one page per task
   tasks/index.html              every recorded task
   agents/index.html             one row per agent identity
@@ -77,6 +79,19 @@ reading as a zero, and ties share a place the way a competition ranks them.
 The **recording** column of a row states how many recordings it pooled, which
 tasks it rests on and the start-to-finish window of the runs it was measured
 in.
+
+**A variant is a page.** A variant uid names one recording of one
+configuration, and it opens that recording on its own page under the
+experiment that planned it. The page states what the recording was (the values,
+the config hash, the baseline), the numbers of that recording alone, the row of
+the configuration ranking it was pooled into — stated as the ranking states it,
+so the two cannot disagree — and the other variant uids that carry the same
+values. It is the place where the difference between two recordings of one
+configuration is visible again, because the ranking row merges them. The uid is
+linked from the experiment's variant table, from the run page of every run it
+was recorded under, and from the sibling recordings' pages; the experiment's
+variant table links to the same pages, and a uid that planned no runs still
+opens, with its runs table empty and its numbers unstated.
 
 **Run tables carry their own context.** Every run table — on the task, the
 experiment and the agent, runtime, plugin and model pages — shows the factor

@@ -659,6 +659,27 @@ class ExperimentReport:
 
 
 @dataclass(frozen=True)
+class VariantReport:
+    """One planned variant: the recording it produced, and where it ranks.
+
+    A variant is one recording of one configuration — the values, the agent and
+    the runtime that ran them — and it is the unit the history records runs
+    under. The ranking merged the recordings of a configuration into one row, so
+    a variant page is what still shows a single recording on its own: its runs,
+    its numbers, the row it was pooled into, and the other variant uids that
+    carry the same values.
+    """
+
+    variant: dict[str, Any]
+    experiment: dict[str, Any]
+    runs: list[dict[str, Any]]
+    summary: dict[str, Any] = field(default_factory=dict)
+    configuration: dict[str, Any] | None = None
+    siblings: list[dict[str, Any]] = field(default_factory=list)
+    unverified: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class TaskReport:
     """One task: every run of it, whichever experiment it came from."""
 
@@ -772,6 +793,69 @@ def build_experiment_report(data: HistoryData, uid: str) -> ExperimentReport:
         snapshots=data.snapshots_for(uid),
         metrics=data.metrics_for(uid),
         summary=summarize_runs(runs),
+        unverified=unverified_configurations(scope_to_runs(data, runs)),
+    )
+
+
+def build_variant_report(
+    data: HistoryData, experiment_uid: str, variant_uid: str
+) -> VariantReport | None:
+    """One variant of one experiment, or ``None`` when it was never planned.
+
+    A variant uid is unique inside its experiment and says nothing outside it,
+    so both uids are needed to name one. The configuration row is looked for in
+    this experiment's own ranking: it is the row this recording was pooled
+    into, which is what a reader who arrived from a variant uid wants to see.
+    """
+    variant = next(
+        (
+            row
+            for row in data.variants_for(experiment_uid)
+            if str(row.get("uid")) == str(variant_uid)
+        ),
+        None,
+    )
+    if variant is None:
+        return None
+    runs = order_by_start(
+        [
+            run
+            for run in data.runs
+            if str(run.get("experiment_uid")) == str(experiment_uid)
+            and str(run.get("variant_uid")) == str(variant_uid)
+        ]
+    )
+    ranked = configuration_ranking(
+        data.runs_for_experiment(experiment_uid),
+        {str(experiment_uid): data.variants_for(experiment_uid)},
+    )
+    configuration = next(
+        (row for row in ranked if row.get("config") == _values_label(variant.get("values"))),
+        None,
+    )
+    siblings = [
+        {
+            "uid": row.get("uid"),
+            "is_baseline": bool(row.get("is_baseline")),
+            **summarize_runs(
+                [
+                    run
+                    for run in data.runs_for_experiment(experiment_uid)
+                    if str(run.get("variant_uid")) == str(row.get("uid"))
+                ]
+            ),
+        }
+        for row in data.variants_for(experiment_uid)
+        if _values_label(row.get("values")) == _values_label(variant.get("values"))
+        and str(row.get("uid")) != str(variant_uid)
+    ]
+    return VariantReport(
+        variant=variant,
+        experiment=data.experiment(experiment_uid) or {"uid": experiment_uid},
+        runs=runs,
+        summary=summarize_runs(runs),
+        configuration=configuration,
+        siblings=siblings,
         unverified=unverified_configurations(scope_to_runs(data, runs)),
     )
 

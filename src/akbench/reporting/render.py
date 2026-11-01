@@ -26,6 +26,7 @@ from akbench.reporting.data import (
     RunReport,
     SubjectReport,
     TaskReport,
+    VariantReport,
     build_agent_report,
     build_category_report,
     build_difficulty_report,
@@ -35,6 +36,7 @@ from akbench.reporting.data import (
     build_run_report,
     build_runtime_report,
     build_task_report,
+    build_variant_report,
     build_verdict_report,
     configuration_ranking,
     dashboard,
@@ -1007,6 +1009,28 @@ def _leaderboard(data: HistoryData) -> str:
     )
 
 
+def variant_page_path(experiment_uid: Any, variant_uid: Any) -> str:
+    """Where the page of one variant lives, relative to the root of the tree.
+
+    A variant uid is unique inside its experiment and says nothing outside it,
+    so the page of one hangs under the experiment that planned it. The same
+    relative path is used by the writer and by every link, because a variant
+    page is linked from the experiment page two directories up and from a run
+    page four, and only a root-addressed path is right in both.
+    """
+    return f"experiments/{experiment_uid}/variants/{variant_uid}/index.html"
+
+
+def _variant_link(experiment_uid: Any, variant_uid: Any) -> str:
+    """A link to one variant's page, addressed from the root of the tree."""
+    if variant_uid is None:
+        return NOT_MEASURED
+    return (
+        f'<a href="{ROOT_TOKEN}{esc(variant_page_path(experiment_uid, variant_uid))}">'
+        f"{esc(variant_uid)}</a>"
+    )
+
+
 def _experiment_link(uid: Any) -> str:
     """A link to an experiment report, addressed from the root of the tree.
 
@@ -1199,7 +1223,10 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
                     else NOT_MEASURED,
                 ],
                 ["parameters", _parameters_cell(report.parameters)],
-                ["variant", esc(run.get("variant_uid"))],
+                [
+                    "variant",
+                    _variant_link(run.get("experiment_uid"), run.get("variant_uid")),
+                ],
                 [
                     "agent",
                     _link_to("agents", run.get("agent"))
@@ -1571,7 +1598,7 @@ def render_experiment(
             ["variant", "values", "config hash", "baseline", "runs #"],
             [
                 [
-                    esc(variant.get("uid")),
+                    _variant_link(experiment.get("uid"), variant.get("uid")),
                     _values(variant.get("values")),
                     f'<code>{esc(variant.get("config_hash"))}</code>',
                     "yes" if variant.get("is_baseline") else "no",
@@ -1579,7 +1606,10 @@ def render_experiment(
                 ]
                 for variant in report.variants
             ],
-        ),
+        )
+        + '<p class="bar-note">a variant is one recording of one configuration; the '
+        "ranking above counts the configurations, so several of these rows can share "
+        "one ranking row &mdash; a uid opens that recording on its own page</p>",
         "<h2>Pinned descriptors</h2>",
         table(
             ["kind", "id", "version", "digest"],
@@ -1719,6 +1749,127 @@ def _definition_section(report: TaskReport) -> str:
                 "definition, and it may not be what the runs below were given.</div>"
             )
     return "".join(parts)
+
+
+def render_variant(report: VariantReport, *, generated_at: str | None = None) -> str:
+    """One recording of one configuration: its own runs, and where it ranks.
+
+    The ranking pooled the recordings of a configuration into a single row, so
+    this page is what puts a single recording back on its own: what it planned,
+    the runs it produced, the numbers of those runs alone, and the row of the
+    ranking they were counted in — stated as the ranking states it, so the two
+    cannot disagree.
+    """
+    variant = report.variant
+    experiment = report.experiment
+    summary = report.summary
+    body = [
+        "<h1>Variant</h1>",
+        f'<p class="subtitle">{esc(variant.get("uid"))} of '
+        f"{_experiment_link(experiment.get('uid'))}</p>",
+        cards(
+            [
+                ("runs", number(summary.get("runs"))),
+                ("evaluated", number(summary.get("evaluated"))),
+                ("success rate", percent(summary.get("success_rate"))),
+                ("mean time", duration(summary.get("mean_duration_seconds"))),
+                ("input tokens", number(summary.get("input_tokens"))),
+                ("generated tokens", number(summary.get("output_tokens"))),
+                ("tokens", number(summary.get("total_tokens"))),
+                ("tool calls", number(summary.get("tool_calls"))),
+            ]
+        ),
+        "<h2>What this recording was</h2>",
+        table(
+            ["field", "value"],
+            [
+                ["variant", esc(variant.get("uid"))],
+                ["experiment", _experiment_link(experiment.get("uid"))],
+                ["configuration", _values(variant.get("values"))],
+                ["config hash", f'<code>{esc(variant.get("config_hash"))}</code>'],
+                ["baseline", "yes" if variant.get("is_baseline") else "no"],
+            ],
+        ),
+    ]
+    if report.configuration:
+        body.append("<h2>In the configuration ranking</h2>")
+        body.append(
+            "<p class='muted'>the ranking states one row per configuration, over all "
+            "of its recordings; these are the numbers of that row, not of this "
+            "recording alone</p>"
+        )
+        body.append(
+            table(
+                [
+                    "place",
+                    "configuration",
+                    "recordings #",
+                    "runs #",
+                    "evaluated #",
+                    "success rate",
+                    "mean time",
+                    *MEAN_TOKEN_HEADERS,
+                    "against the baseline",
+                ],
+                [
+                    [
+                        _place_cell(report.configuration),
+                        _values(report.configuration.get("config")),
+                        number(report.configuration.get("recordings") or 0),
+                        number(report.configuration.get("runs") or 0),
+                        number(report.configuration.get("evaluated") or 0),
+                        percent(report.configuration.get("success_rate")),
+                        duration(report.configuration.get("mean_duration_seconds")),
+                        *_mean_token_cells(report.configuration),
+                        esc(report.configuration.get("vs_baseline") or ""),
+                    ]
+                ],
+            )
+        )
+    if report.siblings:
+        body.append("<h2>The other recordings of this configuration</h2>")
+        body.append(
+            "<p class='muted'>the same values, recorded under another variant uid; "
+            "the ranking counts this page's runs and these together</p>"
+        )
+        body.append(
+            table(
+                [
+                    "variant",
+                    "baseline",
+                    "runs #",
+                    "evaluated #",
+                    "passed #",
+                    "success rate",
+                    "mean time",
+                    *TOKEN_HEADERS,
+                ],
+                [
+                    [
+                        _variant_link(experiment.get("uid"), row.get("uid")),
+                        "yes" if row.get("is_baseline") else "no",
+                        number(row.get("runs") or 0),
+                        number(row.get("evaluated") or 0),
+                        number(row.get("passed") or 0),
+                        percent(row.get("success_rate")),
+                        duration(row.get("mean_duration_seconds")),
+                        *_token_cells(row),
+                    ]
+                    for row in report.siblings
+                ],
+            )
+        )
+    body.append("<h2>Runs of this recording</h2>")
+    body.append(
+        "<p class='muted'>in the order they started; the parameters column is the "
+        "configuration each run was executed under</p>"
+    )
+    body.append(_runs_table(report.runs, [variant]))
+    body.append("<h2>Not verified</h2>")
+    body.append(_notice(report.unverified))
+    return page(
+        f"Variant {variant.get('uid')}", "".join(body), generated_at=generated_at
+    )
 
 
 def render_task(report: TaskReport, *, generated_at: str | None = None) -> str:
@@ -1956,6 +2107,13 @@ def write_report_tree(
             f"experiments/{uid}/index.html",
             render_experiment(build_experiment_report(data, uid), generated_at=generated_at),
         )
+        for planned in data.variants_for(uid):
+            variant_report = build_variant_report(data, uid, str(planned.get("uid")))
+            if variant_report is not None:
+                write(
+                    variant_page_path(uid, planned.get("uid")),
+                    render_variant(variant_report, generated_at=generated_at),
+                )
     for task in data.tasks:
         uid = str(task["uid"])
         write(
