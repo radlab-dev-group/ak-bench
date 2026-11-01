@@ -44,8 +44,15 @@ def test_dataset_list_json_shape(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert payload["count"] == 2
-    assert {task["id"] for task in payload["tasks"]} == {"wordcount-001", "slugify-001"}
+    assert payload["count"] == 6
+    assert {task["id"] for task in payload["tasks"]} == {
+        "wordcount-001",
+        "bookshop-tiers-001",
+        "bookshop-stock-002",
+        "slugify-001",
+        "notes-search-001",
+        "notes-sync-001",
+    }
     assert {task["category"] for task in payload["tasks"]} == {"bug_fix", "new_feature"}
     for task in payload["tasks"]:
         assert task["digest"].startswith("sha256:")
@@ -53,9 +60,9 @@ def test_dataset_list_json_shape(project: Path) -> None:
 
 def test_dataset_list_category_filter(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--category", "bug_fix", "--json"])
-    assert _payload(result.output)["count"] == 1
+    assert _payload(result.output)["count"] == 3
     result = runner.invoke(app, ["dataset", "list", "--category", "new_feature", "--json"])
-    assert _payload(result.output)["count"] == 1
+    assert _payload(result.output)["count"] == 3
     result = runner.invoke(app, ["dataset", "list", "--category", "nope", "--json"])
     assert _payload(result.output)["count"] == 0
 
@@ -65,7 +72,7 @@ def test_dataset_validate_reports_ok(project: Path) -> None:
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     assert payload["ok"] is True
-    assert payload["tasks"] == 2
+    assert payload["tasks"] == 6
 
 
 def test_dataset_validate_fails_on_broken_task(project: Path) -> None:
@@ -76,7 +83,10 @@ def test_dataset_validate_fails_on_broken_task(project: Path) -> None:
     assert result.exit_code == 1
     payload = _payload(result.output)
     assert payload["ok"] is False
-    assert any("hidden tests" in issue for issue in payload["results"][0]["issues"])
+    # The task order is the directory order, so the broken one is found by name
+    # rather than by position in the list.
+    broken = [entry for entry in payload["results"] if entry["task"].startswith("wordcount-001")]
+    assert broken and any("hidden tests" in issue for issue in broken[0]["issues"])
 
 
 def test_dataset_validate_verifies_mutation(project: Path) -> None:
@@ -84,9 +94,15 @@ def test_dataset_validate_verifies_mutation(project: Path) -> None:
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     checks = {entry["task"]: entry["checks"] for entry in payload["results"]}
+    # Every bug-fix task has to arrive at "verified": its hidden tests pass on
+    # the pinned base commit and fail once the mutation is applied.
     assert checks["wordcount-001@1.0.0"]["mutation_verified"] == "verified"
+    assert checks["bookshop-tiers-001@1.0.0"]["mutation_verified"] == "verified"
+    assert checks["bookshop-stock-002@1.0.0"]["mutation_verified"] == "verified"
     # A new-feature task has no mutation to verify.
     assert checks["slugify-001@1.0.0"]["mutation_verified"] == "no_mutation"
+    assert checks["notes-search-001@1.0.0"]["mutation_verified"] == "no_mutation"
+    assert checks["notes-sync-001@1.0.0"]["mutation_verified"] == "no_mutation"
 
 
 def test_dataset_show_json_shape(project: Path) -> None:

@@ -92,17 +92,48 @@ pass.
 
 ## Shipped tasks
 
-The repository ships one task per convention, as the reference examples:
-
-| task | category | base state vs. hidden tests |
-|---|---|---|
-| `wordcount-001` | `bug_fix` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
-| `slugify-001` | `new_feature` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| task | category | difficulty | fixture | base state vs. hidden tests |
+|---|---|---|---|---|
+| `wordcount-001` | `bug_fix` | easy | `wordcount` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `bookshop-tiers-001` | `bug_fix` | hard | `bookshop` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `bookshop-stock-002` | `bug_fix` | expert | `bookshop` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `slugify-001` | `new_feature` | easy | `textkit` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `notes-search-001` | `new_feature` | hard | `notesapi` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `notes-sync-001` | `new_feature` | expert | `notesapi` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
 `tests/integration/test_workspaces.py`: the hidden tests must fail on the base
 state and pass against a reference implementation.
+
+### What makes the harder tasks hard
+
+The two `bookshop` tasks are one working Flask service with two defects. Each
+defect leaves the fixture's own suite green, so an agent cannot watch a red
+test: `bookshop-tiers-001` is wrong only at a subtotal that sits exactly on a
+tier threshold, and `bookshop-stock-002` is a missing release that shows up as
+an inventory count nobody asserts on. Finding either means reading the rules
+and following an invariant.
+
+The two `notesapi` tasks are specifications rather than puzzles: `search_notes`
+and `merge` are declared, their contract is written in the module docstring,
+and the body raises `NotImplementedError`. `notes-sync-001` is the harder of
+the pair because its contract has to be complete — every branch says who wins
+and which list the id lands in, including the branches a careless spec would
+leave out (an older client write, a conflict, an id only the server has).
+
+### Fixtures and their dependencies
+
+A task runs with the interpreter that runs AK-Bench, so a third-party package a
+fixture imports is a dataset requirement. `bookshop` and `notesapi` need Flask,
+declared as the `datasets` extra:
+
+```bash
+uv pip install -e ".[dev,datasets]"
+```
+
+A missing dependency is reported by the evaluator as an infrastructure error,
+never as an agent failure.
 
 ## CLI
 
