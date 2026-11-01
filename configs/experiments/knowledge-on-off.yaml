@@ -1,5 +1,6 @@
 # Knowledge ON/OFF against one agent, model and task set (plan section 25,
-# example B).
+# example B). The model is pinned explicitly: without it the agent would fall
+# back to its own default, which the router under test may not serve.
 #
 # The factor is a router-plugin configuration, so the experiment names a
 # managed runtime: AK-Bench starts the instance and owns its environment, which
@@ -19,6 +20,7 @@ experiment:
     version: "1.0.0"
     config:
       sandbox_mode: workspace-write
+      model: qwen/Qwen3.8-27B
 
   execution:
     mode: router
@@ -29,6 +31,7 @@ experiment:
   dataset:
     filters:
       categories: [bug_fix]
+      task_ids: [wordcount-001, slugify-001]
 
   factors:
     strategy: full_factorial

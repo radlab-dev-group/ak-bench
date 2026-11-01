@@ -26,6 +26,12 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.8",
 ]
+# The Flask-based dataset tasks (datasets/_sources/flask*) are evaluated with
+# this interpreter, so the web framework is a dataset requirement, not an
+# agent one. It is optional so the core benchmark stays lightweight.
+datasets = [
+    "flask>=2.3",
+]
 
 [project.scripts]
 akbench = "akbench.cli.main:main"

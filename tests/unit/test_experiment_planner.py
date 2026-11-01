@@ -71,10 +71,10 @@ def test_plan_counts_are_the_product_of_the_axes(planner: ExperimentPlanner) -> 
     plan = planner.plan(experiment(document("full-matrix")))
 
     counts = plan.counts
-    assert counts.variants == 6, "knowledge on/off x three models"
+    assert counts.variants == 4, "knowledge on/off x two models"
     assert counts.repetitions == 3
     assert counts.tasks == 1
-    assert counts.runs == counts.tasks * counts.variants * counts.repetitions == 18
+    assert counts.runs == counts.tasks * counts.variants * counts.repetitions == 12
 
 
 def test_variant_ids_are_stable_and_distinct(planner: ExperimentPlanner) -> None:
@@ -97,7 +97,9 @@ def test_a_plugin_factor_becomes_an_environment_request(planner: ExperimentPlann
     plan = planner.plan(experiment(document("knowledge-on-off")))
 
     for variant in plan.variants:
-        assert "model" not in variant.agent_config, "knowledge is not an agent parameter"
+        assert "knowledge_enabled" not in variant.agent_config, (
+            "knowledge is configured on the runtime, not on the agent"
+        )
         assert "knowledge_enabled" in variant.environment_requests
         assert "env" in variant.applies["knowledge_enabled"]
 
@@ -107,7 +109,7 @@ def test_one_factor_at_a_time_produces_a_reference_variant(planner: ExperimentPl
 
     baselines = [variant for variant in plan.variants if variant.is_baseline]
     assert len(baselines) == 1
-    assert baselines[0].values == {"model": "auto_codex"}
+    assert baselines[0].values == {"model": "qwen/Qwen3.8-27B"}
 
 
 def test_the_plan_pins_the_descriptors_it_used(planner: ExperimentPlanner) -> None:
@@ -326,7 +328,7 @@ def test_the_descriptor_kind_of_a_plan_survives_round_trip(planner: ExperimentPl
 
     assert plan.experiment.digest.startswith("sha256:")
     assert plan.summary()["strategy"] == "full_factorial"
-    assert plan.as_dict()["counts"]["runs"] == 18
+    assert plan.as_dict()["counts"]["runs"] == 12
 
 
 def test_dimension_registry_rejects_an_unknown_id(planner: ExperimentPlanner) -> None:

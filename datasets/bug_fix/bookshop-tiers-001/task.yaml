@@ -1,0 +1,42 @@
+# Bug-fix task: the tier discount boundary.
+#
+# The catalogue and the service are a real, working Flask app (the seed
+# directory is cached with a fixed identity, so the pinned commit is
+# reproducible without a remote). The defect is small and the repository's
+# own test suite does not reach for it: it never prices a basket whose
+# subtotal sits exactly on a tier threshold.
+schema_version: "1.0"
+id: bookshop-tiers-001
+version: "1.0.0"
+title: The five percent tier is lost at exactly one hundred dollars
+description: >-
+  A basket whose subtotal is exactly 10 000 cents (or 50 000, or 200 000) is
+  charged the wrong discount. Restore the documented tier behaviour.
+
+task:
+  category: bug_fix
+  difficulty: hard
+
+  repository:
+    source: datasets/_sources/bookshop
+    ref: HEAD
+    notes: seed fixture directory
+
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      Inclusive thresholds become exclusive. The repository suite prices
+      baskets away from the thresholds, so only the hidden tests prove the
+      defect exists.
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 600
+  constraints:
+    - do not change the public API of the bookshop package
+    - do not modify the repository test suite under tests/
+    - do not change the tier thresholds or the tax rate
+    - do not add third-party dependencies

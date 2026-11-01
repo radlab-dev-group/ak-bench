@@ -25,7 +25,11 @@ from typing import Any
 
 from akbench.agents.contract import AgentConfig, AgentStatus
 from akbench.agents.errors import AgentConfigError
-from akbench.agents.registry import AgentRegistry, validate_agent_config
+from akbench.agents.registry import (
+    AgentRegistry,
+    effective_parameters,
+    validate_agent_config,
+)
 from akbench.core.errors import AKBenchmarkError
 from akbench.core.time import utc_now
 from akbench.datasets.workspace import WorkspaceManager
@@ -92,6 +96,7 @@ class RunOrchestrator:
             agent_id=config.agent_id,
             mode=config.mode,
             runtime_id=config.runtime_id,
+            requested_model=_requested_model(config.agent_parameters),
             started_at=utc_now(),
         )
         return self._run_with_retries(config, context)
@@ -186,12 +191,17 @@ class RunOrchestrator:
                 context,
                 RunPreparationError("an artifacts_dir is required to record agent output"),
             )
+        # The descriptor's declared defaults are part of the configuration, so
+        # they are filled before validation and recorded as what was applied:
+        # an agent left on an adapter's own fallback is an unrecorded choice.
+        parameters = effective_parameters(entry.descriptor, config.agent_parameters)
         agent_config = AgentConfig(
             agent_id=entry.descriptor.id,
-            parameters=dict(config.agent_parameters),
+            parameters=parameters,
             artifacts_dir=config.artifacts_dir,
             runtime=self._binding(config),
         )
+        context.agent_parameters = dict(parameters)
         try:
             validate_agent_config(entry.descriptor, agent_config)
         except AKBenchmarkError as exc:
@@ -392,3 +402,8 @@ def _first_line(text: str | None) -> str | None:
 
 def _run_uid() -> str:
     return f"run-{utc_now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+
+
+def _requested_model(agent_parameters: dict[str, Any]) -> str | None:
+    model = agent_parameters.get("model")
+    return str(model) if model else None

@@ -1,0 +1,40 @@
+# Bug-fix task: cancelling a confirmed order must give the stock back.
+#
+# The defect leaves every count the repository suite looks at intact: it is the
+# reservation left behind that breaks the catalogue, and the suite never cancels
+# a confirmed order. Finding it means following an invariant, not a red test.
+schema_version: "1.0"
+id: bookshop-stock-002
+version: "1.0.0"
+title: Cancelling a confirmed order leaves the stock reserved
+description: >-
+  Cancelling an order that was already confirmed moves it to cancelled without
+  returning the reserved stock to the catalogue. Restore the documented rule
+  that a cancellation gives back what a confirmation took.
+
+task:
+  category: bug_fix
+  difficulty: expert
+
+  repository:
+    source: datasets/_sources/bookshop
+    ref: HEAD
+    notes: seed fixture directory
+
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      The release loop is removed from cancel(). The repository suite keeps
+      passing: it only cancels open orders, which hold no reservation.
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 900
+  constraints:
+    - do not change the public API of the bookshop package
+    - do not modify the repository test suite under tests/
+    - do not change the transition table
+    - do not add third-party dependencies

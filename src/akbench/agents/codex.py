@@ -59,6 +59,7 @@ INFRA_ERROR_MARKERS: tuple[str, ...] = (
     "timed out",
     "temporarily unavailable",
     "rate limit",
+    "high demand",
     "502",
     "503",
     "504",
@@ -524,10 +525,17 @@ class CodexAdapter:
         observations: dict[str, Any],
         stderr_text: str,
     ) -> tuple[AgentStatus, FailureClass]:
-        """Split infrastructure failures from agent failures (plan rule 11)."""
-        low = stderr_text.lower()
-        infra_hit = [marker for marker in INFRA_ERROR_MARKERS if marker in low]
-        stream_failed = bool(observations.get("stream_error") or observations.get("turn_failed"))
+        """Split infrastructure failures from agent failures (plan rule 11).
+
+        Provider capacity errors arrive on the JSONL stream, not on stderr, so
+        both channels are scanned: an error that names the environment as the
+        cause is never counted against the agent.
+        """
+        stream_error = str(observations.get("stream_error") or "")
+        turn_failed = str(observations.get("turn_failed") or "")
+        haystack = " ".join((stderr_text, stream_error, turn_failed)).lower()
+        infra_hit = [marker for marker in INFRA_ERROR_MARKERS if marker in haystack]
+        stream_failed = bool(stream_error or turn_failed)
 
         if state.cancelled and not state.timed_out:
             return AgentStatus.CANCELLED, FailureClass.AGENT

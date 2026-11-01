@@ -1,0 +1,40 @@
+# New-feature task: the synchronisation merge.
+#
+# The fixture is a real, working Flask note store (the seed directory is cached
+# with a fixed identity, so the pinned commit is reproducible without a
+# remote). merge is declared, documented in its module, and unimplemented; the
+# hidden tests fail on the base commit by design, the opposite of the bug-fix
+# convention.
+schema_version: "1.0"
+id: notes-sync-001
+version: "1.0.0"
+title: Implement the note synchronisation merge from its specification
+description: >-
+  notesapi.merge is declared and specified in src/notesapi/sync.py but raises
+  NotImplementedError. Implement it from the written contract, keeping the
+  store and its tests intact.
+
+task:
+  category: new_feature
+  difficulty: expert
+
+  repository:
+    source: datasets/_sources/notesapi
+    ref: HEAD
+    notes: seed fixture directory
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 900
+  constraints:
+    - do not change the public API of the notesapi package
+    - do not modify the repository test suite under tests/
+    - do not change the store or the error types
+    - do not add third-party dependencies
+    - do not modify the merge spec in the module docstring
+    - do not change the shape of MergeResult
+  notes: >-
+    The base state fails the hidden tests by design: the feature is missing,
+    which is the opposite of the bug-fix convention where hidden tests pass on
+    the base commit.

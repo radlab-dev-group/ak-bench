@@ -7,6 +7,7 @@ from a run record that renders as content.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,13 +19,17 @@ from akbench.reporting.data import (
     duration_seconds,
     summarize_runs,
     unverified_configurations,
+    variant_comparison,
 )
 from akbench.reporting.render import (
     NOT_MEASURED,
+    STYLE,
     duration,
     esc,
     number,
     percent,
+    render_experiment,
+    render_index,
     write_report_tree,
 )
 from akbench.storage.db import create_db_engine
@@ -256,6 +261,148 @@ def test_pages_link_to_the_stylesheet_at_their_own_depth(database_url: str, tmp_
     assert '{{' not in experiment
 
 
+def test_pages_link_to_the_stylesheet_at_deeper_uids(database_url: str, tmp_path: Path) -> None:
+    """An experiment uid may contain a slash (``adhoc/<agent>``); the page one
+    level deeper still reaches the stylesheet."""
+    store = _seeded(database_url)
+    store.record_plan(
+        experiment_uid="adhoc/codex",
+        title="adhoc codex",
+        experiment_type="adhoc",
+        descriptor_id="codex",
+        descriptor_version="1.0.0",
+        config_hash="sha256:cfg",
+        variants=[{"uid": "v-1", "index": 0, "values": {}, "is_baseline": True}],
+        snapshots=[{"kind": "agent", "id": "codex", "version": "1.0.0", "digest": "sha256:agent"}],
+    )
+    store.record_run(
+        _run("run-adhoc"),
+        experiment_uid="adhoc/codex",
+        variant_uid="v-1",
+        task=_task_stub(),
+    )
+
+    write_report_tree(tmp_path / "reports", collect_history(store))
+    page = (tmp_path / "reports" / "experiments" / "adhoc" / "codex" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'href="../../../assets/style.css"' in page
+    page_directory = tmp_path / "reports" / "experiments" / "adhoc" / "codex"
+    linked = (page_directory / "../../../assets/style.css").resolve()
+    assert linked == (tmp_path / "reports" / "assets" / "style.css").resolve()
+    assert linked.is_file()
+
+
+# ------------------------------------------------------------------- ranking
+
+
+def _two_variants() -> tuple[list[dict], list[dict]]:
+    variants = [
+        {"uid": "v-on", "values": {"knowledge_enabled": True}, "is_baseline": False},
+        {"uid": "v-off", "values": {"knowledge_enabled": False}, "is_baseline": True},
+    ]
+    runs = [
+        {"uid": "a", "variant_uid": "v-on", "evaluation": {"verdict": "passed"},
+         "started_at": "2026-10-30T10:00:00+00:00", "finished_at": "2026-10-30T10:01:00+00:00"},
+        {"uid": "b", "variant_uid": "v-on", "evaluation": {"verdict": "passed"},
+         "started_at": "2026-10-30T10:00:00+00:00", "finished_at": "2026-10-30T10:01:00+00:00"},
+        {"uid": "c", "variant_uid": "v-off", "evaluation": {"verdict": "failed"},
+         "started_at": "2026-10-30T10:00:00+00:00", "finished_at": "2026-10-30T10:03:00+00:00"},
+    ]
+    return runs, variants
+
+
+def test_variant_comparison_places_the_better_configuration_first() -> None:
+    runs, variants = _two_variants()
+
+    rows = variant_comparison(runs, variants)
+
+    assert [row["uid"] for row in rows] == ["v-on", "v-off"]
+    assert [row["place"] for row in rows] == [1, 2]
+    assert rows[0]["success_rate"] == 1.0
+    assert rows[1]["success_rate"] == 0.0
+    assert rows[0]["is_baseline"] is False
+    assert rows[1]["is_baseline"] is True
+    # the baseline has no delta to itself; the other row states its difference
+    assert rows[1]["vs_baseline"] == ""
+    assert "success +100%" in rows[0]["vs_baseline"]
+    assert "time 0.33x" in rows[0]["vs_baseline"]
+
+
+def test_variant_comparison_shares_a_place_and_skips_the_next_one() -> None:
+    runs, variants = _two_variants()
+    for run in runs:
+        run["evaluation"] = {"verdict": "passed"}
+        run["started_at"] = "2026-10-30T10:00:00+00:00"
+        run["finished_at"] = "2026-10-30T10:01:00+00:00"
+
+    rows = variant_comparison(runs, variants)
+
+    assert [row["place"] for row in rows] == [1, 1]
+    assert rows[0]["uid"] == "v-on"
+    assert rows[1]["uid"] == "v-off"
+
+
+def test_a_configuration_without_evaluation_holds_no_place() -> None:
+    """A run that was never scored says nothing: it is not a failure either."""
+    runs, variants = _two_variants()
+    for run in runs:
+        if run["variant_uid"] == "v-off":
+            run.pop("evaluation")
+
+    rows = variant_comparison(runs, variants)
+
+    assert [(row["uid"], row["place"]) for row in rows] == [("v-on", 1), ("v-off", None)]
+    assert rows[1]["success_rate"] is None
+    # v-on cannot be compared against a baseline that has no measured rate
+    assert "not comparable" in rows[0]["vs_baseline"]
+
+
+def test_comparison_of_no_variants_is_empty() -> None:
+    assert variant_comparison([], []) == []
+
+
+def test_experiment_page_shows_the_ranking_with_bars(database_url: str) -> None:
+    data = collect_history(_seeded(database_url))
+
+    page = render_experiment(build_experiment_report(data, "demo@1.0.0"))
+
+    assert "Configuration ranking" in page
+    assert 'class="place top">1<' in page
+    assert 'class="place">' in page
+    assert "knowledge_enabled=False" in page
+    assert 'class="bar"' in page
+    assert "against the baseline" in page
+
+
+def test_the_index_leads_with_the_ranking_of_every_configuration(
+    database_url: str,
+) -> None:
+    """The first thing a report is asked is "which one won", so it comes first."""
+    data = collect_history(_seeded(database_url))
+
+    page = render_index(data)
+
+    assert "Configuration ranking" in page
+    assert "knowledge_enabled=False" in page
+    assert "knowledge_enabled=True" in page
+    # the ranking precedes the verdict table it is easier to read than verdicts
+    assert page.index("Configuration ranking") < page.index("<h2>Verdicts</h2>")
+    # a place stays inside its own experiment
+    assert "a place is stated within its own experiment" in page
+
+
+def test_a_ranking_of_nothing_says_so_rather_than_ranking_nothing() -> None:
+    from akbench.reporting.render import _ranking
+
+    rendered = _ranking([], [])
+    assert rendered == '<p class="muted">nothing recorded</p>'
+    unscored = _ranking(
+        [{"uid": "r", "variant_uid": "v-1"}], [{"uid": "v-1", "values": {}, "is_baseline": True}]
+    )
+    assert "no place can be stated" in unscored
+
+
 def test_experiment_page_shows_pass_and_failure(
     database_url: str, tmp_path: Path
 ) -> None:
@@ -307,3 +454,252 @@ def test_report_objects_carry_their_own_scoped_findings(database_url: str) -> No
     assert experiment.metrics[0]["metric"] == "task_success"
     assert any(item["kind"] == "plugin" for item in experiment.unverified)
     assert task.summary["runs"] == 2
+
+
+# ----------------------------------------------------------- link integrity
+
+
+def _resolve_links(root: Path) -> list[tuple[str, str]]:
+    """Every href in the tree that points at a file that was never written."""
+    from urllib.parse import unquote
+
+    broken: list[tuple[str, str]] = []
+    for page in sorted(root.rglob("*.html")):
+        for href in re.findall(r'href="([^"]+)"', page.read_text(encoding="utf-8")):
+            if href.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            if not (page.parent / unquote(href)).resolve().exists():
+                broken.append((str(page.relative_to(root)), href))
+    return broken
+
+
+def test_no_link_in_the_tree_points_at_a_page_that_was_not_written(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A dashboard label that reads like a link has to lead somewhere.
+
+    The dashboard links verdicts, categories, difficulties, agents, runtimes,
+    plugins and models; each of those needs a page, or the report is a wall of
+    dead ends. This walks every written page and resolves every href.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+
+    assert _resolve_links(tmp_path / "reports") == []
+
+
+def test_the_subject_pages_behind_the_dashboard_labels_exist(
+    database_url: str, tmp_path: Path
+) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    relative = {
+        str(path.relative_to(tmp_path / "reports"))
+        for path in (tmp_path / "reports").rglob("index.html")
+    }
+
+    assert "categories/bug-fix/index.html" in relative
+    assert "difficulties/easy/index.html" in relative
+    assert "verdicts/passed/index.html" in relative
+    assert "verdicts/failed/index.html" in relative
+    assert "agents/codex-0.1.0/index.html" in relative
+    assert "runs/index.html" in relative
+
+
+# ---------------------------------------------------------------- run pages
+
+
+def test_every_run_has_its_own_page_with_its_parameters_and_results(
+    database_url: str, tmp_path: Path
+) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+    page = (root / "runs" / "run-pass" / "index.html").read_text(encoding="utf-8")
+
+    assert "run-pass" in page
+    # where the run belongs, with the configuration it was executed under
+    assert "knowledge_enabled=False" in page
+    assert "wordcount-001@1.0.0" in page
+    # and what came out of it
+    assert "passed" in page
+    assert "Evaluation" in page
+
+
+def test_a_run_uid_is_a_link_from_every_table_that_lists_runs(
+    database_url: str, tmp_path: Path
+) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    task_page = (root / "tasks" / "wordcount-001@1.0.0" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'href="../../runs/run-pass/index.html"' in task_page
+    experiment_page = (root / "experiments" / "demo@1.0.0" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'href="../../runs/run-pass/index.html"' in experiment_page
+
+
+def test_a_subject_page_lists_the_experiments_of_that_subject(
+    database_url: str, tmp_path: Path
+) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+    agent_page = (root / "agents" / "codex-0.1.0" / "index.html").read_text(encoding="utf-8")
+
+    assert "Experiments this subject took part in" in agent_page
+    assert "demo@1.0.0" in agent_page
+    assert "Tasks this subject worked" in agent_page
+
+
+# -------------------------------------------------------------- sortability
+
+
+def test_table_headers_are_clickable_and_the_script_ships_with_the_page(
+    database_url: str, tmp_path: Path
+) -> None:
+    """Sorting is the one script a page carries, and only reorders rows.
+
+    A page read with scripting off still shows every row, so the default order
+    has to stay in the document; the script must not be an external asset.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+    page = (root / "tasks" / "wordcount-001@1.0.0" / "index.html").read_text(encoding="utf-8")
+
+    assert 'class="sortable"' in page
+    assert 'aria-sort="none"' in page
+    assert "<script>" in page
+    assert "<script src=" not in page
+    # with scripting off the reader still gets every row, in the order that was
+    # written in: sorting is a view over the recorded history, not a change to it
+    assert page.index("run-fail") < page.index("run-pass")
+    rows = re.findall(r'<a href="[^"]*runs/([^/]+)/index\.html"', page)
+    assert rows == ["run-fail", "run-pass"]
+
+
+def test_runs_are_ordered_by_the_time_they_started() -> None:
+    """Start order, with the uid breaking a tie: no clock, no reordering."""
+    from akbench.reporting.data import order_by_start
+
+    runs = [
+        {"uid": "later", "started_at": "2026-11-01T10:00:00+00:00"},
+        {"uid": "earlier", "started_at": "2026-11-01T09:00:00+00:00"},
+        {"uid": "no-start"},
+        {"uid": "also-earlier", "started_at": "2026-11-01T09:00:00+00:00"},
+    ]
+
+    ordered = [run["uid"] for run in order_by_start(runs)]
+
+    assert ordered == ["also-earlier", "earlier", "later", "no-start"]
+
+# ------------------------------------------------------- listing pages link out
+
+
+def test_the_agent_and_runtime_listings_link_to_their_detail_pages(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A row on an agents or runtimes listing is a dead end without the page.
+
+    The listing and the page it points at sit next to each other in the tree
+    (agents/index.html links to agents/<slug>/index.html), so the link is built
+    from the same slug that the page is written under.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    agents = (root / "agents" / "index.html").read_text(encoding="utf-8")
+    assert 'href="codex-0.1.0/index.html">codex@0.1.0</a>' in agents
+
+    runtimes = (root / "runtimes" / "index.html").read_text(encoding="utf-8")
+    assert 'href="llm-router/index.html">llm-router</a>' in runtimes
+
+
+def test_every_token_table_splits_input_generated_total_and_tool_calls(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A single token column hides what was paid and what was generated.
+
+    Every table that reports tokens carries the four cost columns, and a run
+    whose agent reported nothing shows a dash rather than a zero.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    for page in (
+        root / "index.html",
+        root / "agents" / "codex-0.1.0" / "index.html",
+        root / "runs" / "run-pass" / "index.html",
+    ):
+        text = page.read_text(encoding="utf-8")
+        for header in (
+            "input tokens",
+            "generated tokens",
+            "total tokens",
+            "tool calls",
+        ):
+            assert header in text, (page.name, header)
+
+
+def test_the_sorted_header_remembers_the_direction_it_applied(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A second click on the same header must flip, not repeat, the sort.
+
+    The direction is remembered on the header itself (data-dir), because the
+    script that does the sorting has no other memory between clicks.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    page = (
+        (tmp_path / "reports" / "tasks" / "wordcount-001@1.0.0" / "index.html")
+        .read_text(encoding="utf-8")
+    )
+
+    # the direction a click applied is written back onto the header, and the
+    # next click reads it before deciding which way to go: without that mark a
+    # second click would sort the same way as the first
+    assert 'cells[i].setAttribute("data-dir", ascending ? "asc" : "desc")' in page
+    assert 'getAttribute("data-dir") !== "asc"' in page
+    # and a page that has never been clicked ships with no direction marked,
+    # so the first click is the ascending one
+    assert 'data-dir="' not in page
+
+# ------------------------------------------------------------------- layout
+
+
+def test_a_wide_table_marks_its_own_density(database_url: str, tmp_path: Path) -> None:
+    """A run table is wide, and the page has to be wider than it is.
+
+    The density class is chosen from the column count so the stylesheet can
+    tighten the type exactly where a row of numbers would else run past the
+    edge of the screen.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    runs_page = (root / "runs" / "index.html").read_text(encoding="utf-8")
+    assert '<table class="dense x-dense">' in runs_page
+    verdicts = (root / "verdicts" / "index.html").read_text(encoding="utf-8")
+    assert "<table>" in verdicts
+    assert "x-dense" not in verdicts
+
+
+def test_the_page_grows_with_the_window_rather_than_capping_early() -> None:
+    """A 78rem column on a 2560px monitor wastes half the glass.
+
+    The page is fluid: it fills the window up to a cap set for ultrawide, with
+    the number columns hugging their content so the widest table fits.
+    """
+    assert "max-width: 78rem" not in STYLE
+    assert "--page-max" in STYLE
+    assert "width: min(100%, var(--page-max))" in STYLE
+    assert "table.dense td.num, table.dense th.num { width: 1%; white-space: nowrap; }" in STYLE
