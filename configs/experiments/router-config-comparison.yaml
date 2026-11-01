@@ -36,7 +36,7 @@ experiment:
   dataset:
     filters:
       categories: [bug_fix, new_feature]
-      task_ids: [wordcount-001, slugify-001]
+      task_ids: [bookshop-tiers-001, bookshop-stock-002, notes-search-001, notes-sync-001]
 
   factors:
     strategy: custom_matrix
@@ -73,4 +73,4 @@ experiment:
     - total_tokens
 
   limits:
-    max_runs: 32
+    max_runs: 64
