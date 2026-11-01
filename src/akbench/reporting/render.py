@@ -153,6 +153,8 @@ footer::before { content: "└─ "; color: var(--line); }
 }
 .bar.cost > span { background: var(--warn); box-shadow: 0 0 8px rgba(255, 200, 87, .28); }
 .bar-note { color: var(--muted); font-size: .75rem; margin: -.6rem 0 1.2rem; }
+.cell .bar { margin-top: .25rem; }
+.cell { min-width: 5.5rem; }
 @media print {
   .bar { border-color: #999; background: #f2f2f2; }
   .bar > span { background: #00664f; box-shadow: none; }
@@ -344,6 +346,11 @@ def _bar(fraction: float | None, *, css: str = "") -> str:
     return f'<div class="{classes}"><span style="width: {width:.1f}%"></span></div>'
 
 
+def _cell_bar(rendered: str, fraction: float | None, *, css: str = "") -> str:
+    """A value with its bar underneath: the number stays the readable part."""
+    return f'<div class="cell">{rendered}{_bar(fraction, css=css)}</div>'
+
+
 def _fraction(value: float | None, maximum: float | None) -> float | None:
     """``value`` against the largest value of the column, ``None`` stays ``None``."""
     if value is None or not maximum:
@@ -428,36 +435,63 @@ def _ranking(runs: list[dict[str, Any]], variants: list[dict[str, Any]]) -> str:
 
 
 def _leaderboard(data: HistoryData) -> str:
-    """The leading configuration of every experiment that had more than one."""
+    """Every configuration of every experiment, best first: the front-page answer.
+
+    A place belongs to the experiment that measured it. There is deliberately
+    no league across experiments: two experiments that did not share a task
+    set, a model or a day are not comparable, and a merged ranking would
+    invent a comparison the runs never supported.
+    """
     rows: list[list[str]] = []
     for experiment in data.experiments:
         uid = str(experiment.get("uid"))
         ranked = variant_comparison(data.runs_for_experiment(uid), data.variants_for(uid))
-        leaders = [row for row in ranked if row.get("place") == 1]
-        if not leaders:
-            continue
-        for row in leaders:
+        for row in ranked:
+            place = row.get("place")
+            place_cell = (
+                f'<span class="place top">{place}</span>'
+                if place == 1
+                else f'<span class="place">{place if place is not None else "&mdash;"}</span>'
+            )
             label = esc(row.get("config"))
             if row.get("is_baseline"):
                 label += ' <span class="badge">baseline</span>'
             rows.append(
                 [
+                    place_cell,
                     _experiment_link(uid),
                     label,
                     number(row.get("runs") or 0),
-                    percent(row.get("success_rate")),
+                    number(row.get("evaluated") or 0),
+                    _cell_bar(percent(row.get("success_rate")), row.get("success_rate")),
                     duration(row.get("mean_duration_seconds")),
                     number(row.get("total_tokens")),
+                    esc(row.get("vs_baseline") or ""),
                 ]
             )
     if not rows:
         return (
-            '<p class="muted">no experiment has ranked more than one evaluated '
-            "configuration yet</p>"
+            '<p class="muted">nothing recorded yet: a ranking needs runs, and a '
+            "place needs an evaluated run. Run an experiment with --store.</p>"
         )
-    return table(
-        ["experiment", "leading configuration", "runs #", "success rate", "mean time", "tokens #"],
-        rows,
+    return (
+        table(
+            [
+                "place",
+                "experiment",
+                "configuration",
+                "runs #",
+                "evaluated #",
+                "success rate",
+                "mean time",
+                "tokens #",
+                "against the baseline",
+            ],
+            rows,
+        )
+        + '<p class="bar-note">a place is stated within its own experiment and only '
+        "for a configuration with an evaluated run; &mdash; means nothing was "
+        "evaluated, which is not the same as failing</p>"
     )
 
 
@@ -486,6 +520,8 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
             ]
         ),
         f'<p class="muted">{esc(stats["cost"]["reason"])}</p>',
+        "<h2>Configuration ranking</h2>",
+        _leaderboard(data),
         "<h2>Verdicts</h2>",
         table(
             ["verdict", "runs #", "share of evaluated"],
@@ -514,8 +550,6 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
         )
         if data.experiments
         else '<p class="muted">nothing recorded</p>',
-        "<h2>Leading configurations</h2>",
-        _leaderboard(data),
         "<h2>Results by category</h2>",
         _comparison_table(stats["by_category"], "category"),
         "<h2>Results by difficulty</h2>",

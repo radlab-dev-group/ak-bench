@@ -373,15 +373,21 @@ def test_experiment_page_shows_the_ranking_with_bars(database_url: str) -> None:
     assert "against the baseline" in page
 
 
-def test_the_index_leads_with_the_best_configuration_of_each_experiment(
+def test_the_index_leads_with_the_ranking_of_every_configuration(
     database_url: str,
 ) -> None:
+    """The first thing a report is asked is "which one won", so it comes first."""
     data = collect_history(_seeded(database_url))
 
     page = render_index(data)
 
-    assert "Leading configurations" in page
+    assert "Configuration ranking" in page
     assert "knowledge_enabled=False" in page
+    assert "knowledge_enabled=True" in page
+    # the ranking precedes the verdict table it is easier to read than verdicts
+    assert page.index("Configuration ranking") < page.index("<h2>Verdicts</h2>")
+    # a place stays inside its own experiment
+    assert "a place is stated within its own experiment" in page
 
 
 def test_a_ranking_of_nothing_says_so_rather_than_ranking_nothing() -> None:
