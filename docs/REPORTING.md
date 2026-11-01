@@ -48,11 +48,15 @@ per-agent, per-runtime, per-plugin and per-model comparison, and the recent
 experiments.
 
 Each experiment page adds a **Configuration ranking**: every variant with its
-place, its success rate, mean time and token total, and its difference against
+place, its success rate, mean time and token totals, and its difference against
 the declared baseline, followed by the same numbers drawn as bars. A place is
 only stated for a configuration that has an evaluated run; a configuration
 that was never scored holds no place rather than reading as a zero, and ties
-share a place the way a competition ranks them.
+share a place the way a competition ranks them. The same experiment is often
+recorded more than once — against another task set or on another day — and a
+configuration row would then repeat itself, so every ranking row also carries
+a **recording** column: which tasks it rests on and the start-to-finish window
+of the runs it was measured in.
 
 **Run tables carry their own context.** Every run table — on the task, the
 experiment and the agent, runtime, plugin and model pages — shows the factor
@@ -69,10 +73,18 @@ broken promise, so the report is checked that no href is a dead end.
 
 **Run tables sort.** Clicking a column header of a run table reorders its rows
 by that column — the one exception to the no-scripting rule, and a small,
-self-contained script that ships in the page, not an external asset. It
-reorders rows and nothing else: no number is computed or fetched, a value that
-was never measured sorts last rather than as zero, and a page read with
-scripting off still shows every row, in the order the history recorded.
+self-contained script that ships in the page, not an external asset. Clicking
+the same header again flips the direction: the first click sorts ascending,
+the next descending, and so on, with the applied direction marked on the
+header. It reorders rows and nothing else: no number is computed or fetched, a
+value that was never measured sorts last rather than as zero, and a page read
+with scripting off still shows every row, in the order the history recorded.
+
+**Tokens are stated as they were paid.** Every table that reports a token
+total splits it the way the agent reported it: input tokens, generated tokens
+and the total the two add up to, plus the tool calls the agent made. A column
+with no measurement in its runs shows a dash, not a zero — the agent reported
+nothing, and reporting nothing is not the same as reporting zero.
 
 **A run has its own page.** A run page states where the run belongs — the
 experiment, the task, the configuration it was executed under, the agent, the

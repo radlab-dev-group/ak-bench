@@ -596,3 +596,77 @@ def test_runs_are_ordered_by_the_time_they_started() -> None:
     ordered = [run["uid"] for run in order_by_start(runs)]
 
     assert ordered == ["also-earlier", "earlier", "later", "no-start"]
+
+# ------------------------------------------------------- listing pages link out
+
+
+def test_the_agent_and_runtime_listings_link_to_their_detail_pages(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A row on an agents or runtimes listing is a dead end without the page.
+
+    The listing and the page it points at sit next to each other in the tree
+    (agents/index.html links to agents/<slug>/index.html), so the link is built
+    from the same slug that the page is written under.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    agents = (root / "agents" / "index.html").read_text(encoding="utf-8")
+    assert 'href="codex-0.1.0/index.html">codex@0.1.0</a>' in agents
+
+    runtimes = (root / "runtimes" / "index.html").read_text(encoding="utf-8")
+    assert 'href="llm-router/index.html">llm-router</a>' in runtimes
+
+
+def test_every_token_table_splits_input_generated_total_and_tool_calls(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A single token column hides what was paid and what was generated.
+
+    Every table that reports tokens carries the four cost columns, and a run
+    whose agent reported nothing shows a dash rather than a zero.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    for page in (
+        root / "index.html",
+        root / "agents" / "codex-0.1.0" / "index.html",
+        root / "runs" / "run-pass" / "index.html",
+    ):
+        text = page.read_text(encoding="utf-8")
+        for header in (
+            "input tokens",
+            "generated tokens",
+            "total tokens",
+            "tool calls",
+        ):
+            assert header in text, (page.name, header)
+
+
+def test_the_sorted_header_remembers_the_direction_it_applied(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A second click on the same header must flip, not repeat, the sort.
+
+    The direction is remembered on the header itself (data-dir), because the
+    script that does the sorting has no other memory between clicks.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    page = (
+        (tmp_path / "reports" / "tasks" / "wordcount-001@1.0.0" / "index.html")
+        .read_text(encoding="utf-8")
+    )
+
+    # the direction a click applied is written back onto the header, and the
+    # next click reads it before deciding which way to go: without that mark a
+    # second click would sort the same way as the first
+    assert 'cells[i].setAttribute("data-dir", ascending ? "asc" : "desc")' in page
+    assert 'getAttribute("data-dir") !== "asc"' in page
+    # and a page that has never been clicked ships with no direction marked,
+    # so the first click is the ascending one
+    assert 'data-dir="' not in page
