@@ -42,21 +42,41 @@ single-page commands do the same.
 ## What the dashboard shows
 
 Experiment and run counts, the success rate with how many runs it rests on,
-verdict breakdown, the leading configuration of every experiment, results
+verdict breakdown, the ranking of every recorded configuration, results
 grouped by task category and difficulty, wall-clock time, token totals, a
 per-agent, per-runtime, per-plugin and per-model comparison, and the recent
 experiments.
 
-Each experiment page adds a **Configuration ranking**: every variant with its
-place, its success rate, mean time and token totals, and its difference against
-the declared baseline, followed by the same numbers drawn as bars. A place is
-only stated for a configuration that has an evaluated run; a configuration
-that was never scored holds no place rather than reading as a zero, and ties
-share a place the way a competition ranks them. The same experiment is often
-recorded more than once — against another task set or on another day — and a
-configuration row would then repeat itself, so every ranking row also carries
-a **recording** column: which tasks it rests on and the start-to-finish window
-of the runs it was measured in.
+**The dashboard ranking is one row per configuration.** A configuration is the
+factor values together with the agent and the runtime that ran them, so the
+same values under another agent, or on another runtime, hold their own row.
+Everything else is pooled into the one row: the second recording of an
+experiment, and the same configuration recorded in another experiment, both
+add their runs to it. The success rate is therefore pooled — the passes over
+the evaluations of all those runs, not an average of the recordings — and the
+**place is stated over the pooled runs**, which is what lets one row answer
+which configuration won across the whole history. Because the recordings are
+pooled, a row states where it came from: the **experiments** it was recorded
+in (the first linked, the rest counted) and how many **recordings** it merged,
+over what task set and what window of time. Two recordings need not share a
+task set, a model or a day, and the note under the table says so rather than
+hiding it behind a merged number. The token and tool-call columns of a ranking
+are **means per run**, not sums: a sum over a different number of runs is not
+a number to compare, and a run whose agent reported nothing stays missing
+rather than reading as zero.
+
+Each experiment page adds the same **Configuration ranking** over its own
+recordings: a row pools the variants that carry one configuration — the same
+values run by the same agent on the same runtime — so two recordings of an
+experiment that planned the same values twice become the one row they
+describe, counted over all of their runs, with the same means-per-run token
+columns and its difference against the declared baseline, followed by the same
+numbers drawn as bars. A place is only stated for a configuration that has an
+evaluated run; a configuration that was never scored holds no place rather than
+reading as a zero, and ties share a place the way a competition ranks them.
+The **recording** column of a row states how many recordings it pooled, which
+tasks it rests on and the start-to-finish window of the runs it was measured
+in.
 
 **Run tables carry their own context.** Every run table — on the task, the
 experiment and the agent, runtime, plugin and model pages — shows the factor

@@ -36,11 +36,11 @@ from akbench.reporting.data import (
     build_runtime_report,
     build_task_report,
     build_verdict_report,
+    configuration_ranking,
     dashboard,
     duration_seconds,
     order_by_start,
     unverified_configurations,
-    variant_comparison,
     variant_lookup,
     verdict_of,
 )
@@ -733,18 +733,36 @@ def _fraction(value: float | None, maximum: float | None) -> float | None:
     return value / maximum
 
 
+def _chart_labels(rows: list[dict[str, Any]]) -> list[str]:
+    """One name per ranking row, for a chart.
+
+    A configuration that was ranked under another agent or another runtime
+    appears twice with the same label, so only those rows carry the subject
+    that produced them; naming the agent in every other bar would be noise.
+    """
+    labels = [str(row.get("config") or "") for row in rows]
+    duplicated = {label for label in labels if labels.count(label) > 1}
+    return [
+        f"{label} \u00b7 {row.get('agent')} / {row.get('runtime')}"
+        if label in duplicated
+        else label
+        for label, row in zip(labels, rows, strict=True)
+    ]
+
+
 def _chart(rows: list[dict[str, Any]], key: str, *, css: str = "") -> str:
     """A bar chart of one measure across the ranked configurations."""
     values = [row.get(key) for row in rows]
     measured = [value for value in values if value is not None]
     maximum = max(measured) if measured else None
+    labels = _chart_labels(rows)
     parts = [
         '<div class="bar-row"><span class="who">'
-        + esc(row.get("config"))
+        + esc(label)
         + "</span>"
         + _bar(_fraction(row.get(key), maximum), css=css)
         + "</div>"
-        for row in rows
+        for label, row in zip(labels, rows, strict=True)
     ]
     return f'<div class="bars">{"".join(parts)}</div>'
 
@@ -769,23 +787,50 @@ def _token_cells(summary: dict[str, Any]) -> list[str]:
     ]
 
 
-def _recording_cell(row: dict[str, Any]) -> str:
-    """Which tasks a ranking row rests on and when those runs happened.
+# the same cost read per run: a ranking row pools every recording of a
+# configuration, and a sum over a different number of runs is not a comparison
+MEAN_TOKEN_HEADERS = [
+    "mean input tokens #",
+    "mean generated tokens #",
+    "mean total tokens #",
+    "mean tool calls #",
+]
 
-    The same experiment is often run more than once, and a configuration row
-    then repeats itself with nothing saying which of the two recordings it
-    came from; the task count and the period of its own runs tell them apart.
+
+def _mean_token_cells(row: dict[str, Any]) -> list[str]:
+    """The per-run token and tool-call cells of a pooled ranking row."""
+    return [
+        number(row.get("mean_input_tokens")),
+        number(row.get("mean_output_tokens")),
+        number(row.get("mean_total_tokens")),
+        number(row.get("mean_tool_calls")),
+    ]
+
+
+def _recording_cell(row: dict[str, Any]) -> str:
+    """How many recordings a ranking row pooled, which tasks it rests on and
+    when those runs happened.
+
+    A configuration is often recorded more than once — in another recording of
+    the same experiment, or in another experiment — and one row now stands for
+    all of them, so the row states how many recordings it merged and over what
+    window its runs were measured.
     """
     tasks = row.get("task_uids") or []
     if not tasks:
         return '<span class="muted">no run</span>'
+    recordings = int(row.get("recordings") or 0)
     started = _short_time(row.get("first_started"))
     finished = _short_time(row.get("last_finished"))
     window = f"{started} &rarr; {finished}" if started and finished else "not recorded"
     shown = ", ".join(str(task).split("@")[0] for task in tasks[:3])
     if len(tasks) > 3:
         shown += f" +{len(tasks) - 3}"
-    return f'{esc(shown)}<br /><span class="muted nowrap">{window}</span>' 
+    plural = "recording" if recordings == 1 else "recordings"
+    return (
+        f'{esc(shown)}<br /><span class="muted nowrap">{recordings} {plural}</span>'
+        f'<br /><span class="muted nowrap">{window}</span>'
+    )
 
 
 def _short_time(value: Any) -> str:
@@ -795,38 +840,97 @@ def _short_time(value: Any) -> str:
     return str(value).replace("T", " ")[:16]
 
 
-def _ranked_rows(rows: list[dict[str, Any]]) -> list[list[str]]:
+def _shows_subjects(rows: list[dict[str, Any]]) -> bool:
+    """Whether a ranking row has to name the agent and runtime it ran under.
+
+    A configuration is keyed by its values, its agent and its runtime, so two
+    rows differ by subject only when the ranking holds more than one of them.
+    With a single agent on a single runtime the line would repeat the same
+    string in every row and say nothing.
+    """
+    return len({row.get("agent") for row in rows}) > 1 or len(
+        {row.get("runtime") for row in rows}
+    ) > 1
+
+
+def _place_cell(row: dict[str, Any]) -> str:
+    place = row.get("place")
+    if place == 1:
+        return f'<span class="place top">{place}</span>'
+    return f'<span class="place">{place if place is not None else "&mdash;"}</span>'
+
+
+def _configuration_cell(row: dict[str, Any], *, subjects: bool) -> str:
+    """The configuration a row stands for, with its subject when that decides.
+
+    A baseline badge belongs to the configuration, not to one of its
+    recordings, so a configuration is a baseline if any recording of it was
+    declared one.
+    """
+    label = esc(row.get("config"))
+    if row.get("is_baseline"):
+        label += ' <span class="badge">baseline</span>'
+    if subjects:
+        label += (
+            f'<br /><span class="muted">{esc(row.get("agent"))} &middot; '
+            f"{esc(row.get('runtime'))}</span>"
+        )
+    return label
+
+
+def _experiments_cell(uids: list[Any]) -> str:
+    """The experiments a pooled row came from, the first one linked.
+
+    Naming them all would widen the column for the common case of a single
+    experiment; the count of the rest is stated, and the row below it says how
+    many recordings those experiments contributed.
+    """
+    if not uids:
+        return '<span class="muted">no experiment</span>'
+    shown = _experiment_link(uids[0])
+    if len(uids) > 1:
+        shown += f'<br /><span class="muted nowrap">+{len(uids) - 1} more</span>'
+    return shown
+
+
+def _ranked_rows(rows: list[dict[str, Any]], *, experiments: bool = False) -> list[list[str]]:
+    """The cells of a ranking table, one row per configuration.
+
+    ``experiments`` adds the column naming the experiments the pooled runs came
+    from; a page that is already about one experiment has nothing to name.
+    """
+    subjects = _shows_subjects(rows)
     table_rows: list[list[str]] = []
     for row in rows:
-        place = row.get("place")
-        place_cell = (
-            f'<span class="place top">{place}</span>'
-            if place == 1
-            else f'<span class="place">{place if place is not None else "&mdash;"}</span>'
-        )
-        label = esc(row.get("config"))
-        if row.get("is_baseline"):
-            label += ' <span class="badge">baseline</span>'
-        table_rows.append(
+        cells = [_place_cell(row), _configuration_cell(row, subjects=subjects)]
+        if experiments:
+            cells.append(_experiments_cell(row.get("experiments") or []))
+        cells.extend(
             [
-                place_cell,
-                label,
-                f'<span class="nowrap">{esc(row.get("uid"))}</span>',
                 _recording_cell(row),
                 number(row.get("runs") or 0),
                 number(row.get("evaluated") or 0),
-                percent(row.get("success_rate")),
+                _cell_bar(percent(row.get("success_rate")), row.get("success_rate")),
                 duration(row.get("mean_duration_seconds")),
-                *_token_cells(row),
+                *_mean_token_cells(row),
                 esc(row.get("vs_baseline") or ""),
             ]
         )
+        table_rows.append(cells)
     return table_rows
 
 
-def _ranking(runs: list[dict[str, Any]], variants: list[dict[str, Any]]) -> str:
-    """The place of every configuration, then the same numbers drawn to scale."""
-    rows = variant_comparison(runs, variants)
+def _ranking(
+    runs: list[dict[str, Any]], variants_by_experiment: dict[str, list[dict[str, Any]]]
+) -> str:
+    """The place of every configuration, then the same numbers drawn to scale.
+
+    The row of this page pools the variants that carry one configuration — the
+    same values run by the same agent on the same runtime — so two recordings
+    of an experiment that planned the same values twice become the one row they
+    describe, counted over all of their runs.
+    """
+    rows = configuration_ranking(runs, variants_by_experiment)
     if not rows:
         return '<p class="muted">nothing recorded</p>'
     if not any(row.get("place") is not None for row in rows):
@@ -839,13 +943,12 @@ def _ranking(runs: list[dict[str, Any]], variants: list[dict[str, Any]]) -> str:
             [
                 "place",
                 "configuration",
-                "variant",
                 "recording",
                 "runs #",
                 "evaluated #",
                 "success rate",
                 "mean time",
-                *TOKEN_HEADERS,
+                *MEAN_TOKEN_HEADERS,
                 "against the baseline",
             ],
             _ranked_rows(rows),
@@ -855,47 +958,23 @@ def _ranking(runs: list[dict[str, Any]], variants: list[dict[str, Any]]) -> str:
         + "<h3>Mean wall-clock time</h3>"
         + _chart(rows, "mean_duration_seconds", css="cost")
         + '<p class="bar-note">each bar is measured against the largest value in its own '
-        "column; time and tokens are compared only within this experiment</p>"
+        "column; time and tokens are compared only within this experiment, and a row "
+        "is one configuration over all of its recordings. The token and tool-call "
+        "columns are means per run, not sums</p>"
     )
 
 
 def _leaderboard(data: HistoryData) -> str:
-    """Every configuration of every experiment, best first: the front-page answer.
+    """Every configuration ever recorded, best first: the front-page answer.
 
-    A place belongs to the experiment that measured it. There is deliberately
-    no league across experiments: two experiments that did not share a task
-    set, a model or a day are not comparable, and a merged ranking would
-    invent a comparison the runs never supported.
+    A row is one configuration — the factor values together with the agent and
+    the runtime that ran them — and every run of it is pooled into that row,
+    whichever experiment or recording it came from. A place is therefore stated
+    over the pooled runs of the configuration rather than inside the experiment
+    that happened to record it, which is what makes the same configuration in
+    two experiments one row instead of two indistinguishable ones.
     """
-    rows: list[list[str]] = []
-    for experiment in data.experiments:
-        uid = str(experiment.get("uid"))
-        ranked = variant_comparison(data.runs_for_experiment(uid), data.variants_for(uid))
-        for row in ranked:
-            place = row.get("place")
-            place_cell = (
-                f'<span class="place top">{place}</span>'
-                if place == 1
-                else f'<span class="place">{place if place is not None else "&mdash;"}</span>'
-            )
-            label = esc(row.get("config"))
-            if row.get("is_baseline"):
-                label += ' <span class="badge">baseline</span>'
-            rows.append(
-                [
-                    place_cell,
-                    _experiment_link(uid),
-                    label,
-                    f'<span class="nowrap">{esc(row.get("uid"))}</span>',
-                    _recording_cell(row),
-                    number(row.get("runs") or 0),
-                    number(row.get("evaluated") or 0),
-                    _cell_bar(percent(row.get("success_rate")), row.get("success_rate")),
-                    duration(row.get("mean_duration_seconds")),
-                    *_token_cells(row),
-                    esc(row.get("vs_baseline") or ""),
-                ]
-            )
+    rows = configuration_ranking(data.runs, data.variants)
     if not rows:
         return (
             '<p class="muted">nothing recorded yet: a ranking needs runs, and a '
@@ -905,22 +984,26 @@ def _leaderboard(data: HistoryData) -> str:
         table(
             [
                 "place",
-                "experiment",
                 "configuration",
-                "variant",
+                "experiments",
                 "recording",
                 "runs #",
                 "evaluated #",
                 "success rate",
                 "mean time",
-                *TOKEN_HEADERS,
+                *MEAN_TOKEN_HEADERS,
                 "against the baseline",
             ],
-            rows,
+            _ranked_rows(rows, experiments=True),
         )
-        + '<p class="bar-note">a place is stated within its own experiment and only '
-        "for a configuration with an evaluated run; &mdash; means nothing was "
-        "evaluated, which is not the same as failing</p>"
+        + '<p class="bar-note">one row is one configuration: its factor values with the '
+        "agent and the runtime that ran them. Every run of that configuration is pooled "
+        "into the row, from however many experiments and recordings it came, and its "
+        "place is stated over the pooled runs &mdash; recordings need not share a task "
+        "set, a model or a day, which the *experiments* and *recording* columns state. "
+        "Tokens and tool calls are means per run, because a sum over a different number "
+        "of runs is not comparable; &mdash; means nothing was evaluated, which is not "
+        "the same as failing</p>"
     )
 
 
@@ -1469,7 +1552,7 @@ def render_experiment(
             ]
         ),
         "<h2>Configuration ranking</h2>",
-        _ranking(report.runs, report.variants),
+        _ranking(report.runs, {str(experiment.get("uid")): report.variants}),
         "<h2>Descriptor and validity</h2>",
         table(
             ["field", "value"],

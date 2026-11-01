@@ -284,88 +284,169 @@ def _values_label(values: Any) -> str:
     return str(values) if values else "(no factor: the reference configuration)"
 
 
-def _rank_key(row: dict[str, Any]) -> tuple:
+def _rank_key(row: dict[str, Any], token_field: str = "total_tokens") -> tuple:
     """The ordering of one configuration: better first.
 
     Success rate is the only column that may decide on its own; time and tokens
     break a tie and never outweigh a verdict. A missing time or token total
     sorts last rather than first, because "not measured" is not "free".
+    ``token_field`` is the token measure the comparison rests on: the sum for a
+    pool of runs, the per-run mean when the pools have different sizes.
     """
     return (
         -(row.get("success_rate") if row.get("success_rate") is not None else -1.0),
         row.get("mean_duration_seconds")
         if row.get("mean_duration_seconds") is not None
         else float("inf"),
-        row.get("total_tokens") if row.get("total_tokens") is not None else float("inf"),
+        row.get(token_field) if row.get(token_field) is not None else float("inf"),
     )
 
 
-def variant_comparison(
-    runs: list[dict[str, Any]], variants: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """One ranked row per variant of an experiment.
+def _mean_per_run(total: int | None, stated: int) -> float | None:
+    """A summed measure averaged over the runs that actually stated it.
 
-    The place is stated honestly: it is 1-based, ties share a place (the next
-    one is skipped, the way a competition ranks), and a variant with nothing
-    evaluated holds no place at all. A run that was never scored says nothing
-    about a configuration, and counting it as a failure would rank a missing
-    evaluation below a measured one.
+    ``None`` stays ``None``: a pool whose runs reported no tokens has no mean
+    either, and reading that as zero would rank an unmeasured configuration as
+    free.
     """
-    groups: dict[str, list[dict[str, Any]]] = {}
+    if total is None or not stated:
+        return None
+    return round(total / stated, 6)
+
+
+def _place_rows(rows: list[dict[str, Any]], token_field: str = "total_tokens") -> None:
+    """Put a place on every row with an evaluated run, best first, in place.
+
+    A place is 1-based and a tie shares a place, the next one skipped, the way
+    a competition ranks. A row with nothing evaluated holds no place at all: a
+    run that was never scored says nothing about a configuration, and counting
+    it as a failure would rank a measured one above an unmeasured one.
+    """
+    ranked = sorted(
+        (row for row in rows if row.get("success_rate") is not None),
+        key=lambda row: _rank_key(row, token_field),
+    )
+    for position, row in enumerate(ranked, start=1):
+        previous = ranked[position - 2] if position > 1 else None
+        tied = previous is not None and _rank_key(previous, token_field) == _rank_key(
+            row, token_field
+        )
+        row["place"] = previous["place"] if tied else position
+    for row in rows:
+        row.setdefault("place", None)
+    rows.sort(key=lambda row: (row.get("place") is None, _rank_key(row, token_field)))
+
+
+def configuration_ranking(
+    runs: list[dict[str, Any]],
+    variants_by_experiment: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """One ranked row per configuration, pooled over every run that recorded it.
+
+    A configuration is the factor values together with the agent and the
+    runtime that executed them: the same values run by another agent, or on
+    another runtime, are another configuration and hold their own row.
+    Everything else pools into the one row: a second recording of the same
+    experiment and the same configuration recorded in another experiment both
+    add their runs to it, so its success rate is the pooled one, its times are
+    averaged over all of the runs, and its tokens and tool calls are stated per
+    run rather than summed, because a sum over a different number of runs is
+    not a number to compare.
+
+    The place is computed on the pooled rows: a configuration that measured
+    well in two small experiments outranks one that measured well in a large
+    one, and a row says which experiments it came from so the reader can weigh
+    that. A run whose variant is not among the planned variants of its own
+    experiment is left out: the ranking lists configurations, and an unplanned
+    run states none.
+    """
+    values_by_variant: dict[tuple[str, str], Any] = {}
+    baseline_by_variant: dict[tuple[str, str], bool] = {}
+    for experiment_uid, variants in variants_by_experiment.items():
+        for variant in variants:
+            key = (str(experiment_uid), str(variant.get("uid")))
+            values_by_variant[key] = variant.get("values")
+            baseline_by_variant[key] = bool(variant.get("is_baseline"))
+
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for run in runs:
-        groups.setdefault(str(run.get("variant_uid")), []).append(run)
+        key = (str(run.get("experiment_uid")), str(run.get("variant_uid")))
+        if key not in values_by_variant:
+            continue
+        group_key = (
+            _values_label(values_by_variant[key]),
+            str(run.get("agent")),
+            str(run.get("runtime_id")),
+        )
+        groups.setdefault(group_key, []).append(run)
 
     rows: list[dict[str, Any]] = []
-    for variant in variants:
-        uid = str(variant.get("uid"))
-        group = groups.get(uid, [])
-        # the same experiment can be run twice, against different task sets and
-        # on different days; the configuration alone then repeats itself and two
-        # rows become indistinguishable, so each row also says which tasks it
-        # rests on and when those runs happened
+    for (config, agent, runtime), group in groups.items():
+        sources = {
+            (str(run.get("experiment_uid")), str(run.get("variant_uid"))) for run in group
+        }
         started = sorted(
             value for value in (run.get("started_at") for run in group) if value
         )
         finished = sorted(
             value for value in (run.get("finished_at") for run in group) if value
         )
+        summary = summarize_runs(group)
         rows.append(
             {
-                "uid": uid,
-                "config": _values_label(variant.get("values")),
-                "is_baseline": bool(variant.get("is_baseline")),
-                "tasks": len({str(run.get("task_uid")) for run in group if run.get("task_uid")}),
+                "config": config,
+                "agent": agent,
+                "runtime": runtime,
+                "experiments": sorted({experiment for experiment, _ in sources}),
+                "recordings": len(sources),
+                "is_baseline": any(baseline_by_variant[source] for source in sources),
+                "tasks": len(
+                    {str(run.get("task_uid")) for run in group if run.get("task_uid")}
+                ),
                 "task_uids": sorted(
                     {str(run.get("task_uid")) for run in group if run.get("task_uid")}
                 ),
                 "first_started": started[0] if started else None,
                 "last_finished": finished[-1] if finished else None,
-                **summarize_runs(group),
+                **summary,
+                # the sums stay in the row for the JSON and the future pages;
+                # the tables rank the per-run means, because a sum over a
+                # different number of runs is not comparable
+                "mean_input_tokens": _mean_per_run(
+                    summary["input_tokens"], summary["input_token_runs"]
+                ),
+                "mean_output_tokens": _mean_per_run(
+                    summary["output_tokens"], summary["output_token_runs"]
+                ),
+                "mean_total_tokens": _mean_per_run(
+                    summary["total_tokens"], summary["token_runs"]
+                ),
+                "mean_tool_calls": _mean_per_run(
+                    summary["tool_calls"], summary["tool_call_runs"]
+                ),
             }
         )
-
-    ranked = sorted(
-        (row for row in rows if row.get("success_rate") is not None),
-        key=_rank_key,
-    )
-    for position, row in enumerate(ranked, start=1):
-        previous = ranked[position - 2] if position > 1 else None
-        row["place"] = (
-            previous["place"] if previous is not None and _rank_key(previous) == _rank_key(row)
-            else position
+    rows.sort(
+        key=lambda row: (
+            str(row.get("first_started") or ""),
+            str(row.get("config")),
+            str(row.get("agent")),
+            str(row.get("runtime")),
         )
-    for row in rows:
-        row.setdefault("place", None)
-
-    rows.sort(key=lambda row: (row.get("place") is None, _rank_key(row)))
+    )
+    _place_rows(rows, token_field="mean_total_tokens")
 
     baseline = next((row for row in rows if row.get("is_baseline")), None)
     for row in rows:
-        row["vs_baseline"] = _vs_baseline(row, baseline)
+        row["vs_baseline"] = _vs_baseline(row, baseline, token_field="mean_total_tokens")
     return rows
 
 
-def _vs_baseline(row: dict[str, Any], baseline: dict[str, Any] | None) -> str:
+def _vs_baseline(
+    row: dict[str, Any],
+    baseline: dict[str, Any] | None,
+    token_field: str = "total_tokens",
+) -> str:
     """How one configuration differs from the declared baseline, in words."""
     if baseline is None or row is baseline:
         return ""
@@ -384,7 +465,7 @@ def _vs_baseline(row: dict[str, Any], baseline: dict[str, Any] | None) -> str:
         parts.append(f"time {ratio:.2f}x")
     else:
         parts.append("time not comparable")
-    tokens, base_tokens = row.get("total_tokens"), baseline.get("total_tokens")
+    tokens, base_tokens = row.get(token_field), baseline.get(token_field)
     if tokens is not None and base_tokens:
         parts.append(f"tokens {tokens / base_tokens:.2f}x")
     return ", ".join(parts)
