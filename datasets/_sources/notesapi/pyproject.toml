@@ -1,0 +1,8 @@
+[project]
+name = "notesapi"
+version = "1.0.0"
+description = "Flask note-taking fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
