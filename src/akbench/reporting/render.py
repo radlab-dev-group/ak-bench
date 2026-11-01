@@ -52,19 +52,27 @@ CSS_TOKEN = "{{css}}"
 ROOT_TOKEN = "{{root}}"
 
 STYLE = """
-/* AK-Bench report — a terminal read of the history, tuned for reading rather
-   than for looking like a terminal. The palette stays phosphor-green and the
-   type stays monospaced, because this is a machine record; the glow, the
-   scanlines and the vignette are gone, because they cost contrast and a long
-   table of numbers is read, not glanced at. Every value stays exactly as it
-   was measured: a style that flatters a number would be a lie in a nicer font.
-   A light scheme is used for print, because a black page wastes a toner. */
+/* AK-Bench report — a benchmark dashboard, built for comparing numbers.
+
+   The page is a dark, neutral slate with one cool accent, because a report of
+   this kind is read as a leaderboard: the eye goes to the place, the success
+   rate and the bar, and everything else stays quiet until it is looked for.
+   Prose and labels are set in a humanist sans; every identifier and every
+   measurement is monospaced with tabular figures, so a column of numbers
+   lines up and a hash does not pretend to be a word. Nothing here flatters a
+   value: a bar is drawn to scale, a missing value says so in words, and a
+   failed run is coloured, never hidden. Print falls back to a light scheme. */
 :root {
-  --bg: #0a0e10; --panel: #0e1416; --raise: #121a1c;
-  --fg: #cfe9d8; --bright: #f2fbf5; --muted: #7fa593;
-  --line: #223a30; --line-soft: #17281f; --head: #14201b;
-  --pass: #4ade80; --fail: #ff7a6e; --warn: #f5c65b; --accent: #3ddbc0;
-  --row: rgba(255, 255, 255, .022);
+  --bg: #0b1017; --panel: #10161f; --raise: #151d28; --head: #131b26;
+  --fg: #d7dee8; --bright: #f6f8fb; --muted: #8a97a8; --faint: #5d6a7b;
+  --line: #243040; --line-soft: #1b2531;
+  --accent: #5eb1ff; --accent-soft: rgba(94, 177, 255, .14);
+  --pass: #3ecf8e; --fail: #ff6b7a; --warn: #f3b63f;
+  --gold: #f5c451; --silver: #c3ccd8; --bronze: #d29a6a;
+  --row: rgba(255, 255, 255, .025);
+  --sans: "Inter", "SF Pro Text", ui-sans-serif, system-ui, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   /* the page grows with the window. A run table is fourteen columns of
      numbers, so the width a report needs is set by its widest table, not by
      a book measure; the cap exists only so an ultrawide monitor does not
@@ -73,163 +81,260 @@ STYLE = """
 }
 * { box-sizing: border-box; }
 html { background: var(--bg); }
+* { scrollbar-color: var(--line) var(--bg); }
+*::-webkit-scrollbar { height: 10px; width: 10px; }
+*::-webkit-scrollbar-track { background: var(--bg); }
+*::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px;
+  border: 2px solid var(--bg); }
+*::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 body {
-  margin: 0; padding: 1.4rem clamp(.75rem, 1.6vw, 2rem) 4rem; background: var(--bg);
-  color: var(--fg);
-  font: 15px/1.65 ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
-  -webkit-font-smoothing: antialiased;
+  margin: 0; padding: 0 clamp(.75rem, 1.6vw, 2rem) 4rem;
+  background:
+    radial-gradient(1200px 420px at 50% -200px, rgba(94, 177, 255, .10), transparent 70%),
+    var(--bg);
+  color: var(--fg); font: 15px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
 main {
   width: min(100%, var(--page-max)); min-width: min(100%, var(--page-min));
-  margin: 0 auto; border: 1px solid var(--line);
-  border-radius: 6px; background: var(--panel); padding: 1.6rem clamp(1rem, 2vw, 2.4rem) 2.2rem;
+  margin: 1.4rem auto 0; padding: 0 clamp(1rem, 2vw, 2.4rem) 2.2rem;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
 }
+/* the top bar: the brand on the left, the sections on the right. It is the
+   one piece of chrome a page carries, and it is the same on every page. */
+.topbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1.4rem;
+  margin: 0 calc(-1 * clamp(1rem, 2vw, 2.4rem)) 1.8rem;
+  padding: .85rem clamp(1rem, 2vw, 2.4rem);
+  border-bottom: 1px solid var(--line); background: var(--head);
+  border-radius: 12px 12px 0 0;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: .55rem; color: var(--bright);
+  font-weight: 700; letter-spacing: .02em; font-size: .95rem; border: none;
+}
+.brand:hover { color: var(--bright); border: none; }
+.brand .mark {
+  width: 1.35rem; height: 1.35rem; border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent), #8f7bff);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .08) inset;
+}
+.brand .tag {
+  color: var(--muted); font-weight: 500; font-size: .74rem; letter-spacing: .1em;
+  text-transform: uppercase; margin-left: .35rem;
+}
+.nav { display: flex; flex-wrap: wrap; gap: .25rem; margin-left: auto; font-size: .82rem; }
+.nav a {
+  color: var(--muted); padding: .3rem .7rem; border-radius: 6px; border: none;
+  font-weight: 500;
+}
+.nav a:hover { color: var(--bright); background: var(--accent-soft); border: none; }
 h1 {
-  font-size: 1.05rem; margin: 0 0 .3rem; letter-spacing: .14em; text-transform: uppercase;
+  font-size: 1.55rem; margin: 0 0 .3rem; letter-spacing: -.01em; font-weight: 700;
   color: var(--bright);
 }
-h1::before { content: "> "; color: var(--accent); }
 h2 {
-  font-size: .82rem; margin: 2.4rem 0 .7rem; letter-spacing: .13em; text-transform: uppercase;
-  color: var(--accent); border-bottom: 1px solid var(--line); padding-bottom: .35rem;
+  display: flex; align-items: center; gap: .6rem;
+  font-size: .78rem; margin: 2.6rem 0 .9rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
 }
+h2::before { content: ""; width: 3px; height: 1em; border-radius: 2px; background: var(--accent); }
+h2::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
 h3 {
-  font-size: .76rem; margin: 1.3rem 0 .4rem; letter-spacing: .11em; text-transform: uppercase;
-  color: var(--muted);
+  font-size: .74rem; margin: 1.5rem 0 .5rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
 }
 a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
 a:hover { color: var(--bright); border-bottom-color: var(--accent); }
-.nav {
-  font-size: .8rem; color: var(--muted); margin-bottom: 1.5rem; padding-bottom: .7rem;
-  letter-spacing: .06em; border-bottom: 1px solid var(--line-soft);
-}
-.nav::before { content: "PATH "; color: var(--muted); }
-.subtitle { color: var(--muted); margin: 0 0 1.4rem; font-size: .88rem; word-break: break-all; }
+.subtitle { color: var(--muted); margin: 0 0 1.5rem; font-size: .92rem; }
+/* identifiers and measurements are monospaced; a table is mostly that, so the
+   whole table takes the mono face and the headers take the sans */
+.subtitle, td, .card .value, .who, code, .badge, .place, .task-title { font-family: var(--mono); }
 /* A run table is wide by nature. It is laid out to fit the page: the number
    columns hug their content, the text columns take what is left and wrap, and
    the type tightens as columns are added (class dense at ten columns, x-dense
    at thirteen). Horizontal scroll stays as the fallback for a narrow window,
    not as the normal way to read a row. */
-.table-wrap { overflow-x: auto; margin: .6rem 0 1.3rem; }
-table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+.table-wrap {
+  overflow-x: auto; margin: .6rem 0 1.3rem; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--raise);
+}
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .84rem; }
 th, td {
-  border-bottom: 1px solid var(--line-soft); padding: .5rem .7rem;
+  border-bottom: 1px solid var(--line-soft); padding: .6rem .8rem;
   text-align: left; vertical-align: top; font-variant-numeric: tabular-nums;
 }
+tbody tr:last-child td { border-bottom: none; }
 th {
-  position: sticky; top: 0; z-index: 1; background: var(--head); color: var(--accent);
-  font-weight: 600; font-size: .71rem; letter-spacing: .1em; text-transform: uppercase;
-  border-bottom: 1px solid var(--accent); white-space: nowrap;
+  position: sticky; top: 0; z-index: 1; background: var(--head); color: var(--muted);
+  font: 600 .7rem/1.4 var(--sans); letter-spacing: .08em; text-transform: uppercase;
+  border-bottom: 1px solid var(--line); white-space: nowrap;
 }
 th.sortable { cursor: pointer; user-select: none; }
-th.sortable::after { content: " \\2195"; color: var(--line); }
-th.sortable:hover { background: rgba(61, 219, 192, .12); }
-th.sortable:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+th.sortable::after { content: " \\2195"; color: var(--faint); }
+th.sortable:hover { color: var(--bright); background: var(--accent-soft); }
+th.sortable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--bright); }
 th[aria-sort="ascending"]::after { content: " \\2191"; color: var(--accent); }
 th[aria-sort="descending"]::after { content: " \\2193"; color: var(--accent); }
 tbody tr:nth-child(even) { background: var(--row); }
-tbody tr:hover { background: rgba(61, 219, 192, .08); }
+tbody tr { transition: background .08s ease; }
+tbody tr:hover { background: var(--accent-soft); }
 td.num, th.num { text-align: right; }
 /* the density classes: written by table() from the column count, so a table of
    four columns keeps its comfortable size and a table of fourteen fits the page */
-table.dense { font-size: .8rem; }
-table.dense th, table.dense td { padding: .42rem .5rem; }
+table.dense { font-size: .78rem; }
+table.dense th, table.dense td { padding: .45rem .55rem; }
 table.dense th { white-space: normal; }
 table.dense td { overflow-wrap: anywhere; }
 table.dense td.num, table.dense th.num { width: 1%; white-space: nowrap; }
 table.dense .cell { min-width: 4.4rem; }
-table.x-dense { font-size: .74rem; }
-table.x-dense th, table.x-dense td { padding: .36rem .42rem; }
+table.x-dense { font-size: .72rem; }
+table.x-dense th, table.x-dense td { padding: .38rem .45rem; }
 table.x-dense th { letter-spacing: .05em; }
 table.x-dense .cell { min-width: 3.8rem; }
-table.x-dense .bar { height: .6rem; }
+table.x-dense .bar { height: .5rem; }
 /* a text cell keeps a floor. A column that can be squeezed to three
    characters is a column read by scrolling back and forth, which is what the
    wider page exists to avoid; below the floor the wrapper scrolls instead. */
 td { overflow-wrap: anywhere; }
 table.dense td:not(.num) { min-width: 6.2rem; }
 table.x-dense td:not(.num) { min-width: 5.6rem; }
+/* the headline figures: one card per measure, the value large, the label small */
 .cards {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  gap: .7rem; margin: 1.1rem 0 1.8rem;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: .75rem; margin: 1.2rem 0 1.9rem;
 }
 .card {
-  border: 1px solid var(--line); border-radius: 5px; padding: .7rem .9rem;
-  background: var(--raise);
+  position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 10px;
+  padding: .85rem 1rem .9rem; background: linear-gradient(180deg, var(--raise), var(--panel));
+}
+.card::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  opacity: .7;
 }
 .card .label {
-  color: var(--muted); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+  font-weight: 600; margin-bottom: .35rem;
 }
-.card .value { font-size: 1.35rem; color: var(--bright); line-height: 1.3; }
+.card .value {
+  font-size: 1.5rem; color: var(--bright); line-height: 1.2; font-weight: 600;
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.card .value .muted { font-size: .95rem; font-weight: 500; }
 .pass { color: var(--pass); }
 .fail { color: var(--fail); }
 .warn { color: var(--warn); }
 .muted { color: var(--muted); }
-.badge {
-  display: inline-block; border: 1px solid var(--line); border-radius: 3px;
-  padding: .05rem .45rem; font-size: .71rem; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--muted); white-space: nowrap;
+/* a verdict in a cell or a card reads as a pill, so a column of them scans */
+td > .pass, td > .fail, .card .value > .pass, .card .value > .fail {
+  display: inline-block; padding: .08rem .55rem; border-radius: 999px; font-size: .9em;
+  font-weight: 600; border: 1px solid currentColor; background: rgba(0, 0, 0, .2);
 }
-.badge.warn { border-color: var(--warn); color: var(--warn); }
-.badge.pass { border-color: var(--pass); color: var(--pass); }
+.card .value > .pass, .card .value > .fail { font-size: 1.05rem; padding: .2rem .8rem; }
+/* a value that is one token (a hash, a time window) must not fold in the
+   middle of itself; folding it would make the cell taller and harder to read */
+.nowrap { white-space: nowrap; }
+.badge {
+  display: inline-block; border: 1px solid var(--line); border-radius: 999px;
+  padding: .06rem .55rem; font-size: .68rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap; background: var(--raise);
+}
+.badge.warn { border-color: rgba(243, 182, 63, .5); color: var(--warn);
+  background: rgba(243, 182, 63, .08); }
+.badge.pass { border-color: rgba(62, 207, 142, .5); color: var(--pass);
+  background: rgba(62, 207, 142, .08); }
 .notice {
-  border-left: 3px solid var(--warn); background: rgba(245, 198, 91, .07);
-  padding: .75rem .95rem; margin: 1rem 0; font-size: .85rem; border-radius: 0 4px 4px 0;
+  border: 1px solid rgba(243, 182, 63, .35); border-left: 3px solid var(--warn);
+  background: rgba(243, 182, 63, .07);
+  padding: .8rem 1rem; margin: 1rem 0; font-size: .88rem; border-radius: 8px;
 }
 code {
-  font: .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  word-break: break-all; color: var(--bright); background: rgba(0, 0, 0, .3);
-  padding: .05rem .25rem;
+  font: .82rem/1.5 var(--mono); word-break: break-all; color: var(--bright);
+  background: rgba(0, 0, 0, .3); border: 1px solid var(--line-soft); border-radius: 4px;
+  padding: .05rem .3rem;
 }
-.note { color: var(--muted); font-size: .8rem; margin: -.4rem 0 1.2rem; }
-.task-title { color: var(--bright); font-size: 1rem; margin: 0 0 .5rem; }
+.note { color: var(--muted); font-size: .82rem; margin: -.4rem 0 1.2rem; }
+.task-title { color: var(--bright); font-size: 1.05rem; margin: 0 0 .5rem; font-weight: 600; }
 /* prose is the one thing that should not stretch: a task description stays at
    a measure that can be read across without tracking a line back */
 .task-description, .task-notes { max-width: 80rem; }
 pre.prose {
-  max-width: 80rem; margin: .4rem 0 1rem; padding: .8rem .95rem; white-space: pre-wrap;
+  max-width: 80rem; margin: .4rem 0 1rem; padding: .95rem 1.1rem; white-space: pre-wrap;
   overflow-wrap: anywhere; background: var(--raise); border: 1px solid var(--line);
-  border-radius: 4px; font-size: .84rem; color: var(--fg);
+  border-left: 3px solid var(--accent); border-radius: 8px; font: .84rem/1.6 var(--mono);
+  color: var(--fg);
 }
 details { margin: .5rem 0 1.1rem; }
 summary { cursor: pointer; color: var(--muted); font-size: .78rem; letter-spacing: .08em;
-  text-transform: uppercase; }
+  text-transform: uppercase; font-weight: 600; }
+summary:hover { color: var(--bright); }
 ul.constraints { max-width: 80rem; margin: .3rem 0 1rem; padding-left: 1.2rem; }
 ul.constraints li { margin: .15rem 0; }
-.folded { cursor: help; border-bottom: 1px dotted var(--line); }
+.folded { cursor: help; border-bottom: 1px dotted var(--muted); }
 footer {
-  margin-top: 2.6rem; color: var(--muted); font-size: .76rem; letter-spacing: .08em;
-  border-top: 1px solid var(--line); padding-top: .8rem;
+  margin-top: 2.8rem; color: var(--faint); font-size: .76rem; letter-spacing: .04em;
+  border-top: 1px solid var(--line); padding-top: .9rem;
 }
-/* the ranking and its bars: a measurement drawn to scale, never decoration */
-.place { font-size: 1.15rem; color: var(--muted); }
-.place.top { color: var(--pass); }
-.bars { display: grid; gap: .45rem; margin: .5rem 0 1.3rem; }
+/* the ranking: a place is a medal in a ring, and the first three are coloured
+   the way a podium is. The bars beside it are a measurement drawn to scale,
+   never decoration. */
+.place {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.9rem; height: 1.9rem; padding: 0 .4rem; border-radius: 999px;
+  font-size: .9rem; font-weight: 700; color: var(--muted);
+  border: 1px solid var(--line); background: var(--raise);
+}
+.place.top {
+  color: #1a1304; background: linear-gradient(160deg, #ffe08a, var(--gold));
+  border-color: transparent; box-shadow: 0 0 0 3px rgba(245, 196, 81, .18);
+}
+tbody tr:nth-child(2) .place:not(.top) {
+  color: #141a22; background: linear-gradient(160deg, #e6ecf3, var(--silver));
+  border-color: transparent;
+}
+tbody tr:nth-child(3) .place:not(.top) {
+  color: #1d1208; background: linear-gradient(160deg, #e9b98f, var(--bronze));
+  border-color: transparent;
+}
+.bars { display: grid; gap: .5rem; margin: .5rem 0 1.3rem; }
 .bar-row {
   display: grid; grid-template-columns: minmax(9rem, 22rem) 1fr; gap: .8rem;
   align-items: center; font-size: .82rem;
 }
 .bar-row .who { color: var(--fg); overflow-wrap: anywhere; }
 .bar {
-  position: relative; height: .85rem; background: rgba(0, 0, 0, .4);
-  border: 1px solid var(--line); min-width: 6rem; border-radius: 2px;
+  position: relative; height: .7rem; background: rgba(0, 0, 0, .35);
+  border: 1px solid var(--line-soft); min-width: 6rem; border-radius: 999px; overflow: hidden;
 }
-.bar > span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
-.bar.cost > span { background: var(--warn); }
-.bar-note { color: var(--muted); font-size: .76rem; margin: -.5rem 0 1.3rem; }
-.cell .bar { margin-top: .3rem; }
+.bar > span {
+  position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px;
+  background: linear-gradient(90deg, #3b8fe6, var(--accent));
+}
+.bar.cost > span { background: linear-gradient(90deg, #c98c1d, var(--warn)); }
+.bar-note { color: var(--muted); font-size: .78rem; margin: -.5rem 0 1.3rem; }
+.cell .bar { margin-top: .35rem; }
 .cell { min-width: 5.5rem; }
+@media (max-width: 40rem) {
+  .topbar { gap: .5rem; }
+  .nav { margin-left: 0; }
+  h1 { font-size: 1.3rem; }
+}
 @media print {
   .bar { border-color: #999; background: #f2f2f2; }
-  .bar > span { background: #00664f; }
+  .bar > span { background: #0b5cad; }
   .bar.cost > span { background: #8a6100; }
   :root { --bg: #fff; --panel: #fff; --raise: #fafafa; --fg: #14171a; --bright: #000;
-          --muted: #565c63; --line: #c2c8cc; --line-soft: #e2e6e8; --head: #f0f2f3;
-          --accent: #00664f; --pass: #0a7d38; --warn: #8a6100; --fail: #b3261e;
-          --row: #f7f8f9; }
-  body { font-size: 11px; }
-  main { border: none; padding: 0; }
+          --muted: #565c63; --faint: #777; --line: #c2c8cc; --line-soft: #e2e6e8; --head: #f0f2f3;
+          --accent: #0b5cad; --accent-soft: #eef4fb; --pass: #0a7d38; --warn: #8a6100;
+          --fail: #b3261e; --row: #f7f8f9; }
+  body { font-size: 11px; background: #fff; }
+  main { border: none; padding: 0; box-shadow: none; }
+  .topbar { background: none; border-radius: 0; margin: 0 0 1rem; padding: 0 0 .6rem; }
   th { position: static; }
+  .place.top, tbody tr:nth-child(2) .place, tbody tr:nth-child(3) .place { box-shadow: none; }
 }
 """
 
@@ -473,17 +578,27 @@ def page(
     ``standalone`` inlines the stylesheet and drops the navigation, for a file
     that must read on its own: the HTML form of an export.
     """
-    nav = ""
-    if not standalone:
+    # the top bar: the brand on every page, and on a page that belongs to a
+    # tree the sections of that tree. A standalone export has no tree to link
+    # into, so it carries the brand alone.
+    brand = (
+        '<span class="mark"></span>AK-Bench<span class="tag">benchmark report</span>'
+    )
+    if standalone:
+        nav = f'<header class="topbar"><span class="brand">{brand}</span></header>'
+    else:
         nav = (
-            '<p class="nav">'
-            f'<a href="{ROOT_TOKEN}index.html">dashboard</a> · '
-            f'<a href="{ROOT_TOKEN}agents/index.html">agents</a> · '
-            f'<a href="{ROOT_TOKEN}runtimes/index.html">runtimes</a> · '
-            f'<a href="{ROOT_TOKEN}plugins/index.html">plugins</a> · '
-            f'<a href="{ROOT_TOKEN}models/index.html">models</a> · '
-            f'<a href="{ROOT_TOKEN}tasks/index.html">tasks</a> · '
-            f'<a href="{ROOT_TOKEN}{RUNS_DIRECTORY}/index.html">runs</a></p>'
+            '<header class="topbar">'
+            f'<a class="brand" href="{ROOT_TOKEN}index.html">{brand}</a>'
+            '<nav class="nav">'
+            f'<a href="{ROOT_TOKEN}index.html">dashboard</a>'
+            f'<a href="{ROOT_TOKEN}agents/index.html">agents</a>'
+            f'<a href="{ROOT_TOKEN}runtimes/index.html">runtimes</a>'
+            f'<a href="{ROOT_TOKEN}plugins/index.html">plugins</a>'
+            f'<a href="{ROOT_TOKEN}models/index.html">models</a>'
+            f'<a href="{ROOT_TOKEN}tasks/index.html">tasks</a>'
+            f'<a href="{ROOT_TOKEN}{RUNS_DIRECTORY}/index.html">runs</a>'
+            "</nav></header>"
         )
     head = (
         f"<style>{STYLE}</style>" if standalone else f'<link rel="stylesheet" href="{CSS_TOKEN}">'
@@ -496,6 +611,7 @@ def page(
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{esc(title)}</title>"
         f"{head}</head>"
         f"<body><main>{nav}{body}{stamp}</main>"
@@ -669,7 +785,7 @@ def _recording_cell(row: dict[str, Any]) -> str:
     shown = ", ".join(str(task).split("@")[0] for task in tasks[:3])
     if len(tasks) > 3:
         shown += f" +{len(tasks) - 3}"
-    return f'{esc(shown)}<br /><span class="muted">{window}</span>' 
+    return f'{esc(shown)}<br /><span class="muted nowrap">{window}</span>' 
 
 
 def _short_time(value: Any) -> str:
@@ -695,7 +811,7 @@ def _ranked_rows(rows: list[dict[str, Any]]) -> list[list[str]]:
             [
                 place_cell,
                 label,
-                esc(row.get("uid")),
+                f'<span class="nowrap">{esc(row.get("uid"))}</span>',
                 _recording_cell(row),
                 number(row.get("runs") or 0),
                 number(row.get("evaluated") or 0),
@@ -770,7 +886,7 @@ def _leaderboard(data: HistoryData) -> str:
                     place_cell,
                     _experiment_link(uid),
                     label,
-                    esc(row.get("uid")),
+                    f'<span class="nowrap">{esc(row.get("uid"))}</span>',
                     _recording_cell(row),
                     number(row.get("runs") or 0),
                     number(row.get("evaluated") or 0),
