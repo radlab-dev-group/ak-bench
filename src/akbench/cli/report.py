@@ -20,6 +20,7 @@ from sqlalchemy.engine import Engine
 from akbench.cli.common import CliContext, console, handle_errors, show_json
 from akbench.config.loader import build_app_paths, resolve_database_url
 from akbench.core.time import utc_now
+from akbench.datasets import Dataset, TaskLoadError
 from akbench.reporting.data import build_experiment_report, build_task_report, collect_history
 from akbench.reporting.render import render_experiment, render_task, write_report_tree
 from akbench.storage.db import create_db_engine
@@ -50,6 +51,23 @@ def _store(context: CliContext) -> HistoryStore:
     return HistoryStore(engine)
 
 
+def _dataset(context: CliContext) -> Dataset | None:
+    """The dataset the task definitions live in, or ``None`` when it is absent.
+
+    A task page shows the prose of a task, and that prose lives in the dataset
+    directory rather than in the database. A report written next to a different
+    checkout, or with the dataset removed, still reports every run correctly;
+    its task pages simply say the definition is not available.
+    """
+    paths = build_app_paths(context.loaded().settings)
+    if not paths.datasets_dir.is_dir():
+        return None
+    try:
+        return Dataset.load(paths.datasets_dir, base_dir=paths.project_root)
+    except TaskLoadError:
+        return None
+
+
 def _reports_dir(context: CliContext, output: str | None) -> Path:
     if output:
         return Path(output)
@@ -75,7 +93,12 @@ def report_all_cmd(
     context: CliContext = ctx.obj
     data = collect_history(_store(context))
     target = _reports_dir(context, output)
-    written = write_report_tree(target, data, generated_at=utc_now().isoformat())
+    written = write_report_tree(
+        target,
+        data,
+        generated_at=utc_now().isoformat(),
+        dataset=_dataset(context),
+    )
 
     if as_json:
         show_json(
@@ -145,7 +168,7 @@ def report_task_cmd(
         raise typer.Exit(1)
 
     target = _reports_dir(context, output)
-    report = build_task_report(data, task_uid)
+    report = build_task_report(data, task_uid, dataset=_dataset(context))
     page = target / "tasks" / task_uid / "index.html"
     page.parent.mkdir(parents=True, exist_ok=True)
     document = render_task(report, generated_at=utc_now().isoformat())
