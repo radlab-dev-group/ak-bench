@@ -11,9 +11,13 @@ data/reports/
   tasks/<uid>/index.html        one page per task
   tasks/index.html              every recorded task
   agents/index.html             one row per agent identity
+  agents/<slug>/index.html      the runs of one agent, with their parameters
   runtimes/index.html           one row per runtime
+  runtimes/<slug>/index.html    the runs of one runtime
   plugins/index.html            plugin state across runs
+  plugins/<slug>/index.html     the runs a plugin was observed in
   models/index.html             requested versus observed model
+  models/<slug>/index.html      the runs that asked for a requested model
   assets/style.css
 ```
 
@@ -22,6 +26,10 @@ Commands:
 - `akbench report all [--output DIR] [--json]` — the whole tree;
 - `akbench report experiment UID [--output DIR] [--json]` — one experiment;
 - `akbench report task UID [--output DIR] [--json]` — one task.
+
+`report all` reads the dataset directory from the configured paths when it
+exists, so task pages carry the task's definition; the experiment and task
+single-page commands do the same.
 
 ## What the dashboard shows
 
@@ -37,6 +45,24 @@ the declared baseline, followed by the same numbers drawn as bars. A place is
 only stated for a configuration that has an evaluated run; a configuration
 that was never scored holds no place rather than reading as a zero, and ties
 share a place the way a competition ranks them.
+
+**Run tables carry their own context.** Every run table — on the task, the
+experiment and the agent, runtime, plugin and model pages — shows the factor
+values the run was executed under, when it started, and its repetition, so a
+row of numbers is not a list of unexplained results. Runs are listed in the
+order they started, and a long verification note is folded to one line with
+its full text kept in the document.
+
+**A task page is the task, not only its history.** Beyond its runs, a task
+page prints what the task asked: the title, the short description, the full
+markdown description, the constraints, the notes, and the recorded identity —
+the evaluator, the timeout, the tests, the repository and the snapshot
+digest. The prose is read from the dataset directory at report time, because
+the database holds the task's identity and digest, not its wording. If the
+digest of the definition on disk differs from the snapshot the runs were
+recorded with, the page says the two do not match; a report written where the
+dataset directory is absent or unreadable still writes, and its task pages say
+the definition is not available.
 
 ## Rules the reports obey
 
