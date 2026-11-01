@@ -13,7 +13,8 @@ rendering of what was stored. Two rules run through the whole module.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 PASSED_VERDICT = "passed"
@@ -36,6 +37,43 @@ def duration_seconds(run: dict[str, Any]) -> float | None:
     if started is None or finished is None:
         return None
     return (finished - started).total_seconds()
+
+
+def variant_lookup(variants: list[dict[str, Any]]) -> dict[str, Any]:
+    """Map a variant uid to the factor values it names.
+
+    A uid is unique inside one experiment, so a caller that mixes experiments
+    passes the variants of all of them. Two experiments that gave the same uid
+    different values cancel each other out and the uid disappears: the report
+    then says the parameters were not recorded rather than guessing one.
+    """
+    lookup: dict[str, Any] = {}
+    claimed: set[str] = set()
+    for variant in variants:
+        uid = str(variant.get("uid"))
+        values = variant.get("values")
+        if uid in lookup and lookup[uid] != values:
+            claimed.add(uid)
+            continue
+        lookup[uid] = values
+    for uid in claimed:
+        lookup.pop(uid, None)
+    return lookup
+
+
+def _sortable_start(run: dict[str, Any]) -> tuple[int, str]:
+    """A key that orders runs by when they started; a missing start is last."""
+    started = _parse_time(run.get("started_at"))
+    if started is None:
+        return (1, "")
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    return (0, started.astimezone(UTC).isoformat())
+
+
+def order_by_start(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Runs in the order they started, the uid breaking a tie."""
+    return sorted(runs, key=lambda run: (_sortable_start(run), str(run.get("uid") or "")))
 
 
 def verdict_of(run: dict[str, Any]) -> str | None:
@@ -450,10 +488,82 @@ class TaskReport:
     runs: list[dict[str, Any]]
     summary: dict[str, Any] = field(default_factory=dict)
     unverified: list[dict[str, Any]] = field(default_factory=list)
+    variants: list[dict[str, Any]] = field(default_factory=list)
+    definition: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class SubjectReport:
+    """One subject of a comparison — an agent, a runtime, a plugin or a model.
+
+    The runs of a subject are the interesting part of the history that no
+    single experiment owns: the same agent worked several tasks under several
+    configurations, and a reader who clicked on that agent wants exactly those
+    runs, with the parameters each of them was executed under.
+    """
+
+    kind: str
+    label: str
+    runs: list[dict[str, Any]]
+    summary: dict[str, Any] = field(default_factory=dict)
+    variants: list[dict[str, Any]] = field(default_factory=list)
+    unverified: list[dict[str, Any]] = field(default_factory=list)
+    observations: list[dict[str, Any]] = field(default_factory=list)
+
+
+def task_definition(dataset: Any, uid: str) -> dict[str, Any] | None:
+    """What a task asked for, read from the dataset it was run from.
+
+    The database keeps the identity and the digest of a task, not its prose:
+    the description, the constraints and the notes live in the task directory.
+    A reader of a task page wants the task itself, so the definition is read
+    from disk and stamped with the digest it was read at; ``digest_matches``
+    says whether that definition is still the one the recorded runs were worked
+    under, because a dataset edited after a run is a different task.
+
+    ``dataset`` is any object exposing ``require(uid)``; ``None``, or a task the
+    dataset does not hold, yields ``None`` and the page says so.
+    """
+    if dataset is None:
+        return None
+    try:
+        loaded = dataset.require(uid)
+    except Exception:  # a dataset without this task, or one that cannot be read
+        return None
+
+    task = loaded.task
+    inner = task.task
+    description = next(
+        (
+            path.read_text(encoding="utf-8")
+            for path in (Path(loaded.path) / "description.md",)
+            if path.is_file()
+        ),
+        None,
+    )
+    return {
+        "uid": loaded.uid,
+        "title": getattr(task, "title", None),
+        "description": getattr(task, "description", None),
+        "description_markdown": description,
+        "category": task.category,
+        "difficulty": task.difficulty,
+        "evaluator": inner.evaluator,
+        "constraints": list(inner.constraints or []),
+        "notes": inner.notes,
+        "timeout_seconds": inner.timeout_seconds,
+        "hidden_tests": inner.hidden_tests,
+        "public_tests": inner.public_tests,
+        "repository": getattr(inner.repository, "source", None),
+        "ref": getattr(inner.repository, "ref", None),
+        "mutation": getattr(inner.mutation, "kind", None) if inner.mutation else None,
+        "digest": loaded.digest,
+        "path": str(loaded.path),
+    }
 
 
 def build_experiment_report(data: HistoryData, uid: str) -> ExperimentReport:
-    runs = data.runs_for_experiment(uid)
+    runs = order_by_start(data.runs_for_experiment(uid))
     return ExperimentReport(
         experiment=data.experiment(uid) or {"uid": uid},
         runs=runs,
@@ -465,11 +575,99 @@ def build_experiment_report(data: HistoryData, uid: str) -> ExperimentReport:
     )
 
 
-def build_task_report(data: HistoryData, uid: str) -> TaskReport:
-    runs = data.runs_for_task(uid)
+def build_task_report(data: HistoryData, uid: str, dataset: Any = None) -> TaskReport:
+    runs = order_by_start(data.runs_for_task(uid))
     return TaskReport(
         task=data.task(uid) or {"uid": uid},
         runs=runs,
         summary=summarize_runs(runs),
         unverified=unverified_configurations(scope_to_runs(data, runs)),
+        variants=_variants_of(data, runs),
+        definition=task_definition(dataset, uid),
+    )
+
+
+def _variants_of(data: HistoryData, runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The variants named by a set of runs, in the order the experiments list them."""
+    experiment_uids = {str(run.get("experiment_uid")) for run in runs}
+    collected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for experiment_uid in sorted(experiment_uids):
+        for variant in data.variants_for(experiment_uid):
+            uid = str(variant.get("uid"))
+            if uid not in seen:
+                seen.add(uid)
+                collected.append(variant)
+    return collected
+
+
+def _subject(
+    data: HistoryData,
+    kind: str,
+    label: str,
+    runs: list[dict[str, Any]],
+    observations: list[dict[str, Any]] | None = None,
+) -> SubjectReport:
+    ordered = order_by_start(runs)
+    return SubjectReport(
+        kind=kind,
+        label=label,
+        runs=ordered,
+        summary=summarize_runs(ordered),
+        variants=_variants_of(data, ordered),
+        unverified=unverified_configurations(scope_to_runs(data, ordered)),
+        observations=list(observations or []),
+    )
+
+
+def build_agent_report(data: HistoryData, label: str) -> SubjectReport:
+    return _subject(
+        data,
+        "agent",
+        label,
+        [run for run in data.runs if str(run.get("agent")) == label],
+    )
+
+
+def build_runtime_report(data: HistoryData, label: str) -> SubjectReport:
+    return _subject(
+        data,
+        "runtime",
+        label,
+        [run for run in data.runs if str(run.get("runtime_id")) == label],
+    )
+
+
+def build_plugin_report(data: HistoryData, label: str) -> SubjectReport:
+    """A plugin and the runs it was observed in.
+
+    A plugin is not a field of a run: it is observed next to one, and the
+    observation is the only evidence that the plugin was there at all.
+    """
+    observations = [
+        row for row in data.plugins if str(row.get("plugin_id")) == label
+    ]
+    run_uids = {row.get("run_uid") for row in observations}
+    return _subject(
+        data,
+        "plugin",
+        label,
+        [run for run in data.runs if run.get("uid") in run_uids],
+        observations,
+    )
+
+
+def build_model_report(data: HistoryData, label: str) -> SubjectReport:
+    """A requested model and the runs that asked the router for it."""
+    observations = [
+        row
+        for row in data.models
+        if str(row.get("requested_model") or "(not stated)") == label
+    ]
+    return _subject(
+        data,
+        "model",
+        label,
+        [run for run in data.runs if str(run.get("requested_model") or "(not stated)") == label],
+        observations,
     )

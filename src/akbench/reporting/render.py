@@ -16,19 +16,26 @@ Three things are deliberate:
 from __future__ import annotations
 
 import html
+import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from akbench.reporting.data import (
     ExperimentReport,
     HistoryData,
+    SubjectReport,
     TaskReport,
+    build_agent_report,
     build_experiment_report,
+    build_model_report,
+    build_plugin_report,
+    build_runtime_report,
     build_task_report,
     dashboard,
     duration_seconds,
     unverified_configurations,
     variant_comparison,
+    variant_lookup,
     verdict_of,
 )
 
@@ -39,132 +46,147 @@ CSS_TOKEN = "{{css}}"
 ROOT_TOKEN = "{{root}}"
 
 STYLE = """
-/* AK-Bench report — a phosphor terminal look, deliberately CSS only, no script.
-   The palette is CRT, the content is not: every value stays as it was measured.
+/* AK-Bench report — a terminal read of the history, tuned for reading rather
+   than for looking like a terminal. The palette stays phosphor-green and the
+   type stays monospaced, because this is a machine record; the glow, the
+   scanlines and the vignette are gone, because they cost contrast and a long
+   table of numbers is read, not glanced at. Every value stays exactly as it
+   was measured: a style that flatters a number would be a lie in a nicer font.
    A light scheme is used for print, because a black page wastes a toner. */
 :root {
-  --bg: #06090a; --panel: #0b1214; --fg: #b8f5c8; --bright: #eafff0;
-  --muted: #5f8a72; --line: #1d3a2c; --head: #10201a;
-  --pass: #46f08a; --fail: #ff6b5e; --warn: #ffc857; --accent: #35e0c0;
-  --glow: 0 0 6px rgba(70, 240, 138, .25);
+  --bg: #0a0e10; --panel: #0e1416; --raise: #121a1c;
+  --fg: #cfe9d8; --bright: #f2fbf5; --muted: #7fa593;
+  --line: #223a30; --line-soft: #17281f; --head: #14201b;
+  --pass: #4ade80; --fail: #ff7a6e; --warn: #f5c65b; --accent: #3ddbc0;
+  --row: rgba(255, 255, 255, .022);
 }
 * { box-sizing: border-box; }
 html { background: var(--bg); }
 body {
-  margin: 0; padding: 2rem 1.5rem 4rem; background: var(--bg); color: var(--fg);
-  font: 14px/1.55 ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
-  text-shadow: var(--glow);
-}
-/* scanlines and the vignette of a tube, both behind the content */
-body::before {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 2;
-  background: repeating-linear-gradient(
-    to bottom, rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, .22) 2px 4px);
-}
-body::after {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 3;
-  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, .55) 100%);
+  margin: 0; padding: 1.6rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+  font: 15px/1.65 ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  -webkit-font-smoothing: antialiased;
 }
 main {
-  position: relative; z-index: 1; max-width: 72rem; margin: 0 auto;
-  border: 1px solid var(--line); background: var(--panel); padding: 1.5rem 1.6rem 2rem;
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, .6);
+  max-width: 78rem; margin: 0 auto; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--panel); padding: 1.6rem 1.8rem 2.2rem;
 }
 h1 {
-  font-size: 1.15rem; margin: 0 0 .35rem; letter-spacing: .18em; text-transform: uppercase;
+  font-size: 1.05rem; margin: 0 0 .3rem; letter-spacing: .14em; text-transform: uppercase;
   color: var(--bright);
 }
 h1::before { content: "> "; color: var(--accent); }
 h2 {
-  font-size: .85rem; margin: 2.2rem 0 .6rem; letter-spacing: .16em; text-transform: uppercase;
-  color: var(--accent); border-bottom: 1px dashed var(--line); padding-bottom: .3rem;
+  font-size: .82rem; margin: 2.4rem 0 .7rem; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--accent); border-bottom: 1px solid var(--line); padding-bottom: .35rem;
 }
-h2::before { content: "── "; color: var(--line); }
 h3 {
-  font-size: .74rem; margin: 1.2rem 0 .35rem; letter-spacing: .14em; text-transform: uppercase;
+  font-size: .76rem; margin: 1.3rem 0 .4rem; letter-spacing: .11em; text-transform: uppercase;
   color: var(--muted);
 }
-a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--line); }
-a:hover { color: var(--bright); background: rgba(53, 224, 192, .12); text-decoration: none; }
-.nav { font-size: .8rem; color: var(--muted); margin-bottom: 1.4rem; letter-spacing: .08em; }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
+a:hover { color: var(--bright); border-bottom-color: var(--accent); }
+.nav {
+  font-size: .8rem; color: var(--muted); margin-bottom: 1.5rem; padding-bottom: .7rem;
+  letter-spacing: .06em; border-bottom: 1px solid var(--line-soft);
+}
 .nav::before { content: "PATH "; color: var(--muted); }
-.subtitle { color: var(--muted); margin: 0 0 1.4rem; font-size: .85rem; }
-table { border-collapse: collapse; width: 100%; margin: .5rem 0 1.2rem; font-size: .85rem; }
+.subtitle { color: var(--muted); margin: 0 0 1.4rem; font-size: .88rem; word-break: break-all; }
+/* wide run tables are the common case: they scroll instead of squeezing
+   the numbers until they wrap, and their header stays on screen */
+.table-wrap { overflow-x: auto; margin: .6rem 0 1.3rem; }
+table { border-collapse: collapse; width: 100%; font-size: .86rem; }
 th, td {
-  border-bottom: 1px solid var(--line); padding: .45rem .6rem;
+  border-bottom: 1px solid var(--line-soft); padding: .5rem .7rem;
   text-align: left; vertical-align: top; font-variant-numeric: tabular-nums;
 }
 th {
-  background: var(--head); color: var(--accent); font-weight: 600;
-  font-size: .72rem; letter-spacing: .12em; text-transform: uppercase;
-  border-bottom: 1px solid var(--accent);
+  position: sticky; top: 0; z-index: 1; background: var(--head); color: var(--accent);
+  font-weight: 600; font-size: .71rem; letter-spacing: .1em; text-transform: uppercase;
+  border-bottom: 1px solid var(--accent); white-space: nowrap;
 }
-tbody tr:hover { background: rgba(53, 224, 192, .06); }
+tbody tr:nth-child(even) { background: var(--row); }
+tbody tr:hover { background: rgba(61, 219, 192, .08); }
 td.num, th.num { text-align: right; }
-.cards { display: flex; flex-wrap: wrap; gap: .7rem; margin: 1.1rem 0 1.7rem; }
+.cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: .7rem; margin: 1.1rem 0 1.8rem;
+}
 .card {
-  border: 1px solid var(--line); padding: .65rem .85rem; min-width: 9.5rem;
-  background: rgba(53, 224, 192, .04); box-shadow: inset 0 0 18px rgba(0, 0, 0, .45);
+  border: 1px solid var(--line); border-radius: 5px; padding: .7rem .9rem;
+  background: var(--raise);
 }
 .card .label {
-  color: var(--muted); font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase;
 }
-.card .value { font-size: 1.3rem; color: var(--bright); }
+.card .value { font-size: 1.35rem; color: var(--bright); line-height: 1.3; }
 .pass { color: var(--pass); }
-.fail { color: var(--fail); text-shadow: 0 0 6px rgba(255, 107, 94, .3); }
+.fail { color: var(--fail); }
 .warn { color: var(--warn); }
 .muted { color: var(--muted); }
 .badge {
-  border: 1px solid var(--line); padding: 0 .45rem; font-size: .72rem;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--muted); white-space: nowrap;
+  display: inline-block; border: 1px solid var(--line); border-radius: 3px;
+  padding: .05rem .45rem; font-size: .71rem; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap;
 }
 .badge.warn { border-color: var(--warn); color: var(--warn); }
 .badge.pass { border-color: var(--pass); color: var(--pass); }
 .notice {
-  border-left: 3px solid var(--warn); background: rgba(255, 200, 87, .07);
-  padding: .7rem .9rem; margin: .9rem 0; font-size: .85rem;
+  border-left: 3px solid var(--warn); background: rgba(245, 198, 91, .07);
+  padding: .75rem .95rem; margin: 1rem 0; font-size: .85rem; border-radius: 0 4px 4px 0;
 }
 code {
-  font: .8rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
-  word-break: break-all; color: var(--bright); background: rgba(0, 0, 0, .35); padding: 0 .2rem;
+  font: .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all; color: var(--bright); background: rgba(0, 0, 0, .3);
+  padding: .05rem .25rem;
 }
+.note { color: var(--muted); font-size: .8rem; margin: -.4rem 0 1.2rem; }
+.task-title { color: var(--bright); font-size: 1rem; margin: 0 0 .5rem; }
+.task-description, .task-notes { max-width: 68rem; }
+pre.prose {
+  max-width: 68rem; margin: .4rem 0 1rem; padding: .8rem .95rem; white-space: pre-wrap;
+  overflow-wrap: anywhere; background: var(--raise); border: 1px solid var(--line);
+  border-radius: 4px; font-size: .84rem; color: var(--fg);
+}
+details { margin: .5rem 0 1.1rem; }
+summary { cursor: pointer; color: var(--muted); font-size: .78rem; letter-spacing: .08em;
+  text-transform: uppercase; }
+ul.constraints { max-width: 68rem; margin: .3rem 0 1rem; padding-left: 1.2rem; }
+ul.constraints li { margin: .15rem 0; }
+.folded { cursor: help; border-bottom: 1px dotted var(--line); }
 footer {
-  margin-top: 2.5rem; color: var(--muted); font-size: .75rem;
-  letter-spacing: .1em; border-top: 1px dashed var(--line); padding-top: .7rem;
+  margin-top: 2.6rem; color: var(--muted); font-size: .76rem; letter-spacing: .08em;
+  border-top: 1px solid var(--line); padding-top: .8rem;
 }
-footer::before { content: "└─ "; color: var(--line); }
 /* the ranking and its bars: a measurement drawn to scale, never decoration */
 .place { font-size: 1.15rem; color: var(--muted); }
 .place.top { color: var(--pass); }
-.place.row1 { color: var(--bright); }
-.bars { display: grid; gap: .4rem; margin: .4rem 0 1.2rem; }
+.bars { display: grid; gap: .45rem; margin: .5rem 0 1.3rem; }
 .bar-row {
-  display: grid; grid-template-columns: minmax(9rem, 22rem) 1fr; gap: .7rem;
-  align-items: center; font-size: .8rem;
+  display: grid; grid-template-columns: minmax(9rem, 22rem) 1fr; gap: .8rem;
+  align-items: center; font-size: .82rem;
 }
 .bar-row .who { color: var(--fg); overflow-wrap: anywhere; }
 .bar {
-  position: relative; height: .8rem; background: rgba(0, 0, 0, .45);
-  border: 1px solid var(--line); min-width: 6rem;
+  position: relative; height: .85rem; background: rgba(0, 0, 0, .4);
+  border: 1px solid var(--line); min-width: 6rem; border-radius: 2px;
 }
-.bar > span {
-  position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent);
-  box-shadow: 0 0 8px rgba(53, 224, 192, .35);
-}
-.bar.cost > span { background: var(--warn); box-shadow: 0 0 8px rgba(255, 200, 87, .28); }
-.bar-note { color: var(--muted); font-size: .75rem; margin: -.6rem 0 1.2rem; }
-.cell .bar { margin-top: .25rem; }
+.bar > span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
+.bar.cost > span { background: var(--warn); }
+.bar-note { color: var(--muted); font-size: .76rem; margin: -.5rem 0 1.3rem; }
+.cell .bar { margin-top: .3rem; }
 .cell { min-width: 5.5rem; }
 @media print {
   .bar { border-color: #999; background: #f2f2f2; }
-  .bar > span { background: #00664f; box-shadow: none; }
-  .bar.cost > span { background: #8a6100; box-shadow: none; }
-  :root { --bg: #fff; --panel: #fff; --fg: #111; --bright: #000; --muted: #555;
-          --line: #bbb; --head: #eee; --accent: #00664f; --pass: #0a7d38; --warn: #8a6100;
-          --fail: #b3261e; --glow: none; }
+  .bar > span { background: #00664f; }
+  .bar.cost > span { background: #8a6100; }
+  :root { --bg: #fff; --panel: #fff; --raise: #fafafa; --fg: #14171a; --bright: #000;
+          --muted: #565c63; --line: #c2c8cc; --line-soft: #e2e6e8; --head: #f0f2f3;
+          --accent: #00664f; --pass: #0a7d38; --warn: #8a6100; --fail: #b3261e;
+          --row: #f7f8f9; }
   body { font-size: 11px; }
-  body::before, body::after { display: none; }
-  main { border: none; box-shadow: none; padding: 0; }
+  main { border: none; padding: 0; }
+  th { position: static; }
 }
 """
 
@@ -225,7 +247,10 @@ def table(headers: list[str], rows: list[list[str]]) -> str:
         + "</tr>"
         for row in rows
     )
-    return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+    return (
+        '<div class="table-wrap"><table><thead><tr>'
+        f"{head}</tr></thead><tbody>{body}</tbody></table></div>"
+    )
 
 
 def cards(items: list[tuple[str, str]]) -> str:
@@ -285,6 +310,28 @@ def _badges(statuses: dict[str, int] | list[str]) -> str:
     return " ".join(parts)
 
 
+NOTE_LIMIT = 160
+
+
+def _note_cell(text: Any) -> str:
+    """A long note, folded to one readable line with its full text kept.
+
+    The plugin notes of this installation run to three hundred characters and
+    one of them decides how much a row is worth, so the whole of it stays in
+    the document (and in the ``title``); only its shape changes.
+    """
+    value = "" if text is None else str(text)
+    if not value:
+        return ""
+    if len(value) <= NOTE_LIMIT:
+        return esc(value)
+    folded = value[:NOTE_LIMIT].rstrip()
+    return (
+        f'<span class="folded" title="{esc(value)}">'
+        f"{esc(folded)} <span class='muted'>&hellip;</span></span>"
+    )
+
+
 def _notice(findings: list[dict[str, Any]]) -> str:
     if not findings:
         return '<p class="pass">every recorded configuration states it was verified.</p>'
@@ -294,7 +341,7 @@ def _notice(findings: list[dict[str, Any]]) -> str:
             esc(item.get("subject")),
             f'<span class="badge warn">{esc(item.get("status"))}</span>',
             esc(item.get("run_uid") or ""),
-            esc(item.get("note") or ""),
+            _note_cell(item.get("note")),
         ]
         for item in findings
     ]
@@ -319,7 +366,8 @@ def _comparison_table(rows: list[dict[str, Any]], label: str) -> str:
         ],
         [
             [
-                esc(row.get(label)),
+                f'<a href="{esc(slugify(str(row.get(label))))}/index.html">'
+                f"{esc(row.get(label))}</a>",
                 number(row.get("runs") or 0),
                 number(row.get("evaluated") or 0),
                 number(row.get("passed") or 0),
@@ -604,44 +652,83 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
     return page("AK-Bench dashboard", "".join(body), generated_at=generated_at)
 
 
-def _runs_table(runs: list[dict[str, Any]]) -> str:
+def _parameters_cell(values: Any) -> str:
+    """The factor values a run was executed under, one readable line."""
+    if values is None:
+        return '<span class="muted">not recorded</span>'
+    if isinstance(values, dict):
+        if not values:
+            return '<span class="muted">(reference: no factor)</span>'
+        return esc(", ".join(f"{key}={value}" for key, value in sorted(values.items())))
+    return esc(values)
+
+
+def _started_cell(run: dict[str, Any]) -> str:
+    """When the run started, trimmed to the precision a reader compares at."""
+    started = run.get("started_at")
+    if not started:
+        return '<span class="muted">not started</span>'
+    text = str(started).replace("T", " ")
+    return esc(text[:19])
+
+
+def _runs_table(
+    runs: list[dict[str, Any]],
+    variants: list[dict[str, Any]] | None = None,
+    *,
+    show_task: bool = True,
+    show_agent: bool = True,
+) -> str:
+    """Every run as it was recorded, in the order the caller passed them.
+
+    The parameters of a run are its variant's factor values: a reader comparing
+    two runs of a task has to see which configuration each of them was, or the
+    table is a list of unexplained numbers.
+    """
+    lookup = variant_lookup(variants or [])
+    headers = ["run", "parameters", "started"]
+    if show_task:
+        headers.append("task")
+    if show_agent:
+        headers.append("agent")
+    headers += [
+        "repetition #",
+        "status",
+        "verdict",
+        "score #",
+        "time",
+        "tokens #",
+        "failure class",
+        "error",
+    ]
+
     rows = []
     for run in runs:
         evaluation = run.get("evaluation") if isinstance(run.get("evaluation"), dict) else {}
         observations = (
             run.get("observations") if isinstance(run.get("observations"), dict) else {}
         )
-        rows.append(
-            [
-                esc(run.get("uid")),
-                esc(run.get("task_uid")),
-                esc(run.get("agent")),
-                esc(run.get("variant_uid")),
-                esc(run.get("status")),
-                esc(verdict_of(run)),
-                number(evaluation.get("score"), digits=3),
-                duration(duration_seconds(run)),
-                number(observations.get("total_tokens")),
-                esc(run.get("failure_class")),
-                esc(run.get("error_message") or ""),
-            ]
-        )
-    return table(
-        [
-            "run",
-            "task",
-            "agent",
-            "variant",
-            "status",
-            "verdict",
-            "score #",
-            "time",
-            "tokens #",
-            "failure class",
-            "error",
-        ],
-        rows,
-    )
+        row = [
+            esc(run.get("uid")),
+            _parameters_cell(lookup.get(str(run.get("variant_uid")))),
+            _started_cell(run),
+        ]
+        if show_task:
+            row.append(esc(run.get("task_uid")))
+        if show_agent:
+            row.append(esc(run.get("agent")))
+        row += [
+            number(run.get("repetition")) if run.get("repetition") is not None else NOT_MEASURED,
+            esc(run.get("status")),
+            esc(verdict_of(run)),
+            number(evaluation.get("score"), digits=3),
+            duration(duration_seconds(run)),
+            number(observations.get("total_tokens")),
+            esc(run.get("failure_class")),
+            esc(run.get("error_message") or ""),
+        ]
+        rows.append(row)
+    return table(headers, rows)
 
 
 def _not_passed(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -773,9 +860,9 @@ def render_experiment(
             ],
         ),
         "<h2>Not passed</h2>",
-        _runs_table(_not_passed(report.runs)),
+        _runs_table(_not_passed(report.runs), report.variants),
         "<h2>All runs</h2>",
-        _runs_table(report.runs),
+        _runs_table(report.runs, report.variants),
         "<h2>Artifacts</h2>",
         table(["run", "kind", "path", "checksum"], _artifact_rows(report.runs)),
         "<h2>Not verified</h2>",
@@ -787,6 +874,87 @@ def render_experiment(
         generated_at=generated_at,
         standalone=standalone,
     )
+
+
+def _definition_section(report: TaskReport) -> str:
+    """Everything the task is: its prose, its rules, the state it starts from.
+
+    The database keeps the identity of a task and the digest of the snapshot a
+    run was worked from; the description, the constraints and the notes live in
+    the task directory. When the definition on disk carries a different digest
+    than the runs were recorded with, the page says so: an edited task is not
+    the task those runs solved, and presenting it as one would be a lie.
+    """
+    task = report.task
+    definition = report.definition
+    parts = ["<h2>What the task asks</h2>"]
+    if definition is None:
+        parts.append(
+            '<p class="muted">the task definition is not available to this report; '
+            "write the report from a checkout that holds the dataset directory to "
+            "see the description, the constraints and the notes</p>"
+        )
+    else:
+        if definition.get("title"):
+            parts.append(f'<p class="task-title">{esc(definition["title"])}</p>')
+        if definition.get("description"):
+            parts.append(f'<p class="task-description">{esc(definition["description"])}</p>')
+        if definition.get("description_markdown"):
+            parts.append(
+                '<details open><summary>full description (markdown source)</summary>'
+                f"<pre class='prose'>{esc(definition['description_markdown'])}</pre></details>"
+            )
+        if definition.get("constraints"):
+            parts.append("<h3>Constraints</h3><ul class='constraints'>")
+            parts += [f"<li>{esc(item)}</li>" for item in definition["constraints"]]
+            parts.append("</ul>")
+        if definition.get("notes"):
+            parts.append(f'<h3>Notes</h3><p class="task-notes">{esc(definition["notes"])}</p>')
+
+    parts.append("<h3>Recorded identity</h3>")
+    parts.append(
+        table(
+            ["field", "value"],
+            [
+                ["uid", esc(task.get("uid"))],
+                ["category", esc(task.get("category"))],
+                ["difficulty", esc(task.get("difficulty"))],
+                ["evaluator", esc(task.get("evaluator"))],
+                ["base commit", esc(task.get("base_commit"))],
+                ["repository", esc(task.get("repository_uid"))],
+                ["snapshot digest", f'<code>{esc(task.get("snapshot_digest"))}</code>'],
+            ]
+            + (
+                [
+                    ["source", esc(definition.get("repository"))],
+                    ["ref", esc(definition.get("ref"))],
+                    ["mutation", esc(definition.get("mutation") or "none")],
+                    [
+                        "timeout",
+                        number(definition.get("timeout_seconds")) + " s"
+                        if definition.get("timeout_seconds") is not None
+                        else NOT_MEASURED,
+                    ],
+                    ["hidden tests", esc(definition.get("hidden_tests"))],
+                    ["public tests", esc(definition.get("public_tests"))],
+                    ["definition digest", f'<code>{esc(definition.get("digest"))}</code>'],
+                    ["definition path", esc(definition.get("path"))],
+                ]
+                if definition
+                else []
+            ),
+        )
+    )
+    if definition is not None:
+        recorded = task.get("snapshot_digest")
+        if recorded and definition.get("digest") and recorded != definition["digest"]:
+            parts.append(
+                '<div class="notice"><strong>The definition on disk is not the one these '
+                "runs were worked from.</strong> The recorded snapshot digest and the digest "
+                "of the task directory differ; what is printed above is the current "
+                "definition, and it may not be what the runs below were given.</div>"
+            )
+    return "".join(parts)
 
 
 def render_task(report: TaskReport, *, generated_at: str | None = None) -> str:
@@ -803,20 +971,11 @@ def render_task(report: TaskReport, *, generated_at: str | None = None) -> str:
                 ("tokens", number(summary.get("total_tokens"))),
             ]
         ),
-        "<h2>Definition</h2>",
-        table(
-            ["field", "value"],
-            [
-                ["category", esc(task.get("category"))],
-                ["difficulty", esc(task.get("difficulty"))],
-                ["evaluator", esc(task.get("evaluator"))],
-                ["base commit", esc(task.get("base_commit"))],
-                ["repository", esc(task.get("repository_uid"))],
-                ["snapshot digest", f'<code>{esc(task.get("snapshot_digest"))}</code>'],
-            ],
-        ),
+        _definition_section(report),
         "<h2>Runs of this task</h2>",
-        _runs_table(report.runs),
+        "<p class='muted'>in the order they started; the parameters column is the "
+        "configuration each run was executed under</p>",
+        _runs_table(report.runs, report.variants, show_task=False),
         "<h2>Not verified</h2>",
         _notice(report.unverified),
     ]
@@ -831,6 +990,139 @@ def _values(values: Any) -> str:
     return esc(values)
 
 
+def slugify(value: str) -> str:
+    """A filesystem-safe, readable directory name for a subject label.
+
+    Labels carry what an agent or a router called itself, slashes and spaces
+    included (``qwen/Qwen3.8-27B``), and a directory per subject has to survive
+    that without nesting pages one level deeper than the tree expects.
+    """
+    slug = re.sub(r"[^a-zA-Z0-9.]+", "-", str(value)).strip("-.").lower()
+    return slug or "unnamed"
+
+
+def render_subject(report: SubjectReport, *, generated_at: str | None = None) -> str:
+    """Every run of one agent, runtime, plugin or model, with its parameters."""
+    summary = report.summary
+    title = f"{report.kind} {report.label}"
+    body = [
+        "<h1>" + esc(report.kind) + "</h1>",
+        f'<p class="subtitle">{esc(report.label)}</p>',
+        cards(
+            [
+                ("runs", number(summary.get("runs"))),
+                ("evaluated", number(summary.get("evaluated"))),
+                ("success rate", percent(summary.get("success_rate"))),
+                ("mean time", duration(summary.get("mean_duration_seconds"))),
+                ("tokens", number(summary.get("total_tokens"))),
+            ]
+        ),
+    ]
+    if report.kind in ("agent", "runtime"):
+        body.append("<h2>Tasks this subject worked</h2>")
+        body.append(
+            table(
+                ["task", "runs #", "passed #", "success rate", "mean time", "tokens #"],
+                [
+                    [
+                        esc(task),
+                        number(len(group)),
+                        number(sum(1 for run in group if verdict_of(run) == PASSED)),
+                        percent(
+                            (sum(1 for run in group if verdict_of(run) == PASSED) / len(group))
+                            if group
+                            else None
+                        ),
+                        duration(
+                            sum(
+                                value
+                                for value in (duration_seconds(run) for run in group)
+                                if value is not None
+                            )
+                            / sum(1 for run in group if duration_seconds(run) is not None)
+                            if any(duration_seconds(run) is not None for run in group)
+                            else None
+                        ),
+                        number(
+                            sum(
+                                (run.get("observations") or {}).get("total_tokens") or 0
+                                for run in group
+                            )
+                            or None
+                        ),
+                    ]
+                    for task, group in sorted(
+                        _group_by(runs=report.runs, key="task_uid").items()
+                    )
+                ],
+            )
+        )
+    if report.observations:
+        body.append(f"<h2>{esc(report.kind)} observations</h2>")
+        if report.kind == "plugin":
+            body.append(
+                table(
+                    ["run", "version", "enabled", "verification", "note"],
+                    [
+                        [
+                            esc(row.get("run_uid")),
+                            esc(row.get("plugin_version")),
+                            "yes" if row.get("enabled") else "no",
+                            f'<span class="badge {_badge_css(row.get("verification_status"))}">'
+                            f"{esc(row.get('verification_status'))}</span>",
+                            _note_cell(row.get("note")),
+                        ]
+                        for row in report.observations
+                    ],
+                )
+            )
+        else:
+            body.append(
+                table(
+                    ["run", "requested", "observed", "source", "verification"],
+                    [
+                        [
+                            esc(row.get("run_uid")),
+                            esc(row.get("requested_model")),
+                            esc(row.get("observed_model")),
+                            esc(row.get("value_source")),
+                            f'<span class="badge {_badge_css(row.get("verification_status"))}">'
+                            f"{esc(row.get('verification_status'))}</span>",
+                        ]
+                        for row in report.observations
+                    ],
+                )
+            )
+    body.append("<h2>Runs</h2>")
+    body.append(
+        "<p class='muted'>in the order they started; the parameters column is the "
+        "configuration each run was executed under</p>"
+    )
+    body.append(
+        _runs_table(
+            report.runs,
+            report.variants,
+            show_task=report.kind != "task",
+            show_agent=report.kind != "agent",
+        )
+    )
+    body.append("<h2>Not verified</h2>")
+    body.append(_notice(report.unverified))
+    return page(title, "".join(body), generated_at=generated_at)
+
+
+def _badge_css(status: Any) -> str:
+    return "pass" if status == "verified" else "warn"
+
+
+def _group_by(runs: list[dict[str, Any]], key: str) -> dict[str, list[dict[str, Any]]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for run in runs:
+        value = run.get(key)
+        groups.setdefault(str(value) if value is not None else "(none)", []).append(run)
+    return groups
+
+
 def render_listing(
     title: str, subtitle: str, rows: list[list[str]], headers: list[str]
 ) -> str:
@@ -843,9 +1135,18 @@ def asset_names() -> tuple[str, ...]:
 
 
 def write_report_tree(
-    root: Path | str, data: HistoryData, *, generated_at: str | None = None
+    root: Path | str,
+    data: HistoryData,
+    *,
+    generated_at: str | None = None,
+    dataset: Any = None,
 ) -> list[Path]:
-    """Write the report tree under ``root``; returns every file written."""
+    """Write the report tree under ``root``; returns every file written.
+
+    ``dataset`` is the dataset the tasks came from. It is optional: a report of
+    a database on its own loses the task prose, says so on each task page, and
+    stays correct about everything else.
+    """
     root = Path(root)
     written: list[Path] = []
 
@@ -884,21 +1185,66 @@ def write_report_tree(
         uid = str(task["uid"])
         write(
             f"tasks/{uid}/index.html",
-            render_task(build_task_report(data, uid), generated_at=generated_at),
+            render_task(
+                build_task_report(data, uid, dataset=dataset), generated_at=generated_at
+            ),
         )
 
     stats = dashboard(data)
     write("tasks/index.html", _task_listing(data))
     write(
         "agents/index.html",
-        _group_listing("Agents", "one row per agent identity", stats["agents"], "agent"),
+        _group_listing(
+            "Agents",
+            "one row per agent identity; a row opens the runs of that agent",
+            stats["agents"],
+            "agent",
+        ),
     )
     write(
         "runtimes/index.html",
-        _group_listing("Runtimes", "one row per runtime", stats["runtimes"], "runtime"),
+        _group_listing(
+            "Runtimes",
+            "one row per runtime; a row opens the runs of that runtime",
+            stats["runtimes"],
+            "runtime",
+        ),
     )
     write("plugins/index.html", _plugin_listing(stats["plugins"]))
     write("models/index.html", _model_listing(stats["models"]))
+
+    for row in stats["agents"]:
+        label = str(row.get("agent"))
+        write(
+            f"agents/{slugify(label)}/index.html",
+            render_subject(
+                build_agent_report(data, label), generated_at=generated_at
+            ),
+        )
+    for row in stats["runtimes"]:
+        label = str(row.get("runtime"))
+        write(
+            f"runtimes/{slugify(label)}/index.html",
+            render_subject(
+                build_runtime_report(data, label), generated_at=generated_at
+            ),
+        )
+    for row in stats["plugins"]:
+        label = str(row.get("plugin"))
+        write(
+            f"plugins/{slugify(label)}/index.html",
+            render_subject(
+                build_plugin_report(data, label), generated_at=generated_at
+            ),
+        )
+    for row in stats["models"]:
+        label = str(row.get("requested"))
+        write(
+            f"models/{slugify(label)}/index.html",
+            render_subject(
+                build_model_report(data, label), generated_at=generated_at
+            ),
+        )
     return written
 
 
@@ -957,7 +1303,8 @@ def _plugin_listing(rows: list[dict[str, Any]]) -> str:
         "what the history says about each plugin",
         [
             [
-                esc(row.get("plugin")),
+                f'<a href="{esc(slugify(str(row.get("plugin"))))}/index.html">'
+                f"{esc(row.get('plugin'))}</a>",
                 number(row.get("runs") or 0),
                 number(row.get("enabled_runs") or 0),
                 esc(", ".join(row.get("versions") or []) or NOT_MEASURED),
@@ -976,7 +1323,8 @@ def _model_listing(rows: list[dict[str, Any]]) -> str:
         "requested versus observed model, with the trust the observed value deserves",
         [
             [
-                esc(row.get("requested")),
+                f'<a href="{esc(slugify(str(row.get("requested"))))}/index.html">'
+                f"{esc(row.get('requested'))}</a>",
                 esc(row.get("observed")),
                 number(row.get("runs") or 0),
                 esc(", ".join(row.get("sources") or []) or NOT_MEASURED),
