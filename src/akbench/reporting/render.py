@@ -331,7 +331,7 @@ tbody tr:nth-child(3) .place:not(.top) {
    heading rhythm of the source file — a document has to read the same here as
    it does in the editor — while every measurement on the rest of the report
    stays as compact as a table needs. */
-.docs-shell { max-width: 94rem; margin-inline: auto; }
+.docs-shell { width: 100%; }
 .docs-hero {
   display: flex; align-items: center; justify-content: space-between; gap: 1.5rem;
   padding: 1rem 0 2rem; margin-bottom: 1.8rem; border-bottom: 1px solid var(--line);
@@ -391,7 +391,7 @@ tbody tr:nth-child(3) .place:not(.top) {
 }
 .docs-section-heading h2::before, .docs-section-heading h2::after { content: none; }
 .docs-section-heading span { color: var(--muted); font-size: .78rem; }
-.docs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+.docs-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; }
 .doc-link {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .45rem 1rem;
   align-content: start; padding: 1rem 1.1rem;
@@ -416,7 +416,7 @@ tbody tr:nth-child(3) .place:not(.top) {
   border: 1px solid var(--line); border-radius: 12px; background: var(--bg);
 }
 .docs-source { margin: 0 0 1.8rem; padding-bottom: .9rem; border-bottom: 1px solid var(--line); }
-.docs-article .prose { max-width: 78ch; margin-inline: auto; overflow-wrap: anywhere; }
+.docs-article .prose { overflow-wrap: anywhere; }
 .docs-article .prose h1 { font-size: clamp(1.6rem, 2.7vw, 2.2rem); letter-spacing: -.03em; }
 .docs-article .prose h2 { font-size: 1.35rem; margin-top: 2.5rem; }
 .docs-article .prose h3 { font-size: 1.1rem; }
@@ -464,6 +464,9 @@ tbody tr:nth-child(3) .place:not(.top) {
 .prose hr { border: none; border-top: 1px solid var(--line); margin: 1.8rem 0; }
 .prose .table-wrap table { font-size: .82rem; }
 .prose .table-wrap td { overflow-wrap: anywhere; }
+@media (max-width: 90rem) {
+  .docs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 60rem) {
   .docs-layout { grid-template-columns: 12rem minmax(0, 1fr); gap: 1.2rem; }
   .docs-grid { grid-template-columns: 1fr; }
