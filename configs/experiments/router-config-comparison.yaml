@@ -23,7 +23,7 @@ experiment:
 
   agent:
     id: codex
-    version: "1.0.1"
+    version: "1.0.0"
     config:
       sandbox_mode: workspace-write
 
