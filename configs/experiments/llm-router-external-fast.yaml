@@ -1,0 +1,81 @@
+# Four named configurations on every task of the dataset (plan section 25,
+# the comparison the operator asked for).
+#
+# The matrix is explicit rather than a full product: qwen/Qwen3.8-27B and
+# qwen/Qwen3.8-Flash-Next are compared with the knowledge plugin off, and the
+# auto_codex alias is compared with it off and on. A full product would add
+# arms nobody reads (knowledge on, plain model), and every arm costs real
+# router time.
+#
+# KNOWLEDGE IS A REQUEST, NOT A CONFIRMED STATE. The toggle lives in the router
+# process (LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED) and this installation runs
+# against a shared instance whose configuration cannot be written or read over
+# HTTP (docs/ROUTER_INTEGRATION.md). The knowledge_on arm therefore records the
+# value it asked for and an unverified plugin state; read its ranking as "the
+# auto_codex alias, with knowledge asked for", not as a measured plugin effect.
+schema_version: "1.0"
+id: llm-router-external-fast
+version: "1.0.0"
+title: "FAST RUN: Router models versus Auto Codex, with and without knowledge"
+description: >-
+  Two specific tasks (stockpile-writeoff-001 and slugify-001) are evaluated across
+  two configurations: the Qwen3.8-27B model with knowledge requested off and
+  the Auto Codex alias with knowledge requested on. The matrix is explicit rather
+  than a full product to optimize router time. Knowledge here is a request, not
+  a confirmed state: the shared router refuses per-run plugin control, so the
+  knowledge arm records the value it asked for and an unverified plugin state.
+
+experiment:
+  type: configuration
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories: [ bug_fix, new_feature ]
+      task_ids:
+        - stockpile-writeoff-001
+        - slugify-001
+
+  factors:
+    strategy: custom_matrix
+    dimensions:
+      - id: model
+        values: [ qwen/Qwen3.8-27B, auto_codex ]
+      - id: knowledge_enabled
+    baseline:
+      model: qwen/Qwen3.8-27B
+      knowledge_enabled: false
+    combinations:
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: false
+      - model: auto_codex
+        knowledge_enabled: true
+
+  execution_policy:
+    repetitions: 1
+    concurrency: 1
+    timeout_seconds: 260
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [ pytest_evaluator ]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    max_runs: 4
