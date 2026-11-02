@@ -801,6 +801,19 @@ def test_task_page_lists_every_run_of_the_task(database_url: str, tmp_path: Path
     assert "bug_fix" in page
 
 
+def test_tasks_listing_page_includes_success_rate_and_tokens(
+    database_url: str, tmp_path: Path
+) -> None:
+    data = collect_history(_seeded(database_url))
+
+    write_report_tree(tmp_path / "reports", data)
+    page = (tmp_path / "reports" / "tasks" / "index.html").read_text(encoding="utf-8")
+    assert "wordcount-001@1.0.0" in page
+    assert "success rate" in page
+    assert "total tokens" in page
+    assert "50.0%" in page
+
+
 def test_an_empty_history_still_renders(database_url: str, tmp_path: Path) -> None:
     store = _store(database_url)
 
@@ -1180,3 +1193,47 @@ def test_the_docs_index_says_when_no_document_was_found(
     assert "no document was found" in index
     # the dashboard still links to the page, and the page is written
     assert "docs/index.html" in {str(path.relative_to(root)) for path in written}
+
+
+def test_runs_with_errors_are_highlighted_in_tables_and_run_detail(
+    database_url: str, tmp_path: Path
+) -> None:
+    store = _store(database_url)
+    store.record_plan(
+        experiment_uid="err-exp@1.0.0",
+        title="err-exp",
+        experiment_type="configuration",
+        descriptor_id="err-exp",
+        descriptor_version="1.0.0",
+        config_hash="sha256:err",
+        variants=[{"uid": "v-1", "index": 0, "values": {}}],
+    )
+    store.record_run(
+        _run(
+            "run-broken",
+            status="failed",
+            failure_class="INFRASTRUCTURE_ERROR",
+            error_message="Connection refused to container",
+            exit_code=1,
+        ),
+        experiment_uid="err-exp@1.0.0",
+        variant_uid="v-1",
+        task=_task_stub(),
+    )
+
+    data = collect_history(store)
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    # Runs table
+    runs_index = (root / "runs" / "index.html").read_text(encoding="utf-8")
+    assert '<tr class="run-error">' in runs_index
+    assert 'class="badge fail">INFRASTRUCTURE_ERROR</span>' in runs_index
+    assert 'class="fail error-text">Connection refused to container</span>' in runs_index
+
+    # Run detail page
+    run_page = (root / "runs" / "run-broken" / "index.html").read_text(encoding="utf-8")
+    assert 'class="notice error"' in run_page
+    assert "Connection refused to container" in run_page
+    assert 'class="badge fail">INFRASTRUCTURE_ERROR</span>' in run_page
+    assert '<span class="fail">1</span>' in run_page

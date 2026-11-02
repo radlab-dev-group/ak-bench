@@ -42,6 +42,7 @@ from akbench.reporting.data import (
     dashboard,
     duration_seconds,
     order_by_start,
+    summarize_runs,
     unverified_configurations,
     variant_lookup,
     verdict_of,
@@ -255,10 +256,23 @@ td > .pass, td > .fail, .card .value > .pass, .card .value > .fail {
   background: rgba(243, 182, 63, .08); }
 .badge.pass { border-color: rgba(62, 207, 142, .5); color: var(--pass);
   background: rgba(62, 207, 142, .08); }
+.badge.fail { border-color: rgba(255, 107, 122, .5); color: var(--fail);
+  background: rgba(255, 107, 122, .08); }
 .notice {
   border: 1px solid rgba(243, 182, 63, .35); border-left: 3px solid var(--warn);
   background: rgba(243, 182, 63, .07);
   padding: .8rem 1rem; margin: 1rem 0; font-size: .88rem; border-radius: 8px;
+}
+.notice.error {
+  border-color: rgba(255, 107, 122, .35); border-left-color: var(--fail);
+  background: rgba(255, 107, 122, .07); color: var(--fail);
+}
+.error-text { color: var(--fail); font-weight: 600; }
+tr.run-error {
+  background: rgba(255, 107, 122, .08);
+}
+tbody tr.run-error:hover {
+  background: rgba(255, 107, 122, .18);
 }
 code {
   font: .82rem/1.5 var(--mono); word-break: break-all; color: var(--bright);
@@ -682,7 +696,12 @@ def duration(seconds: float | None) -> str:
     return f"{int(hours)} h {int(minutes)} m"
 
 
-def table(headers: list[str], rows: list[list[str]]) -> str:
+def table(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    row_classes: list[str] | None = None,
+) -> str:
     """A table; a header ending in ``#`` is right-aligned as a number.
 
     The table is marked with a density class from its own column count, so the
@@ -706,15 +725,16 @@ def table(headers: list[str], rows: list[list[str]]) -> str:
         f'title="sort by {esc(header)}">{esc(header)}</th>'
         for header in headers
     )
-    body = "".join(
-        "<tr>"
-        + "".join(
+    body_rows: list[str] = []
+    for idx, row in enumerate(rows):
+        r_cls = row_classes[idx] if row_classes and idx < len(row_classes) else ""
+        tr_attr = f' class="{esc(r_cls)}"' if r_cls else ""
+        cells = "".join(
             f'<td class="num">{cell}</td>' if is_num(header) else f"<td>{cell}</td>"
             for header, cell in zip(headers, row, strict=True)
         )
-        + "</tr>"
-        for row in rows
-    )
+        body_rows.append(f"<tr{tr_attr}>{cells}</tr>")
+    body = "".join(body_rows)
     return (
         f'<div class="table-wrap"><table{classes}><thead><tr>'
         f"{head}</tr></thead><tbody>{body}</tbody></table></div>"
@@ -793,13 +813,61 @@ def page(
     )
 
 
+def _is_error_status(status: Any) -> bool:
+    if not status:
+        return False
+    s = str(status).lower()
+    return (
+        s
+        in (
+            "failed",
+            "timeout",
+            "timed_out",
+            "cancelled",
+            "infrastructure_error",
+            "invalid_configuration",
+            "evaluation_error",
+            "error",
+        )
+        or "error" in s
+        or "fail" in s
+        or "timeout" in s
+    )
+
+
+def _status_css(status: Any) -> str:
+    if not status:
+        return "muted"
+    s = str(status).lower()
+    if s in ("completed", "verified", "passed"):
+        return "pass"
+    if _is_error_status(s):
+        return "fail"
+    return "warn"
+
+
+def _is_error_run(run: dict[str, Any]) -> bool:
+    if run.get("error_message"):
+        return True
+    fc = run.get("failure_class")
+    if fc and str(fc).lower() not in ("none", ""):
+        return True
+    status = run.get("status")
+    if _is_error_status(status):
+        return True
+    exit_code = run.get("exit_code")
+    if exit_code not in (0, None):
+        return True
+    return False
+
+
 def _badges(statuses: dict[str, int] | list[str]) -> str:
     items = sorted(statuses.items()) if isinstance(statuses, dict) else [(s, 0) for s in statuses]
     if not items:
         return NOT_MEASURED
     parts = []
     for status, count in items:
-        css = "pass" if status == "verified" else "warn"
+        css = _status_css(status)
         label = f"{status} x {count}" if count else str(status)
         parts.append(f'<span class="badge {css}">{esc(label)}</span>')
     return " ".join(parts)
@@ -875,7 +943,7 @@ def _comparison_table(
                 percent(row.get("success_rate")),
                 duration(row.get("mean_duration_seconds")),
                 *_token_cells(row),
-                esc(", ".join(row.get("statuses") or [])),
+                _badges(row.get("statuses") or []),
             ]
             for row in rows
         ],
@@ -1359,9 +1427,26 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
     )
     verdict = verdict_of(run)
     verdict_css = "pass" if verdict == PASSED else ("fail" if verdict else "muted")
+    status_val = run.get("status")
+    status_css = _status_css(status_val)
+    has_error = _is_error_run(run)
+
     body = [
         "<h1>Run</h1>",
         f'<p class="subtitle">{esc(run.get("uid"))}</p>',
+    ]
+    if has_error:
+        err_msg = run.get("error_message") or (
+            f"Run status: {status_val}"
+            if status_val != "completed"
+            else "Run encountered an error"
+        )
+        fc_part = f" ({esc(run.get('failure_class'))})" if run.get("failure_class") else ""
+        body.append(
+            f'<div class="notice error"><strong>Error{fc_part}:</strong> {esc(err_msg)}</div>'
+        )
+
+    body.extend([
         cards(
             [
                 (
@@ -1374,7 +1459,10 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
                 ("generated tokens", number(observations.get("output_tokens"))),
                 ("tokens", number(observations.get("total_tokens"))),
                 ("tool calls", number(observations.get("tool_call_count"))),
-                ("status", esc(run.get("status"))),
+                (
+                    "status",
+                    f'<span class="{status_css}">{esc(status_val or NOT_MEASURED)}</span>',
+                ),
             ]
         ),
         "<h2>Where this run belongs</h2>",
@@ -1450,15 +1538,29 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
                 ["tool calls", number(observations.get("tool_call_count"))],
                 [
                     "exit code",
-                    number(run.get("exit_code"))
-                    if run.get("exit_code") is not None
-                    else NOT_MEASURED,
+                    f'<span class="fail">{number(run.get("exit_code"))}</span>'
+                    if run.get("exit_code") not in (0, None)
+                    else (
+                        number(run.get("exit_code"))
+                        if run.get("exit_code") is not None
+                        else NOT_MEASURED
+                    ),
                 ],
-                ["failure class", esc(run.get("failure_class") or "none")],
-                ["error", esc(run.get("error_message") or "")],
+                [
+                    "failure class",
+                    f'<span class="badge fail">{esc(run.get("failure_class"))}</span>'
+                    if run.get("failure_class") and str(run.get("failure_class")).lower() not in ("none", "")
+                    else '<span class="muted">none</span>',
+                ],
+                [
+                    "error",
+                    f'<span class="fail error-text">{esc(run.get("error_message"))}</span>'
+                    if run.get("error_message")
+                    else '<span class="muted">none</span>',
+                ],
             ],
         ),
-    ]
+    ])
 
     if report.model_state:
         model = report.model_state
@@ -1578,6 +1680,34 @@ def _run_rows(
         observations = (
             run.get("observations") if isinstance(run.get("observations"), dict) else {}
         )
+        status = run.get("status")
+        status_css = _status_css(status)
+        status_cell = (
+            f'<span class="badge {status_css}">{esc(status)}</span>'
+            if status
+            else NOT_MEASURED
+        )
+
+        verdict = verdict_of(run)
+        if verdict == PASSED:
+            verdict_cell = f'<span class="pass">{esc(verdict)}</span>'
+        elif verdict:
+            verdict_cell = f'<span class="fail">{esc(verdict)}</span>'
+        else:
+            verdict_cell = f'<span class="muted">{NOT_MEASURED}</span>'
+
+        failure_class = run.get("failure_class")
+        if failure_class and str(failure_class).lower() not in ("none", ""):
+            failure_cell = f'<span class="badge fail">{esc(failure_class)}</span>'
+        else:
+            failure_cell = '<span class="muted">none</span>'
+
+        error_msg = run.get("error_message") or ""
+        if error_msg:
+            error_cell = f'<span class="fail error-text">{esc(error_msg)}</span>'
+        else:
+            error_cell = '<span class="muted">&mdash;</span>'
+
         row = [
             _run_link(run),
             _parameters_cell(lookup.get(str(run.get("variant_uid")))),
@@ -1589,8 +1719,8 @@ def _run_rows(
             row.append(esc(run.get("agent")))
         row += [
             number(run.get("repetition")) if run.get("repetition") is not None else NOT_MEASURED,
-            esc(run.get("status")),
-            esc(verdict_of(run)),
+            status_cell,
+            verdict_cell,
             number(evaluation.get("score"), digits=3),
             duration(duration_seconds(run)),
             # what one run cost: what was paid for, what the model produced, the
@@ -1599,8 +1729,8 @@ def _run_rows(
             number(observations.get("output_tokens")),
             number(observations.get("total_tokens")),
             number(observations.get("tool_call_count")),
-            esc(run.get("failure_class")),
-            esc(run.get("error_message") or ""),
+            failure_cell,
+            error_cell,
         ]
         rows.append(row)
     return rows
@@ -1614,6 +1744,7 @@ def _runs_table(
     show_agent: bool = True,
 ) -> str:
     """A run table in the order the caller passed the runs."""
+    row_classes = ["run-error" if _is_error_run(r) else "" for r in runs]
     return table(
         _runs_headers(show_task=show_task, show_agent=show_agent),
         _run_rows(
@@ -1622,6 +1753,7 @@ def _runs_table(
             show_task=show_task,
             show_agent=show_agent,
         ),
+        row_classes=row_classes,
     )
 
 
@@ -2073,6 +2205,8 @@ def render_task(report: TaskReport, *, generated_at: str | None = None) -> str:
         cards(
             [
                 ("runs", number(summary.get("runs"))),
+                ("evaluated", number(summary.get("evaluated"))),
+                ("passed", number(summary.get("passed"))),
                 ("success rate", percent(summary.get("success_rate"))),
                 ("mean time", duration(summary.get("mean_duration_seconds"))),
                 ("input tokens", number(summary.get("input_tokens"))),
@@ -2242,9 +2376,17 @@ def _group_by(runs: list[dict[str, Any]], key: str) -> dict[str, list[dict[str, 
 
 
 def render_listing(
-    title: str, subtitle: str, rows: list[list[str]], headers: list[str]
+    title: str,
+    subtitle: str,
+    rows: list[list[str]],
+    headers: list[str],
+    *,
+    row_classes: list[str] | None = None,
 ) -> str:
-    body = f"<h1>{esc(title)}</h1><p class='subtitle'>{esc(subtitle)}</p>" + table(headers, rows)
+    body = (
+        f"<h1>{esc(title)}</h1><p class='subtitle'>{esc(subtitle)}</p>"
+        + table(headers, rows, row_classes=row_classes)
+    )
     return page(title, body)
 
 
@@ -2469,6 +2611,10 @@ def write_report_tree(
             "every recorded run, newest first",
             _run_rows(order_by_start(data.runs)[::-1], _all_variants(data)),
             _runs_headers(),
+            row_classes=[
+                "run-error" if _is_error_run(r) else ""
+                for r in order_by_start(data.runs)[::-1]
+            ],
         ),
     )
 
@@ -2536,21 +2682,41 @@ def write_report_tree(
 
 
 def _task_listing(data: HistoryData) -> str:
-    rows = [
-        [
-            f'<a href="{esc(row["uid"])}/index.html">{esc(row["uid"])}</a>',
-            esc(row.get("category")),
-            esc(row.get("difficulty")),
-            esc(row.get("evaluator")),
-            number(row.get("runs") or 0),
-        ]
-        for row in data.tasks
-    ]
+    rows = []
+    for row in data.tasks:
+        uid = str(row["uid"])
+        task_runs = data.runs_for_task(uid)
+        summary = summarize_runs(task_runs)
+        rows.append(
+            [
+                f'<a href="{esc(uid)}/index.html">{esc(uid)}</a>',
+                esc(row.get("category")),
+                esc(row.get("difficulty")),
+                esc(row.get("evaluator")),
+                number(summary.get("runs") or 0),
+                number(summary.get("evaluated") or 0),
+                number(summary.get("passed") or 0),
+                percent(summary.get("success_rate")),
+                duration(summary.get("mean_duration_seconds")),
+                *_token_cells(summary),
+            ]
+        )
     return render_listing(
         "Tasks",
         "every recorded task",
         rows,
-        ["task", "category", "difficulty", "evaluator", "runs #"],
+        [
+            "task",
+            "category",
+            "difficulty",
+            "evaluator",
+            "runs #",
+            "evaluated #",
+            "passed #",
+            "success rate",
+            "mean time",
+            *TOKEN_HEADERS,
+        ],
     )
 
 
@@ -2577,7 +2743,7 @@ def _group_listing(
                 percent(row.get("success_rate")),
                 duration(row.get("mean_duration_seconds")),
                 *_token_cells(row),
-                esc(", ".join(row.get("statuses") or [])),
+                _badges(row.get("statuses") or []),
             ]
             for row in rows
         ],
