@@ -239,7 +239,7 @@ table.x-dense td:not(.num) { min-width: 5.6rem; }
 .warn { color: var(--warn); }
 .muted { color: var(--muted); }
 /* a verdict in a cell or a card reads as a pill, so a column of them scans */
-td > .pass, td > .fail, .card .value > .pass, .card .value > .fail {
+td > .pass, td > .fail:not(.error-text), .card .value > .pass, .card .value > .fail {
   display: inline-block; padding: .08rem .55rem; border-radius: 999px; font-size: .9em;
   font-weight: 600; border: 1px solid currentColor; background: rgba(0, 0, 0, .2);
 }
@@ -267,7 +267,10 @@ td > .pass, td > .fail, .card .value > .pass, .card .value > .fail {
   border-color: rgba(255, 107, 122, .35); border-left-color: var(--fail);
   background: rgba(255, 107, 122, .07); color: var(--fail);
 }
-.error-text { color: var(--fail); font-weight: 600; }
+.error-text {
+  color: var(--fail); font-weight: 500; display: inline-block;
+  line-height: 1.4; word-break: break-word; white-space: normal;
+}
 tr.run-error {
   background: rgba(255, 107, 122, .08);
 }
@@ -1554,7 +1557,7 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
                 ],
                 [
                     "error",
-                    f'<span class="fail error-text">{esc(run.get("error_message"))}</span>'
+                    f'<span class="error-text">{esc(run.get("error_message"))}</span>'
                     if run.get("error_message")
                     else '<span class="muted">none</span>',
                 ],
@@ -1704,7 +1707,7 @@ def _run_rows(
 
         error_msg = run.get("error_message") or ""
         if error_msg:
-            error_cell = f'<span class="fail error-text">{esc(error_msg)}</span>'
+            error_cell = f'<span class="error-text">{esc(error_msg)}</span>'
         else:
             error_cell = '<span class="muted">&mdash;</span>'
 

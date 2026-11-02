@@ -1229,7 +1229,7 @@ def test_runs_with_errors_are_highlighted_in_tables_and_run_detail(
     runs_index = (root / "runs" / "index.html").read_text(encoding="utf-8")
     assert '<tr class="run-error">' in runs_index
     assert 'class="badge fail">INFRASTRUCTURE_ERROR</span>' in runs_index
-    assert 'class="fail error-text">Connection refused to container</span>' in runs_index
+    assert 'class="error-text">Connection refused to container</span>' in runs_index
 
     # Run detail page
     run_page = (root / "runs" / "run-broken" / "index.html").read_text(encoding="utf-8")
