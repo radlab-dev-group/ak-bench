@@ -36,7 +36,7 @@ experiment:
   dataset:
     filters:
       categories: [bug_fix, new_feature]
-      task_ids: [bookshop-tiers-001, bookshop-stock-002, notes-search-001, notes-sync-001]
+      task_ids: [bookshop-stock-002, bookshop-tiers-001, wordcount-001, slugify-001, notes-search-001, notes-sync-001]
 
   factors:
     strategy: custom_matrix
@@ -58,7 +58,7 @@ experiment:
         knowledge_enabled: true
 
   execution_policy:
-    repetitions: 2
+    repetitions: 3
     concurrency: 1
     timeout_seconds: 900
     retry_infrastructure_errors: 1

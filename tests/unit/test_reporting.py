@@ -14,12 +14,13 @@ from types import SimpleNamespace
 from akbench.reporting.data import (
     build_experiment_report,
     build_task_report,
+    build_variant_report,
     collect_history,
+    configuration_ranking,
     dashboard,
     duration_seconds,
     summarize_runs,
     unverified_configurations,
-    variant_comparison,
 )
 from akbench.reporting.render import (
     NOT_MEASURED,
@@ -30,6 +31,7 @@ from akbench.reporting.render import (
     percent,
     render_experiment,
     render_index,
+    render_variant,
     write_report_tree,
 )
 from akbench.storage.db import create_db_engine
@@ -296,28 +298,64 @@ def test_pages_link_to_the_stylesheet_at_deeper_uids(database_url: str, tmp_path
 # ------------------------------------------------------------------- ranking
 
 
-def _two_variants() -> tuple[list[dict], list[dict]]:
+def _run_for(
+    run_uid: str,
+    *,
+    variant_uid: str,
+    verdict: str | None = "passed",
+    tokens: int | None = None,
+    start: str = "2026-10-30T10:00:00+00:00",
+    finish: str = "2026-10-30T10:01:00+00:00",
+    agent: str = "codex@1.0.0",
+    runtime: str = "llm-router",
+    experiment_uid: str = "demo@1.0.0",
+    task_uid: str = "wordcount-001@1.0.0",
+) -> dict:
+    run: dict = {
+        "uid": run_uid,
+        "experiment_uid": experiment_uid,
+        "variant_uid": variant_uid,
+        "task_uid": task_uid,
+        "agent": agent,
+        "runtime_id": runtime,
+        "started_at": start,
+        "finished_at": finish,
+    }
+    if verdict is not None:
+        run["evaluation"] = {"verdict": verdict}
+    if tokens is not None:
+        run["observations"] = {"total_tokens": tokens}
+    return run
+
+
+def _two_variants() -> tuple[list[dict], dict[str, list[dict]]]:
     variants = [
         {"uid": "v-on", "values": {"knowledge_enabled": True}, "is_baseline": False},
         {"uid": "v-off", "values": {"knowledge_enabled": False}, "is_baseline": True},
     ]
     runs = [
-        {"uid": "a", "variant_uid": "v-on", "evaluation": {"verdict": "passed"},
-         "started_at": "2026-10-30T10:00:00+00:00", "finished_at": "2026-10-30T10:01:00+00:00"},
-        {"uid": "b", "variant_uid": "v-on", "evaluation": {"verdict": "passed"},
-         "started_at": "2026-10-30T10:00:00+00:00", "finished_at": "2026-10-30T10:01:00+00:00"},
-        {"uid": "c", "variant_uid": "v-off", "evaluation": {"verdict": "failed"},
-         "started_at": "2026-10-30T10:00:00+00:00", "finished_at": "2026-10-30T10:03:00+00:00"},
+        _run_for("a", variant_uid="v-on", tokens=100),
+        _run_for("b", variant_uid="v-on", tokens=300),
+        _run_for(
+            "c",
+            variant_uid="v-off",
+            verdict="failed",
+            tokens=400,
+            finish="2026-10-30T10:03:00+00:00",
+        ),
     ]
-    return runs, variants
+    return runs, {"demo@1.0.0": variants}
 
 
-def test_variant_comparison_places_the_better_configuration_first() -> None:
+def test_configuration_ranking_places_the_better_configuration_first() -> None:
     runs, variants = _two_variants()
 
-    rows = variant_comparison(runs, variants)
+    rows = configuration_ranking(runs, variants)
 
-    assert [row["uid"] for row in rows] == ["v-on", "v-off"]
+    assert [row["config"] for row in rows] == [
+        "knowledge_enabled=True",
+        "knowledge_enabled=False",
+    ]
     assert [row["place"] for row in rows] == [1, 2]
     assert rows[0]["success_rate"] == 1.0
     assert rows[1]["success_rate"] == 0.0
@@ -329,18 +367,23 @@ def test_variant_comparison_places_the_better_configuration_first() -> None:
     assert "time 0.33x" in rows[0]["vs_baseline"]
 
 
-def test_variant_comparison_shares_a_place_and_skips_the_next_one() -> None:
+def test_configuration_ranking_shares_a_place_and_skips_the_next_one() -> None:
+    """A tie is a tie in every deciding measure, or it is not shared at all."""
     runs, variants = _two_variants()
     for run in runs:
         run["evaluation"] = {"verdict": "passed"}
         run["started_at"] = "2026-10-30T10:00:00+00:00"
         run["finished_at"] = "2026-10-30T10:01:00+00:00"
+        run["observations"] = {"total_tokens": 100}
 
-    rows = variant_comparison(runs, variants)
+    rows = configuration_ranking(runs, variants)
 
     assert [row["place"] for row in rows] == [1, 1]
-    assert rows[0]["uid"] == "v-on"
-    assert rows[1]["uid"] == "v-off"
+    # fully tied rows keep their deterministic order: first start, then name
+    assert [row["config"] for row in rows] == [
+        "knowledge_enabled=False",
+        "knowledge_enabled=True",
+    ]
 
 
 def test_a_configuration_without_evaluation_holds_no_place() -> None:
@@ -350,16 +393,142 @@ def test_a_configuration_without_evaluation_holds_no_place() -> None:
         if run["variant_uid"] == "v-off":
             run.pop("evaluation")
 
-    rows = variant_comparison(runs, variants)
+    rows = configuration_ranking(runs, variants)
 
-    assert [(row["uid"], row["place"]) for row in rows] == [("v-on", 1), ("v-off", None)]
+    assert [(row["config"], row["place"]) for row in rows] == [
+        ("knowledge_enabled=True", 1),
+        ("knowledge_enabled=False", None),
+    ]
     assert rows[1]["success_rate"] is None
-    # v-on cannot be compared against a baseline that has no measured rate
+    # the other row cannot be compared against a baseline with no measured rate
     assert "not comparable" in rows[0]["vs_baseline"]
 
 
-def test_comparison_of_no_variants_is_empty() -> None:
-    assert variant_comparison([], []) == []
+def test_ranking_of_nothing_is_empty() -> None:
+    assert configuration_ranking([], {}) == []
+
+
+def test_the_same_configuration_in_two_experiments_is_one_row() -> None:
+    """A configuration is the values with their agent and runtime, nothing else.
+
+    A second recording of the same experiment, or the same configuration in
+    another experiment, adds its runs to the one row it already has.
+    """
+    variants = {
+        "demo@1.0.0": [
+            {"uid": "v-on", "values": {"knowledge_enabled": True}, "is_baseline": False},
+            {"uid": "v-off", "values": {"knowledge_enabled": False}, "is_baseline": True},
+        ],
+        "demo@2.0.0": [
+            {"uid": "v-again", "values": {"knowledge_enabled": True}, "is_baseline": False},
+            {"uid": "v-else", "values": {"knowledge_enabled": False}, "is_baseline": False},
+        ],
+    }
+    runs = [
+        _run_for("a", variant_uid="v-on", verdict="passed", tokens=100),
+        _run_for("b", variant_uid="v-off", verdict="failed", tokens=200),
+        _run_for(
+            "c",
+            variant_uid="v-again",
+            verdict="passed",
+            tokens=300,
+            experiment_uid="demo@2.0.0",
+            start="2026-10-31T09:00:00+00:00",
+            finish="2026-10-31T09:01:00+00:00",
+        ),
+        _run_for(
+            "d",
+            variant_uid="v-else",
+            verdict="passed",
+            tokens=400,
+            experiment_uid="demo@2.0.0",
+            start="2026-10-31T10:00:00+00:00",
+            finish="2026-10-31T10:01:00+00:00",
+        ),
+        _run_for(
+            "e",
+            variant_uid="v-else",
+            verdict="passed",
+            tokens=200,
+            experiment_uid="demo@2.0.0",
+            start="2026-10-31T10:02:00+00:00",
+            finish="2026-10-31T10:03:00+00:00",
+        ),
+    ]
+
+    rows = configuration_ranking(runs, variants)
+
+    assert len(rows) == 2
+    on = next(row for row in rows if row["config"] == "knowledge_enabled=True")
+    off = next(row for row in rows if row["config"] == "knowledge_enabled=False")
+    # the pool: every run of the configuration, from both experiments
+    assert on["runs"] == 2
+    assert on["evaluated"] == 2
+    assert on["passed"] == 2
+    assert on["success_rate"] == 1.0
+    # the pool of the baseline: 1/2 in the first recording, 1/1 in the second,
+    # pooled to 2/3 rather than averaged to 0.75
+    assert off["runs"] == 3
+    assert off["passed"] == 2
+    assert off["success_rate"] == round(2 / 3, 6)
+    assert off["mean_total_tokens"] == round(800 / 3, 6)
+    # tokens are stated per run, because the pools have different sizes
+    assert on["mean_total_tokens"] == 200
+    assert on["total_tokens"] == 400
+    assert on["experiments"] == ["demo@1.0.0", "demo@2.0.0"]
+    assert on["recordings"] == 2
+    assert off["experiments"] == ["demo@1.0.0", "demo@2.0.0"]
+    assert off["recordings"] == 2
+    # the row window spans both recordings
+    assert on["first_started"] == "2026-10-30T10:00:00+00:00"
+    assert on["last_finished"] == "2026-10-31T09:01:00+00:00"
+    assert off["last_finished"] == "2026-10-31T10:03:00+00:00"
+
+
+def test_the_same_values_under_another_agent_or_runtime_are_two_rows() -> None:
+    variants = {
+        "demo@1.0.0": [
+            {"uid": "v-on", "values": {"knowledge_enabled": True}, "is_baseline": False},
+            {
+                "uid": "v-other-agent",
+                "values": {"knowledge_enabled": True},
+                "is_baseline": False,
+            },
+            {
+                "uid": "v-other-runtime",
+                "values": {"knowledge_enabled": True},
+                "is_baseline": False,
+            },
+        ],
+    }
+    runs = [
+        _run_for("a", variant_uid="v-on", tokens=100),
+        _run_for("b", variant_uid="v-other-agent", tokens=200, agent="claude@2.0.0"),
+        _run_for("c", variant_uid="v-other-runtime", tokens=300, runtime="direct"),
+    ]
+
+    rows = configuration_ranking(runs, variants)
+
+    assert len(rows) == 3
+    assert {(row["agent"], row["runtime"]) for row in rows} == {
+        ("codex@1.0.0", "llm-router"),
+        ("claude@2.0.0", "llm-router"),
+        ("codex@1.0.0", "direct"),
+    }
+    assert all(row["runs"] == 1 for row in rows)
+
+
+def test_a_run_of_an_unplanned_variant_is_not_ranked() -> None:
+    """The ranking lists configurations; an unplanned run states none of them."""
+    runs, variants = _two_variants()
+    runs.append(_run_for("ghost", variant_uid="v-ghost", tokens=5))
+
+    rows = configuration_ranking(runs, variants)
+
+    assert len(rows) == 2
+    assert {row["runs"] for row in rows} == {2, 1}
+    assert sum(row["runs"] for row in rows) == 3
+
 
 
 def test_experiment_page_shows_the_ranking_with_bars(database_url: str) -> None:
@@ -375,6 +544,181 @@ def test_experiment_page_shows_the_ranking_with_bars(database_url: str) -> None:
     assert "against the baseline" in page
 
 
+def test_the_experiment_page_links_each_variant_to_its_own_page(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A variant uid is a link only to a page that exists.
+
+    The Variants table names the recordings, and each uid opens its own page:
+    the page the tree writes for that uid, and nothing else.
+    """
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    page = (root / "experiments" / "demo@1.0.0" / "index.html").read_text(encoding="utf-8")
+    for variant_uid in ("v-1", "v-2"):
+        # root-addressed, so it resolves from this page two directories deep
+        assert (
+            f'href="../../experiments/demo@1.0.0/variants/{variant_uid}/index.html"' in page
+        ), variant_uid
+    for variant_uid in ("v-1", "v-2"):
+        assert (
+            root / "experiments" / "demo@1.0.0" / "variants" / variant_uid / "index.html"
+        ).is_file()
+
+
+def test_the_variant_page_is_one_recording_not_the_pooled_row(
+    database_url: str,
+) -> None:
+    """The variant page states the recording's own numbers, not the merged ones.
+
+    The ranking row it was pooled into is stated too, on its own, because a
+    reader who arrived from a variant uid wants to see where those runs were
+    counted.
+    """
+    store = _seeded(database_url)
+    store.record_plan(
+        experiment_uid="demo@1.0.0",
+        title="demo",
+        experiment_type="configuration",
+        descriptor_id="demo",
+        descriptor_version="1.0.0",
+        config_hash="sha256:cfg2",
+        variants=[
+            {
+                "uid": "v-3",
+                "index": 2,
+                "values": {"knowledge_enabled": False},
+                "is_baseline": False,
+            },
+        ],
+        snapshots=[{"kind": "agent", "id": "codex", "version": "1.0.0", "digest": "sha256:agent"}],
+    )
+    store.record_run(
+        _run(
+            "run-third",
+            started_at="2026-10-31T09:00:00+00:00",
+            finished_at="2026-10-31T09:02:00+00:00",
+            observations={"total_tokens": 50},
+        ),
+        experiment_uid="demo@1.0.0",
+        variant_uid="v-3",
+        task=_task_stub(),
+    )
+
+    data = collect_history(store)
+    report = build_variant_report(data, "demo@1.0.0", "v-3")
+    page = render_variant(report)
+
+    # one run of its own, and its token total is 50, not the pooled 150
+    assert report.summary["runs"] == 1
+    assert "In the configuration ranking" in page
+    assert "The other recordings of this configuration" in page
+    assert "v-1" in page
+    assert "runs of this recording" in page.lower() or "Runs of this recording" in page
+
+
+def test_the_run_page_links_to_its_variant(database_url: str, tmp_path: Path) -> None:
+    data = collect_history(_seeded(database_url))
+    write_report_tree(tmp_path / "reports", data)
+    run = (
+        tmp_path / "reports" / "runs" / "run-pass" / "index.html"
+    ).read_text(encoding="utf-8")
+    assert 'href="../../experiments/demo@1.0.0/variants/v-1/index.html"' in run
+
+
+def test_the_experiment_page_pools_a_configuration_into_one_row(database_url: str) -> None:
+    """Two variant uids with the same values, agent and runtime are one row."""
+    store = _seeded(database_url)
+    store.record_plan(
+        experiment_uid="demo@1.0.0",
+        title="demo",
+        experiment_type="configuration",
+        descriptor_id="demo",
+        descriptor_version="1.0.0",
+        config_hash="sha256:cfg2",
+        variants=[
+            {
+                "uid": "v-3",
+                "index": 2,
+                "values": {"knowledge_enabled": False},
+                "is_baseline": False,
+            },
+        ],
+        snapshots=[{"kind": "agent", "id": "codex", "version": "1.0.0", "digest": "sha256:agent"}],
+    )
+    store.record_run(
+        _run("run-third", started_at="2026-10-31T09:00:00+00:00",
+             finished_at="2026-10-31T09:02:00+00:00",
+             observations={"total_tokens": 50}),
+        experiment_uid="demo@1.0.0",
+        variant_uid="v-3",
+        task=_task_stub(),
+    )
+
+    data = collect_history(store)
+    page = render_experiment(build_experiment_report(data, "demo@1.0.0"))
+
+    # v-1 and v-3 carry the same configuration, so the ranking holds two rows,
+    # not three, and the pooled one counts both recordings
+    assert "1 recording" in page
+    assert "2 recordings" in page
+    # the token columns of a ranking are per-run means, not sums
+    assert "mean input tokens" in page
+    assert "mean generated tokens" in page
+    assert "mean total tokens" in page
+    assert "mean tool calls" in page
+    # the pooled row states its window over both recordings
+    assert "2026-10-30 10" in page
+    assert "2026-10-31 09" in page
+
+
+def test_the_dashboard_ranks_one_row_per_configuration(database_url: str) -> None:
+    """The front page answers which configuration won, over all its runs."""
+    store = _seeded(database_url)
+    store.record_plan(
+        experiment_uid="demo@2.0.0",
+        title="demo again",
+        experiment_type="configuration",
+        descriptor_id="demo",
+        descriptor_version="1.0.0",
+        config_hash="sha256:cfg",
+        variants=[
+            {"uid": "v-1", "index": 0, "values": {"knowledge_enabled": False}, "is_baseline": True},
+            {"uid": "v-2", "index": 1, "values": {"knowledge_enabled": True}},
+        ],
+        snapshots=[{"kind": "agent", "id": "codex", "version": "1.0.0", "digest": "sha256:agent"}],
+    )
+    store.record_run(
+        _run("run-again", started_at="2026-10-31T09:00:00+00:00",
+             finished_at="2026-10-31T09:02:00+00:00",
+             observations={"total_tokens": 50}),
+        experiment_uid="demo@2.0.0",
+        variant_uid="v-1",
+        task=_task_stub(),
+    )
+
+    data = collect_history(store)
+    page = render_index(data)
+
+    ranking = page[page.index("Configuration ranking"):]
+    ranking = ranking[: ranking.index("<h2>Verdicts</h2>")]
+    # the same configuration in two experiments is one row, not two
+    assert ranking.count("knowledge_enabled=False") == 1
+    assert ranking.count("knowledge_enabled=True") == 1
+    # the first experiment is linked (render_index leaves the root token in
+    # place; the tree writer rewrites it) and the rest is counted, as is the
+    # number of recordings pooled into the row
+    assert '{{root}}experiments/demo@1.0.0/index.html' in ranking
+    assert "+1 more" in ranking
+    assert "2 recordings" in ranking
+    # the pooled row counts both recordings of the baseline configuration
+    assert "<td class=\"num\">2</td>" in ranking
+    # and the note says what a row is
+    assert "one row is one configuration" in ranking
+
+
 def test_the_index_leads_with_the_ranking_of_every_configuration(
     database_url: str,
 ) -> None:
@@ -388,17 +732,19 @@ def test_the_index_leads_with_the_ranking_of_every_configuration(
     assert "knowledge_enabled=True" in page
     # the ranking precedes the verdict table it is easier to read than verdicts
     assert page.index("Configuration ranking") < page.index("<h2>Verdicts</h2>")
-    # a place stays inside its own experiment
-    assert "a place is stated within its own experiment" in page
+    # the note says what a row is: one configuration over all of its recordings
+    assert "one row is one configuration" in page
+    assert "means per run" in page
 
 
 def test_a_ranking_of_nothing_says_so_rather_than_ranking_nothing() -> None:
     from akbench.reporting.render import _ranking
 
-    rendered = _ranking([], [])
+    rendered = _ranking([], {})
     assert rendered == '<p class="muted">nothing recorded</p>'
     unscored = _ranking(
-        [{"uid": "r", "variant_uid": "v-1"}], [{"uid": "v-1", "values": {}, "is_baseline": True}]
+        [{"uid": "r", "experiment_uid": "demo@1.0.0", "variant_uid": "v-1"}],
+        {"demo@1.0.0": [{"uid": "v-1", "values": {}, "is_baseline": True}]},
     )
     assert "no place can be stated" in unscored
 
@@ -703,3 +1049,106 @@ def test_the_page_grows_with_the_window_rather_than_capping_early() -> None:
     assert "--page-max" in STYLE
     assert "width: min(100%, var(--page-max))" in STYLE
     assert "table.dense td.num, table.dense th.num { width: 1%; white-space: nowrap; }" in STYLE
+
+
+# --------------------------------------------------------- documentation tree
+
+
+def _mini_docs(root: Path) -> list[Path]:
+    """A tiny checkout of documents to publish: two areas, one odd link."""
+    (root / "docs").mkdir(parents=True)
+    readme = root / "README.md"
+    readme.write_text(
+        "# Demo project\n\nSome **bold** and `code` and a [link](https://example.test).\n",
+        encoding="utf-8",
+    )
+    cli = root / "docs" / "CLI.md"
+    cli.write_text(
+        "# CLI\n\n## Commands\n\n| Command | Notes |\n|---|---|\n"
+        "| `akbench x` | does x |\n\n"
+        "```\nplain code block\n```\n\n",
+        encoding="utf-8",
+    )
+    unsafe = root / "docs" / "Unsafe.md"
+    unsafe.write_text(
+        "# Unsafe\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(1))\n",
+        encoding="utf-8",
+    )
+    return [readme, cli, unsafe]
+
+
+def test_the_docs_tree_publishes_one_page_per_document(
+    database_url: str, tmp_path: Path
+) -> None:
+    """Every document of the checkout gets a page, and the menu names them all."""
+    data = collect_history(_seeded(database_url))
+    _mini_docs(tmp_path / "checkout")
+
+    written = write_report_tree(
+        tmp_path / "reports", data, docs_root=tmp_path / "checkout"
+    )
+    root = tmp_path / "reports"
+    relative = {str(path.relative_to(root)) for path in written}
+    assert "docs/index.html" in relative
+    assert "docs/readme/index.html" in relative
+    assert "docs/docs-cli/index.html" in relative
+    assert "docs/docs-unsafe/index.html" in relative
+
+    index = (root / "docs" / "index.html").read_text(encoding="utf-8")
+    assert "Documentation" in index
+    # the menu lists the documents of every area, and the dashboard links here
+    assert "Demo project" in index
+    assert "CLI" in index
+    assert "Unsafe" in index
+    assert "Handbook" in index and "Project" in index
+
+
+def test_the_document_page_renders_markdown_and_keeps_anchors(
+    database_url: str, tmp_path: Path
+) -> None:
+    """The page of one document is its source, formatted and linkable."""
+    data = collect_history(_seeded(database_url))
+    _mini_docs(tmp_path / "checkout")
+
+    write_report_tree(tmp_path / "reports", data, docs_root=tmp_path / "checkout")
+    root = tmp_path / "reports"
+    cli = (root / "docs" / "docs-cli" / "index.html").read_text(encoding="utf-8")
+
+    assert '<h1 id="cli">CLI</h1>' in cli
+    assert '<h2 id="commands">Commands</h2>' in cli
+    # the table is a real table, the block is a code block, both in prose
+    assert "<table" in cli and "<code>akbench x</code>" in cli
+    assert 'class="code-block"' in cli
+    # the menu marks the current document and lists its own headings
+    assert 'class="current"' in cli
+    assert 'href="#commands"' in cli
+
+
+def test_a_document_page_escapes_its_source(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A document is untrusted input: script stays text, a scheme link stays inert."""
+    data = collect_history(_seeded(database_url))
+    _mini_docs(tmp_path / "checkout")
+
+    write_report_tree(tmp_path / "reports", data, docs_root=tmp_path / "checkout")
+    root = tmp_path / "reports"
+    unsafe = (root / "docs" / "docs-unsafe" / "index.html").read_text(encoding="utf-8")
+
+    assert "<script>alert(1)</script>" not in unsafe
+    assert "&lt;script&gt;" in unsafe
+    assert 'href="javascript:' not in unsafe
+
+
+def test_the_docs_index_says_when_no_document_was_found(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A report written away from a checkout says the prose was not found."""
+    data = collect_history(_seeded(database_url))
+
+    written = write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+    index = (root / "docs" / "index.html").read_text(encoding="utf-8")
+    assert "no document was found" in index
+    # the dashboard still links to the page, and the page is written
+    assert "docs/index.html" in {str(path.relative_to(root)) for path in written}

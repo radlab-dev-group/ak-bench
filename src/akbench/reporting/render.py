@@ -26,6 +26,7 @@ from akbench.reporting.data import (
     RunReport,
     SubjectReport,
     TaskReport,
+    VariantReport,
     build_agent_report,
     build_category_report,
     build_difficulty_report,
@@ -35,14 +36,22 @@ from akbench.reporting.data import (
     build_run_report,
     build_runtime_report,
     build_task_report,
+    build_variant_report,
     build_verdict_report,
+    configuration_ranking,
     dashboard,
     duration_seconds,
     order_by_start,
     unverified_configurations,
-    variant_comparison,
     variant_lookup,
     verdict_of,
+)
+from akbench.reporting.docs import (
+    Document,
+    discover_documents,
+    group_of,
+    group_order,
+    page_paths,
 )
 
 STYLE_NAME = "assets/style.css"
@@ -52,19 +61,27 @@ CSS_TOKEN = "{{css}}"
 ROOT_TOKEN = "{{root}}"
 
 STYLE = """
-/* AK-Bench report — a terminal read of the history, tuned for reading rather
-   than for looking like a terminal. The palette stays phosphor-green and the
-   type stays monospaced, because this is a machine record; the glow, the
-   scanlines and the vignette are gone, because they cost contrast and a long
-   table of numbers is read, not glanced at. Every value stays exactly as it
-   was measured: a style that flatters a number would be a lie in a nicer font.
-   A light scheme is used for print, because a black page wastes a toner. */
+/* AK-Bench report — a benchmark dashboard, built for comparing numbers.
+
+   The page is a dark, neutral slate with one cool accent, because a report of
+   this kind is read as a leaderboard: the eye goes to the place, the success
+   rate and the bar, and everything else stays quiet until it is looked for.
+   Prose and labels are set in a humanist sans; every identifier and every
+   measurement is monospaced with tabular figures, so a column of numbers
+   lines up and a hash does not pretend to be a word. Nothing here flatters a
+   value: a bar is drawn to scale, a missing value says so in words, and a
+   failed run is coloured, never hidden. Print falls back to a light scheme. */
 :root {
-  --bg: #0a0e10; --panel: #0e1416; --raise: #121a1c;
-  --fg: #cfe9d8; --bright: #f2fbf5; --muted: #7fa593;
-  --line: #223a30; --line-soft: #17281f; --head: #14201b;
-  --pass: #4ade80; --fail: #ff7a6e; --warn: #f5c65b; --accent: #3ddbc0;
-  --row: rgba(255, 255, 255, .022);
+  --bg: #0b1017; --panel: #10161f; --raise: #151d28; --head: #131b26;
+  --fg: #d7dee8; --bright: #f6f8fb; --muted: #8a97a8; --faint: #5d6a7b;
+  --line: #243040; --line-soft: #1b2531;
+  --accent: #5eb1ff; --accent-soft: rgba(94, 177, 255, .14);
+  --pass: #3ecf8e; --fail: #ff6b7a; --warn: #f3b63f;
+  --gold: #f5c451; --silver: #c3ccd8; --bronze: #d29a6a;
+  --row: rgba(255, 255, 255, .025);
+  --sans: "Inter", "SF Pro Text", ui-sans-serif, system-ui, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   /* the page grows with the window. A run table is fourteen columns of
      numbers, so the width a report needs is set by its widest table, not by
      a book measure; the cap exists only so an ultrawide monitor does not
@@ -73,163 +90,335 @@ STYLE = """
 }
 * { box-sizing: border-box; }
 html { background: var(--bg); }
+* { scrollbar-color: var(--line) var(--bg); }
+*::-webkit-scrollbar { height: 10px; width: 10px; }
+*::-webkit-scrollbar-track { background: var(--bg); }
+*::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px;
+  border: 2px solid var(--bg); }
+*::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 body {
-  margin: 0; padding: 1.4rem clamp(.75rem, 1.6vw, 2rem) 4rem; background: var(--bg);
-  color: var(--fg);
-  font: 15px/1.65 ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
-  -webkit-font-smoothing: antialiased;
+  margin: 0; padding: 0 clamp(.75rem, 1.6vw, 2rem) 4rem;
+  background:
+    radial-gradient(1200px 420px at 50% -200px, rgba(94, 177, 255, .10), transparent 70%),
+    var(--bg);
+  color: var(--fg); font: 15px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
 main {
   width: min(100%, var(--page-max)); min-width: min(100%, var(--page-min));
-  margin: 0 auto; border: 1px solid var(--line);
-  border-radius: 6px; background: var(--panel); padding: 1.6rem clamp(1rem, 2vw, 2.4rem) 2.2rem;
+  margin: 1.4rem auto 0; padding: 0 clamp(1rem, 2vw, 2.4rem) 2.2rem;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
 }
+/* the top bar: the brand on the left, the sections on the right. It is the
+   one piece of chrome a page carries, and it is the same on every page. */
+.topbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1.4rem;
+  margin: 0 calc(-1 * clamp(1rem, 2vw, 2.4rem)) 1.8rem;
+  padding: .85rem clamp(1rem, 2vw, 2.4rem);
+  border-bottom: 1px solid var(--line); background: var(--head);
+  border-radius: 12px 12px 0 0;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: .55rem; color: var(--bright);
+  font-weight: 700; letter-spacing: .02em; font-size: .95rem; border: none;
+}
+.brand:hover { color: var(--bright); border: none; }
+.brand .mark {
+  width: 1.35rem; height: 1.35rem; border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent), #8f7bff);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .08) inset;
+}
+.brand .tag {
+  color: var(--muted); font-weight: 500; font-size: .74rem; letter-spacing: .1em;
+  text-transform: uppercase; margin-left: .35rem;
+}
+.nav { display: flex; flex-wrap: wrap; gap: .25rem; margin-left: auto; font-size: .82rem; }
+.nav a {
+  color: var(--muted); padding: .3rem .7rem; border-radius: 6px; border: none;
+  font-weight: 500;
+}
+.nav a:hover { color: var(--bright); background: var(--accent-soft); border: none; }
 h1 {
-  font-size: 1.05rem; margin: 0 0 .3rem; letter-spacing: .14em; text-transform: uppercase;
+  font-size: 1.55rem; margin: 0 0 .3rem; letter-spacing: -.01em; font-weight: 700;
   color: var(--bright);
 }
-h1::before { content: "> "; color: var(--accent); }
 h2 {
-  font-size: .82rem; margin: 2.4rem 0 .7rem; letter-spacing: .13em; text-transform: uppercase;
-  color: var(--accent); border-bottom: 1px solid var(--line); padding-bottom: .35rem;
+  display: flex; align-items: center; gap: .6rem;
+  font-size: .78rem; margin: 2.6rem 0 .9rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
 }
+h2::before { content: ""; width: 3px; height: 1em; border-radius: 2px; background: var(--accent); }
+h2::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
 h3 {
-  font-size: .76rem; margin: 1.3rem 0 .4rem; letter-spacing: .11em; text-transform: uppercase;
-  color: var(--muted);
+  font-size: .74rem; margin: 1.5rem 0 .5rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
 }
 a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
 a:hover { color: var(--bright); border-bottom-color: var(--accent); }
-.nav {
-  font-size: .8rem; color: var(--muted); margin-bottom: 1.5rem; padding-bottom: .7rem;
-  letter-spacing: .06em; border-bottom: 1px solid var(--line-soft);
-}
-.nav::before { content: "PATH "; color: var(--muted); }
-.subtitle { color: var(--muted); margin: 0 0 1.4rem; font-size: .88rem; word-break: break-all; }
+.subtitle { color: var(--muted); margin: 0 0 1.5rem; font-size: .92rem; }
+/* identifiers and measurements are monospaced; a table is mostly that, so the
+   whole table takes the mono face and the headers take the sans */
+.subtitle, td, .card .value, .who, code, .badge, .place, .task-title { font-family: var(--mono); }
 /* A run table is wide by nature. It is laid out to fit the page: the number
    columns hug their content, the text columns take what is left and wrap, and
    the type tightens as columns are added (class dense at ten columns, x-dense
    at thirteen). Horizontal scroll stays as the fallback for a narrow window,
    not as the normal way to read a row. */
-.table-wrap { overflow-x: auto; margin: .6rem 0 1.3rem; }
-table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+.table-wrap {
+  overflow-x: auto; margin: .6rem 0 1.3rem; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--raise);
+}
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .84rem; }
 th, td {
-  border-bottom: 1px solid var(--line-soft); padding: .5rem .7rem;
+  border-bottom: 1px solid var(--line-soft); padding: .6rem .8rem;
   text-align: left; vertical-align: top; font-variant-numeric: tabular-nums;
 }
+tbody tr:last-child td { border-bottom: none; }
 th {
-  position: sticky; top: 0; z-index: 1; background: var(--head); color: var(--accent);
-  font-weight: 600; font-size: .71rem; letter-spacing: .1em; text-transform: uppercase;
-  border-bottom: 1px solid var(--accent); white-space: nowrap;
+  position: sticky; top: 0; z-index: 1; background: var(--head); color: var(--muted);
+  font: 600 .7rem/1.4 var(--sans); letter-spacing: .08em; text-transform: uppercase;
+  border-bottom: 1px solid var(--line); white-space: nowrap;
 }
 th.sortable { cursor: pointer; user-select: none; }
-th.sortable::after { content: " \\2195"; color: var(--line); }
-th.sortable:hover { background: rgba(61, 219, 192, .12); }
-th.sortable:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+th.sortable::after { content: " \\2195"; color: var(--faint); }
+th.sortable:hover { color: var(--bright); background: var(--accent-soft); }
+th.sortable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--bright); }
 th[aria-sort="ascending"]::after { content: " \\2191"; color: var(--accent); }
 th[aria-sort="descending"]::after { content: " \\2193"; color: var(--accent); }
 tbody tr:nth-child(even) { background: var(--row); }
-tbody tr:hover { background: rgba(61, 219, 192, .08); }
+tbody tr { transition: background .08s ease; }
+tbody tr:hover { background: var(--accent-soft); }
 td.num, th.num { text-align: right; }
 /* the density classes: written by table() from the column count, so a table of
    four columns keeps its comfortable size and a table of fourteen fits the page */
-table.dense { font-size: .8rem; }
-table.dense th, table.dense td { padding: .42rem .5rem; }
+table.dense { font-size: .78rem; }
+table.dense th, table.dense td { padding: .45rem .55rem; }
 table.dense th { white-space: normal; }
 table.dense td { overflow-wrap: anywhere; }
 table.dense td.num, table.dense th.num { width: 1%; white-space: nowrap; }
 table.dense .cell { min-width: 4.4rem; }
-table.x-dense { font-size: .74rem; }
-table.x-dense th, table.x-dense td { padding: .36rem .42rem; }
+table.x-dense { font-size: .72rem; }
+table.x-dense th, table.x-dense td { padding: .38rem .45rem; }
 table.x-dense th { letter-spacing: .05em; }
 table.x-dense .cell { min-width: 3.8rem; }
-table.x-dense .bar { height: .6rem; }
+table.x-dense .bar { height: .5rem; }
 /* a text cell keeps a floor. A column that can be squeezed to three
    characters is a column read by scrolling back and forth, which is what the
    wider page exists to avoid; below the floor the wrapper scrolls instead. */
 td { overflow-wrap: anywhere; }
 table.dense td:not(.num) { min-width: 6.2rem; }
 table.x-dense td:not(.num) { min-width: 5.6rem; }
+/* the headline figures: one card per measure, the value large, the label small */
 .cards {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  gap: .7rem; margin: 1.1rem 0 1.8rem;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: .75rem; margin: 1.2rem 0 1.9rem;
 }
 .card {
-  border: 1px solid var(--line); border-radius: 5px; padding: .7rem .9rem;
-  background: var(--raise);
+  position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 10px;
+  padding: .85rem 1rem .9rem; background: linear-gradient(180deg, var(--raise), var(--panel));
+}
+.card::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  opacity: .7;
 }
 .card .label {
-  color: var(--muted); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+  font-weight: 600; margin-bottom: .35rem;
 }
-.card .value { font-size: 1.35rem; color: var(--bright); line-height: 1.3; }
+.card .value {
+  font-size: 1.5rem; color: var(--bright); line-height: 1.2; font-weight: 600;
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.card .value .muted { font-size: .95rem; font-weight: 500; }
 .pass { color: var(--pass); }
 .fail { color: var(--fail); }
 .warn { color: var(--warn); }
 .muted { color: var(--muted); }
-.badge {
-  display: inline-block; border: 1px solid var(--line); border-radius: 3px;
-  padding: .05rem .45rem; font-size: .71rem; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--muted); white-space: nowrap;
+/* a verdict in a cell or a card reads as a pill, so a column of them scans */
+td > .pass, td > .fail, .card .value > .pass, .card .value > .fail {
+  display: inline-block; padding: .08rem .55rem; border-radius: 999px; font-size: .9em;
+  font-weight: 600; border: 1px solid currentColor; background: rgba(0, 0, 0, .2);
 }
-.badge.warn { border-color: var(--warn); color: var(--warn); }
-.badge.pass { border-color: var(--pass); color: var(--pass); }
+.card .value > .pass, .card .value > .fail { font-size: 1.05rem; padding: .2rem .8rem; }
+/* a value that is one token (a hash, a time window) must not fold in the
+   middle of itself; folding it would make the cell taller and harder to read */
+.nowrap { white-space: nowrap; }
+.badge {
+  display: inline-block; border: 1px solid var(--line); border-radius: 999px;
+  padding: .06rem .55rem; font-size: .68rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); white-space: nowrap; background: var(--raise);
+}
+.badge.warn { border-color: rgba(243, 182, 63, .5); color: var(--warn);
+  background: rgba(243, 182, 63, .08); }
+.badge.pass { border-color: rgba(62, 207, 142, .5); color: var(--pass);
+  background: rgba(62, 207, 142, .08); }
 .notice {
-  border-left: 3px solid var(--warn); background: rgba(245, 198, 91, .07);
-  padding: .75rem .95rem; margin: 1rem 0; font-size: .85rem; border-radius: 0 4px 4px 0;
+  border: 1px solid rgba(243, 182, 63, .35); border-left: 3px solid var(--warn);
+  background: rgba(243, 182, 63, .07);
+  padding: .8rem 1rem; margin: 1rem 0; font-size: .88rem; border-radius: 8px;
 }
 code {
-  font: .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  word-break: break-all; color: var(--bright); background: rgba(0, 0, 0, .3);
-  padding: .05rem .25rem;
+  font: .82rem/1.5 var(--mono); word-break: break-all; color: var(--bright);
+  background: rgba(0, 0, 0, .3); border: 1px solid var(--line-soft); border-radius: 4px;
+  padding: .05rem .3rem;
 }
-.note { color: var(--muted); font-size: .8rem; margin: -.4rem 0 1.2rem; }
-.task-title { color: var(--bright); font-size: 1rem; margin: 0 0 .5rem; }
+.note { color: var(--muted); font-size: .82rem; margin: -.4rem 0 1.2rem; }
+.task-title { color: var(--bright); font-size: 1.05rem; margin: 0 0 .5rem; font-weight: 600; }
 /* prose is the one thing that should not stretch: a task description stays at
    a measure that can be read across without tracking a line back */
 .task-description, .task-notes { max-width: 80rem; }
 pre.prose {
-  max-width: 80rem; margin: .4rem 0 1rem; padding: .8rem .95rem; white-space: pre-wrap;
+  max-width: 80rem; margin: .4rem 0 1rem; padding: .95rem 1.1rem; white-space: pre-wrap;
   overflow-wrap: anywhere; background: var(--raise); border: 1px solid var(--line);
-  border-radius: 4px; font-size: .84rem; color: var(--fg);
+  border-left: 3px solid var(--accent); border-radius: 8px; font: .84rem/1.6 var(--mono);
+  color: var(--fg);
 }
 details { margin: .5rem 0 1.1rem; }
 summary { cursor: pointer; color: var(--muted); font-size: .78rem; letter-spacing: .08em;
-  text-transform: uppercase; }
+  text-transform: uppercase; font-weight: 600; }
+summary:hover { color: var(--bright); }
 ul.constraints { max-width: 80rem; margin: .3rem 0 1rem; padding-left: 1.2rem; }
 ul.constraints li { margin: .15rem 0; }
-.folded { cursor: help; border-bottom: 1px dotted var(--line); }
+.folded { cursor: help; border-bottom: 1px dotted var(--muted); }
 footer {
-  margin-top: 2.6rem; color: var(--muted); font-size: .76rem; letter-spacing: .08em;
-  border-top: 1px solid var(--line); padding-top: .8rem;
+  margin-top: 2.8rem; color: var(--faint); font-size: .76rem; letter-spacing: .04em;
+  border-top: 1px solid var(--line); padding-top: .9rem;
 }
-/* the ranking and its bars: a measurement drawn to scale, never decoration */
-.place { font-size: 1.15rem; color: var(--muted); }
-.place.top { color: var(--pass); }
-.bars { display: grid; gap: .45rem; margin: .5rem 0 1.3rem; }
+/* the ranking: a place is a medal in a ring, and the first three are coloured
+   the way a podium is. The bars beside it are a measurement drawn to scale,
+   never decoration. */
+.place {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.9rem; height: 1.9rem; padding: 0 .4rem; border-radius: 999px;
+  font-size: .9rem; font-weight: 700; color: var(--muted);
+  border: 1px solid var(--line); background: var(--raise);
+}
+.place.top {
+  color: #1a1304; background: linear-gradient(160deg, #ffe08a, var(--gold));
+  border-color: transparent; box-shadow: 0 0 0 3px rgba(245, 196, 81, .18);
+}
+tbody tr:nth-child(2) .place:not(.top) {
+  color: #141a22; background: linear-gradient(160deg, #e6ecf3, var(--silver));
+  border-color: transparent;
+}
+tbody tr:nth-child(3) .place:not(.top) {
+  color: #1d1208; background: linear-gradient(160deg, #e9b98f, var(--bronze));
+  border-color: transparent;
+}
+.bars { display: grid; gap: .5rem; margin: .5rem 0 1.3rem; }
 .bar-row {
   display: grid; grid-template-columns: minmax(9rem, 22rem) 1fr; gap: .8rem;
   align-items: center; font-size: .82rem;
 }
 .bar-row .who { color: var(--fg); overflow-wrap: anywhere; }
 .bar {
-  position: relative; height: .85rem; background: rgba(0, 0, 0, .4);
-  border: 1px solid var(--line); min-width: 6rem; border-radius: 2px;
+  position: relative; height: .7rem; background: rgba(0, 0, 0, .35);
+  border: 1px solid var(--line-soft); min-width: 6rem; border-radius: 999px; overflow: hidden;
 }
-.bar > span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
-.bar.cost > span { background: var(--warn); }
-.bar-note { color: var(--muted); font-size: .76rem; margin: -.5rem 0 1.3rem; }
-.cell .bar { margin-top: .3rem; }
+.bar > span {
+  position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px;
+  background: linear-gradient(90deg, #3b8fe6, var(--accent));
+}
+.bar.cost > span { background: linear-gradient(90deg, #c98c1d, var(--warn)); }
+.bar-note { color: var(--muted); font-size: .78rem; margin: -.5rem 0 1.3rem; }
+.cell .bar { margin-top: .35rem; }
 .cell { min-width: 5.5rem; }
+/* the documentation tree: a menu that stays beside the text it belongs to and
+   a body that reads like a document, not like a table. The prose keeps the
+   heading rhythm of the source file — a document has to read the same here as
+   it does in the editor — while every measurement on the rest of the report
+   stays as compact as a table needs. */
+.docs-layout {
+  display: grid; grid-template-columns: minmax(14rem, 19rem) minmax(0, 1fr);
+  gap: clamp(1.2rem, 2.5vw, 2.4rem); align-items: start;
+}
+.docs-menu {
+  position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--raise);
+  padding: .9rem 1rem 1.1rem; font-size: .82rem;
+}
+.docs-menu .menu-group { margin: 0 0 1rem; }
+.docs-menu .menu-group:last-child { margin-bottom: 0; }
+.docs-menu .menu-title {
+  color: var(--faint); font: 600 .68rem/1.4 var(--sans); letter-spacing: .12em;
+  text-transform: uppercase; margin: 0 0 .35rem;
+}
+.docs-menu ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .12rem; }
+.docs-menu a { display: block; color: var(--muted); padding: .2rem .45rem; border-radius: 6px; }
+.docs-menu a:hover { color: var(--bright); background: var(--accent-soft); border: none; }
+.docs-menu a.current { color: var(--bright); background: var(--accent-soft); font-weight: 600; }
+.docs-menu .toc { margin: .3rem 0 .1rem .55rem; display: grid; gap: .05rem; }
+.docs-menu .toc a { font-size: .76rem; padding: .1rem .4rem; }
+.prose { min-width: 0; }
+/* the document's own heading scale: the report's uppercase labels measure a
+   table, a document measures a page */
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  display: block; letter-spacing: -.01em; text-transform: none; color: var(--bright);
+  font-weight: 700; line-height: 1.3;
+}
+.prose h1 { font-size: 1.55rem; margin: 0 0 .6rem; }
+.prose h2 { font-size: 1.12rem; margin: 2.2rem 0 .7rem; padding-bottom: .3rem;
+  border-bottom: 1px solid var(--line-soft); }
+.prose h3 { font-size: .98rem; margin: 1.7rem 0 .5rem; }
+.prose h4 { font-size: .9rem; margin: 1.4rem 0 .4rem; color: var(--fg); }
+.prose h2::before, .prose h2::after { content: none; }
+.prose p, .prose li { font-size: .92rem; line-height: 1.65; }
+.prose p { margin: .7rem 0; }
+.prose ul, .prose ol { margin: .7rem 0 1rem; padding-left: 1.35rem; }
+.prose li { margin: .22rem 0; }
+.prose li > ul, .prose li > ol { margin: .2rem 0; }
+.prose code {
+  background: rgba(94, 177, 255, .1); border: 1px solid var(--line-soft);
+  border-radius: 4px; padding: .05rem .3rem; font-size: .85em;
+}
+.prose .code-block { position: relative; margin: .9rem 0 1.2rem; }
+.prose .code-block pre {
+  margin: 0; padding: .9rem 1rem; overflow-x: auto; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--head); font: .8rem/1.6 var(--mono);
+}
+.prose .code-block code { background: none; border: none; padding: 0; }
+.prose .code-lang {
+  position: absolute; top: .35rem; right: .7rem; color: var(--faint);
+  font: 600 .64rem/1 var(--sans); letter-spacing: .1em; text-transform: uppercase;
+}
+.prose blockquote {
+  margin: .9rem 0; padding: .1rem 0 .1rem .95rem; border-left: 2px solid var(--accent);
+  color: var(--muted);
+}
+.prose blockquote p { margin: .35rem 0; }
+.prose hr { border: none; border-top: 1px solid var(--line); margin: 1.8rem 0; }
+.prose .table-wrap table { font-size: .82rem; }
+.prose .table-wrap td { overflow-wrap: anywhere; }
+@media (max-width: 60rem) {
+  .docs-layout { grid-template-columns: 1fr; }
+  .docs-menu { position: static; max-height: none; }
+}
+@media print {
+  .docs-menu { display: none; }
+  .docs-layout { grid-template-columns: 1fr; }
+  .prose .code-block pre { white-space: pre-wrap; }
+}
+@media (max-width: 40rem) {
+  .topbar { gap: .5rem; }
+  .nav { margin-left: 0; }
+  h1 { font-size: 1.3rem; }
+}
 @media print {
   .bar { border-color: #999; background: #f2f2f2; }
-  .bar > span { background: #00664f; }
+  .bar > span { background: #0b5cad; }
   .bar.cost > span { background: #8a6100; }
   :root { --bg: #fff; --panel: #fff; --raise: #fafafa; --fg: #14171a; --bright: #000;
-          --muted: #565c63; --line: #c2c8cc; --line-soft: #e2e6e8; --head: #f0f2f3;
-          --accent: #00664f; --pass: #0a7d38; --warn: #8a6100; --fail: #b3261e;
-          --row: #f7f8f9; }
-  body { font-size: 11px; }
-  main { border: none; padding: 0; }
+          --muted: #565c63; --faint: #777; --line: #c2c8cc; --line-soft: #e2e6e8; --head: #f0f2f3;
+          --accent: #0b5cad; --accent-soft: #eef4fb; --pass: #0a7d38; --warn: #8a6100;
+          --fail: #b3261e; --row: #f7f8f9; }
+  body { font-size: 11px; background: #fff; }
+  main { border: none; padding: 0; box-shadow: none; }
+  .topbar { background: none; border-radius: 0; margin: 0 0 1rem; padding: 0 0 .6rem; }
   th { position: static; }
+  .place.top, tbody tr:nth-child(2) .place, tbody tr:nth-child(3) .place { box-shadow: none; }
 }
 """
 
@@ -473,17 +662,28 @@ def page(
     ``standalone`` inlines the stylesheet and drops the navigation, for a file
     that must read on its own: the HTML form of an export.
     """
-    nav = ""
-    if not standalone:
+    # the top bar: the brand on every page, and on a page that belongs to a
+    # tree the sections of that tree. A standalone export has no tree to link
+    # into, so it carries the brand alone.
+    brand = (
+        '<span class="mark"></span>AK-Bench<span class="tag">benchmark report</span>'
+    )
+    if standalone:
+        nav = f'<header class="topbar"><span class="brand">{brand}</span></header>'
+    else:
         nav = (
-            '<p class="nav">'
-            f'<a href="{ROOT_TOKEN}index.html">dashboard</a> · '
-            f'<a href="{ROOT_TOKEN}agents/index.html">agents</a> · '
-            f'<a href="{ROOT_TOKEN}runtimes/index.html">runtimes</a> · '
-            f'<a href="{ROOT_TOKEN}plugins/index.html">plugins</a> · '
-            f'<a href="{ROOT_TOKEN}models/index.html">models</a> · '
-            f'<a href="{ROOT_TOKEN}tasks/index.html">tasks</a> · '
-            f'<a href="{ROOT_TOKEN}{RUNS_DIRECTORY}/index.html">runs</a></p>'
+            '<header class="topbar">'
+            f'<a class="brand" href="{ROOT_TOKEN}index.html">{brand}</a>'
+            '<nav class="nav">'
+            f'<a href="{ROOT_TOKEN}index.html">dashboard</a>'
+            f'<a href="{ROOT_TOKEN}agents/index.html">agents</a>'
+            f'<a href="{ROOT_TOKEN}runtimes/index.html">runtimes</a>'
+            f'<a href="{ROOT_TOKEN}plugins/index.html">plugins</a>'
+            f'<a href="{ROOT_TOKEN}models/index.html">models</a>'
+            f'<a href="{ROOT_TOKEN}tasks/index.html">tasks</a>'
+            f'<a href="{ROOT_TOKEN}{RUNS_DIRECTORY}/index.html">runs</a>'
+            f'<a href="{ROOT_TOKEN}docs/index.html">docs</a>'
+            "</nav></header>"
         )
     head = (
         f"<style>{STYLE}</style>" if standalone else f'<link rel="stylesheet" href="{CSS_TOKEN}">'
@@ -496,6 +696,7 @@ def page(
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{esc(title)}</title>"
         f"{head}</head>"
         f"<body><main>{nav}{body}{stamp}</main>"
@@ -617,18 +818,36 @@ def _fraction(value: float | None, maximum: float | None) -> float | None:
     return value / maximum
 
 
+def _chart_labels(rows: list[dict[str, Any]]) -> list[str]:
+    """One name per ranking row, for a chart.
+
+    A configuration that was ranked under another agent or another runtime
+    appears twice with the same label, so only those rows carry the subject
+    that produced them; naming the agent in every other bar would be noise.
+    """
+    labels = [str(row.get("config") or "") for row in rows]
+    duplicated = {label for label in labels if labels.count(label) > 1}
+    return [
+        f"{label} \u00b7 {row.get('agent')} / {row.get('runtime')}"
+        if label in duplicated
+        else label
+        for label, row in zip(labels, rows, strict=True)
+    ]
+
+
 def _chart(rows: list[dict[str, Any]], key: str, *, css: str = "") -> str:
     """A bar chart of one measure across the ranked configurations."""
     values = [row.get(key) for row in rows]
     measured = [value for value in values if value is not None]
     maximum = max(measured) if measured else None
+    labels = _chart_labels(rows)
     parts = [
         '<div class="bar-row"><span class="who">'
-        + esc(row.get("config"))
+        + esc(label)
         + "</span>"
         + _bar(_fraction(row.get(key), maximum), css=css)
         + "</div>"
-        for row in rows
+        for label, row in zip(labels, rows, strict=True)
     ]
     return f'<div class="bars">{"".join(parts)}</div>'
 
@@ -653,23 +872,50 @@ def _token_cells(summary: dict[str, Any]) -> list[str]:
     ]
 
 
-def _recording_cell(row: dict[str, Any]) -> str:
-    """Which tasks a ranking row rests on and when those runs happened.
+# the same cost read per run: a ranking row pools every recording of a
+# configuration, and a sum over a different number of runs is not a comparison
+MEAN_TOKEN_HEADERS = [
+    "mean input tokens #",
+    "mean generated tokens #",
+    "mean total tokens #",
+    "mean tool calls #",
+]
 
-    The same experiment is often run more than once, and a configuration row
-    then repeats itself with nothing saying which of the two recordings it
-    came from; the task count and the period of its own runs tell them apart.
+
+def _mean_token_cells(row: dict[str, Any]) -> list[str]:
+    """The per-run token and tool-call cells of a pooled ranking row."""
+    return [
+        number(row.get("mean_input_tokens")),
+        number(row.get("mean_output_tokens")),
+        number(row.get("mean_total_tokens")),
+        number(row.get("mean_tool_calls")),
+    ]
+
+
+def _recording_cell(row: dict[str, Any]) -> str:
+    """How many recordings a ranking row pooled, which tasks it rests on and
+    when those runs happened.
+
+    A configuration is often recorded more than once — in another recording of
+    the same experiment, or in another experiment — and one row now stands for
+    all of them, so the row states how many recordings it merged and over what
+    window its runs were measured.
     """
     tasks = row.get("task_uids") or []
     if not tasks:
         return '<span class="muted">no run</span>'
+    recordings = int(row.get("recordings") or 0)
     started = _short_time(row.get("first_started"))
     finished = _short_time(row.get("last_finished"))
     window = f"{started} &rarr; {finished}" if started and finished else "not recorded"
     shown = ", ".join(str(task).split("@")[0] for task in tasks[:3])
     if len(tasks) > 3:
         shown += f" +{len(tasks) - 3}"
-    return f'{esc(shown)}<br /><span class="muted">{window}</span>' 
+    plural = "recording" if recordings == 1 else "recordings"
+    return (
+        f'{esc(shown)}<br /><span class="muted nowrap">{recordings} {plural}</span>'
+        f'<br /><span class="muted nowrap">{window}</span>'
+    )
 
 
 def _short_time(value: Any) -> str:
@@ -679,38 +925,97 @@ def _short_time(value: Any) -> str:
     return str(value).replace("T", " ")[:16]
 
 
-def _ranked_rows(rows: list[dict[str, Any]]) -> list[list[str]]:
+def _shows_subjects(rows: list[dict[str, Any]]) -> bool:
+    """Whether a ranking row has to name the agent and runtime it ran under.
+
+    A configuration is keyed by its values, its agent and its runtime, so two
+    rows differ by subject only when the ranking holds more than one of them.
+    With a single agent on a single runtime the line would repeat the same
+    string in every row and say nothing.
+    """
+    return len({row.get("agent") for row in rows}) > 1 or len(
+        {row.get("runtime") for row in rows}
+    ) > 1
+
+
+def _place_cell(row: dict[str, Any]) -> str:
+    place = row.get("place")
+    if place == 1:
+        return f'<span class="place top">{place}</span>'
+    return f'<span class="place">{place if place is not None else "&mdash;"}</span>'
+
+
+def _configuration_cell(row: dict[str, Any], *, subjects: bool) -> str:
+    """The configuration a row stands for, with its subject when that decides.
+
+    A baseline badge belongs to the configuration, not to one of its
+    recordings, so a configuration is a baseline if any recording of it was
+    declared one.
+    """
+    label = esc(row.get("config"))
+    if row.get("is_baseline"):
+        label += ' <span class="badge">baseline</span>'
+    if subjects:
+        label += (
+            f'<br /><span class="muted">{esc(row.get("agent"))} &middot; '
+            f"{esc(row.get('runtime'))}</span>"
+        )
+    return label
+
+
+def _experiments_cell(uids: list[Any]) -> str:
+    """The experiments a pooled row came from, the first one linked.
+
+    Naming them all would widen the column for the common case of a single
+    experiment; the count of the rest is stated, and the row below it says how
+    many recordings those experiments contributed.
+    """
+    if not uids:
+        return '<span class="muted">no experiment</span>'
+    shown = _experiment_link(uids[0])
+    if len(uids) > 1:
+        shown += f'<br /><span class="muted nowrap">+{len(uids) - 1} more</span>'
+    return shown
+
+
+def _ranked_rows(rows: list[dict[str, Any]], *, experiments: bool = False) -> list[list[str]]:
+    """The cells of a ranking table, one row per configuration.
+
+    ``experiments`` adds the column naming the experiments the pooled runs came
+    from; a page that is already about one experiment has nothing to name.
+    """
+    subjects = _shows_subjects(rows)
     table_rows: list[list[str]] = []
     for row in rows:
-        place = row.get("place")
-        place_cell = (
-            f'<span class="place top">{place}</span>'
-            if place == 1
-            else f'<span class="place">{place if place is not None else "&mdash;"}</span>'
-        )
-        label = esc(row.get("config"))
-        if row.get("is_baseline"):
-            label += ' <span class="badge">baseline</span>'
-        table_rows.append(
+        cells = [_place_cell(row), _configuration_cell(row, subjects=subjects)]
+        if experiments:
+            cells.append(_experiments_cell(row.get("experiments") or []))
+        cells.extend(
             [
-                place_cell,
-                label,
-                esc(row.get("uid")),
                 _recording_cell(row),
                 number(row.get("runs") or 0),
                 number(row.get("evaluated") or 0),
-                percent(row.get("success_rate")),
+                _cell_bar(percent(row.get("success_rate")), row.get("success_rate")),
                 duration(row.get("mean_duration_seconds")),
-                *_token_cells(row),
+                *_mean_token_cells(row),
                 esc(row.get("vs_baseline") or ""),
             ]
         )
+        table_rows.append(cells)
     return table_rows
 
 
-def _ranking(runs: list[dict[str, Any]], variants: list[dict[str, Any]]) -> str:
-    """The place of every configuration, then the same numbers drawn to scale."""
-    rows = variant_comparison(runs, variants)
+def _ranking(
+    runs: list[dict[str, Any]], variants_by_experiment: dict[str, list[dict[str, Any]]]
+) -> str:
+    """The place of every configuration, then the same numbers drawn to scale.
+
+    The row of this page pools the variants that carry one configuration — the
+    same values run by the same agent on the same runtime — so two recordings
+    of an experiment that planned the same values twice become the one row they
+    describe, counted over all of their runs.
+    """
+    rows = configuration_ranking(runs, variants_by_experiment)
     if not rows:
         return '<p class="muted">nothing recorded</p>'
     if not any(row.get("place") is not None for row in rows):
@@ -723,13 +1028,12 @@ def _ranking(runs: list[dict[str, Any]], variants: list[dict[str, Any]]) -> str:
             [
                 "place",
                 "configuration",
-                "variant",
                 "recording",
                 "runs #",
                 "evaluated #",
                 "success rate",
                 "mean time",
-                *TOKEN_HEADERS,
+                *MEAN_TOKEN_HEADERS,
                 "against the baseline",
             ],
             _ranked_rows(rows),
@@ -739,47 +1043,23 @@ def _ranking(runs: list[dict[str, Any]], variants: list[dict[str, Any]]) -> str:
         + "<h3>Mean wall-clock time</h3>"
         + _chart(rows, "mean_duration_seconds", css="cost")
         + '<p class="bar-note">each bar is measured against the largest value in its own '
-        "column; time and tokens are compared only within this experiment</p>"
+        "column; time and tokens are compared only within this experiment, and a row "
+        "is one configuration over all of its recordings. The token and tool-call "
+        "columns are means per run, not sums</p>"
     )
 
 
 def _leaderboard(data: HistoryData) -> str:
-    """Every configuration of every experiment, best first: the front-page answer.
+    """Every configuration ever recorded, best first: the front-page answer.
 
-    A place belongs to the experiment that measured it. There is deliberately
-    no league across experiments: two experiments that did not share a task
-    set, a model or a day are not comparable, and a merged ranking would
-    invent a comparison the runs never supported.
+    A row is one configuration — the factor values together with the agent and
+    the runtime that ran them — and every run of it is pooled into that row,
+    whichever experiment or recording it came from. A place is therefore stated
+    over the pooled runs of the configuration rather than inside the experiment
+    that happened to record it, which is what makes the same configuration in
+    two experiments one row instead of two indistinguishable ones.
     """
-    rows: list[list[str]] = []
-    for experiment in data.experiments:
-        uid = str(experiment.get("uid"))
-        ranked = variant_comparison(data.runs_for_experiment(uid), data.variants_for(uid))
-        for row in ranked:
-            place = row.get("place")
-            place_cell = (
-                f'<span class="place top">{place}</span>'
-                if place == 1
-                else f'<span class="place">{place if place is not None else "&mdash;"}</span>'
-            )
-            label = esc(row.get("config"))
-            if row.get("is_baseline"):
-                label += ' <span class="badge">baseline</span>'
-            rows.append(
-                [
-                    place_cell,
-                    _experiment_link(uid),
-                    label,
-                    esc(row.get("uid")),
-                    _recording_cell(row),
-                    number(row.get("runs") or 0),
-                    number(row.get("evaluated") or 0),
-                    _cell_bar(percent(row.get("success_rate")), row.get("success_rate")),
-                    duration(row.get("mean_duration_seconds")),
-                    *_token_cells(row),
-                    esc(row.get("vs_baseline") or ""),
-                ]
-            )
+    rows = configuration_ranking(data.runs, data.variants)
     if not rows:
         return (
             '<p class="muted">nothing recorded yet: a ranking needs runs, and a '
@@ -789,22 +1069,48 @@ def _leaderboard(data: HistoryData) -> str:
         table(
             [
                 "place",
-                "experiment",
                 "configuration",
-                "variant",
+                "experiments",
                 "recording",
                 "runs #",
                 "evaluated #",
                 "success rate",
                 "mean time",
-                *TOKEN_HEADERS,
+                *MEAN_TOKEN_HEADERS,
                 "against the baseline",
             ],
-            rows,
+            _ranked_rows(rows, experiments=True),
         )
-        + '<p class="bar-note">a place is stated within its own experiment and only '
-        "for a configuration with an evaluated run; &mdash; means nothing was "
-        "evaluated, which is not the same as failing</p>"
+        + '<p class="bar-note">one row is one configuration: its factor values with the '
+        "agent and the runtime that ran them. Every run of that configuration is pooled "
+        "into the row, from however many experiments and recordings it came, and its "
+        "place is stated over the pooled runs &mdash; recordings need not share a task "
+        "set, a model or a day, which the *experiments* and *recording* columns state. "
+        "Tokens and tool calls are means per run, because a sum over a different number "
+        "of runs is not comparable; &mdash; means nothing was evaluated, which is not "
+        "the same as failing</p>"
+    )
+
+
+def variant_page_path(experiment_uid: Any, variant_uid: Any) -> str:
+    """Where the page of one variant lives, relative to the root of the tree.
+
+    A variant uid is unique inside its experiment and says nothing outside it,
+    so the page of one hangs under the experiment that planned it. The same
+    relative path is used by the writer and by every link, because a variant
+    page is linked from the experiment page two directories up and from a run
+    page four, and only a root-addressed path is right in both.
+    """
+    return f"experiments/{experiment_uid}/variants/{variant_uid}/index.html"
+
+
+def _variant_link(experiment_uid: Any, variant_uid: Any) -> str:
+    """A link to one variant's page, addressed from the root of the tree."""
+    if variant_uid is None:
+        return NOT_MEASURED
+    return (
+        f'<a href="{ROOT_TOKEN}{esc(variant_page_path(experiment_uid, variant_uid))}">'
+        f"{esc(variant_uid)}</a>"
     )
 
 
@@ -1000,7 +1306,10 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
                     else NOT_MEASURED,
                 ],
                 ["parameters", _parameters_cell(report.parameters)],
-                ["variant", esc(run.get("variant_uid"))],
+                [
+                    "variant",
+                    _variant_link(run.get("experiment_uid"), run.get("variant_uid")),
+                ],
                 [
                     "agent",
                     _link_to("agents", run.get("agent"))
@@ -1353,7 +1662,7 @@ def render_experiment(
             ]
         ),
         "<h2>Configuration ranking</h2>",
-        _ranking(report.runs, report.variants),
+        _ranking(report.runs, {str(experiment.get("uid")): report.variants}),
         "<h2>Descriptor and validity</h2>",
         table(
             ["field", "value"],
@@ -1372,7 +1681,7 @@ def render_experiment(
             ["variant", "values", "config hash", "baseline", "runs #"],
             [
                 [
-                    esc(variant.get("uid")),
+                    _variant_link(experiment.get("uid"), variant.get("uid")),
                     _values(variant.get("values")),
                     f'<code>{esc(variant.get("config_hash"))}</code>',
                     "yes" if variant.get("is_baseline") else "no",
@@ -1380,7 +1689,10 @@ def render_experiment(
                 ]
                 for variant in report.variants
             ],
-        ),
+        )
+        + '<p class="bar-note">a variant is one recording of one configuration; the '
+        "ranking above counts the configurations, so several of these rows can share "
+        "one ranking row &mdash; a uid opens that recording on its own page</p>",
         "<h2>Pinned descriptors</h2>",
         table(
             ["kind", "id", "version", "digest"],
@@ -1520,6 +1832,127 @@ def _definition_section(report: TaskReport) -> str:
                 "definition, and it may not be what the runs below were given.</div>"
             )
     return "".join(parts)
+
+
+def render_variant(report: VariantReport, *, generated_at: str | None = None) -> str:
+    """One recording of one configuration: its own runs, and where it ranks.
+
+    The ranking pooled the recordings of a configuration into a single row, so
+    this page is what puts a single recording back on its own: what it planned,
+    the runs it produced, the numbers of those runs alone, and the row of the
+    ranking they were counted in — stated as the ranking states it, so the two
+    cannot disagree.
+    """
+    variant = report.variant
+    experiment = report.experiment
+    summary = report.summary
+    body = [
+        "<h1>Variant</h1>",
+        f'<p class="subtitle">{esc(variant.get("uid"))} of '
+        f"{_experiment_link(experiment.get('uid'))}</p>",
+        cards(
+            [
+                ("runs", number(summary.get("runs"))),
+                ("evaluated", number(summary.get("evaluated"))),
+                ("success rate", percent(summary.get("success_rate"))),
+                ("mean time", duration(summary.get("mean_duration_seconds"))),
+                ("input tokens", number(summary.get("input_tokens"))),
+                ("generated tokens", number(summary.get("output_tokens"))),
+                ("tokens", number(summary.get("total_tokens"))),
+                ("tool calls", number(summary.get("tool_calls"))),
+            ]
+        ),
+        "<h2>What this recording was</h2>",
+        table(
+            ["field", "value"],
+            [
+                ["variant", esc(variant.get("uid"))],
+                ["experiment", _experiment_link(experiment.get("uid"))],
+                ["configuration", _values(variant.get("values"))],
+                ["config hash", f'<code>{esc(variant.get("config_hash"))}</code>'],
+                ["baseline", "yes" if variant.get("is_baseline") else "no"],
+            ],
+        ),
+    ]
+    if report.configuration:
+        body.append("<h2>In the configuration ranking</h2>")
+        body.append(
+            "<p class='muted'>the ranking states one row per configuration, over all "
+            "of its recordings; these are the numbers of that row, not of this "
+            "recording alone</p>"
+        )
+        body.append(
+            table(
+                [
+                    "place",
+                    "configuration",
+                    "recordings #",
+                    "runs #",
+                    "evaluated #",
+                    "success rate",
+                    "mean time",
+                    *MEAN_TOKEN_HEADERS,
+                    "against the baseline",
+                ],
+                [
+                    [
+                        _place_cell(report.configuration),
+                        _values(report.configuration.get("config")),
+                        number(report.configuration.get("recordings") or 0),
+                        number(report.configuration.get("runs") or 0),
+                        number(report.configuration.get("evaluated") or 0),
+                        percent(report.configuration.get("success_rate")),
+                        duration(report.configuration.get("mean_duration_seconds")),
+                        *_mean_token_cells(report.configuration),
+                        esc(report.configuration.get("vs_baseline") or ""),
+                    ]
+                ],
+            )
+        )
+    if report.siblings:
+        body.append("<h2>The other recordings of this configuration</h2>")
+        body.append(
+            "<p class='muted'>the same values, recorded under another variant uid; "
+            "the ranking counts this page's runs and these together</p>"
+        )
+        body.append(
+            table(
+                [
+                    "variant",
+                    "baseline",
+                    "runs #",
+                    "evaluated #",
+                    "passed #",
+                    "success rate",
+                    "mean time",
+                    *TOKEN_HEADERS,
+                ],
+                [
+                    [
+                        _variant_link(experiment.get("uid"), row.get("uid")),
+                        "yes" if row.get("is_baseline") else "no",
+                        number(row.get("runs") or 0),
+                        number(row.get("evaluated") or 0),
+                        number(row.get("passed") or 0),
+                        percent(row.get("success_rate")),
+                        duration(row.get("mean_duration_seconds")),
+                        *_token_cells(row),
+                    ]
+                    for row in report.siblings
+                ],
+            )
+        )
+    body.append("<h2>Runs of this recording</h2>")
+    body.append(
+        "<p class='muted'>in the order they started; the parameters column is the "
+        "configuration each run was executed under</p>"
+    )
+    body.append(_runs_table(report.runs, [variant]))
+    body.append("<h2>Not verified</h2>")
+    body.append(_notice(report.unverified))
+    return page(
+        f"Variant {variant.get('uid')}", "".join(body), generated_at=generated_at
+    )
 
 
 def render_task(report: TaskReport, *, generated_at: str | None = None) -> str:
@@ -1706,6 +2139,88 @@ def render_listing(
     return page(title, body)
 
 
+def _docs_menu(documents: list[Document], current: str | None) -> str:
+    """The menu that travels with every documentation page.
+
+    Documents are listed under the part of the checkout they came from, with
+    the headings of the one being read listed under it, so a reader knows both
+    where they are and what is left to read.
+    """
+    paths = page_paths(documents)
+    groups: dict[str, list[Document]] = {}
+    for document in documents:
+        groups.setdefault(group_of(document.relpath), []).append(document)
+    parts: list[str] = []
+    for name in sorted(groups, key=group_order):
+        items: list[str] = []
+        for document in groups[name]:
+            href = f"{ROOT_TOKEN}{esc(paths[document.relpath])}"
+            css = ' class="current"' if document.relpath == current else ""
+            entry = f'<li><a{css} href="{href}">{esc(document.title)}</a>'
+            if document.relpath == current and document.headings:
+                entry += '<span class="toc">' + "".join(
+                    f'<a href="#{esc(anchor)}">{esc(title)}</a>'
+                    for level, anchor, title in document.headings
+                    if level <= 3
+                ) + "</span>"
+            items.append(entry + "</li>")
+        parts.append(
+            f'<div class="menu-group"><p class="menu-title">{esc(name)}</p>'
+            f'<ul>{"".join(items)}</ul></div>'
+        )
+    return f'<nav class="docs-menu">{"".join(parts)}</nav>'
+
+
+def render_docs_index(documents: list[Document], *, generated_at: str | None = None) -> str:
+    """The landing page of the documentation: the menu, and what is in it.
+
+    The page is written even when the checkout held no document to read, and
+    it then says so: an empty directory is a fact about the report, not a bug
+    it should hide.
+    """
+    if not documents:
+        body = (
+            "<h1>Documentation</h1>"
+            '<p class="subtitle">the documents the project wrote about itself</p>'
+            '<p class="muted">no document was found next to this report. The tree is '
+            "written from the checkout the report was generated in, so a report "
+            "written elsewhere carries the history and not the prose.</p>"
+        )
+        return page("Documentation", body, generated_at=generated_at)
+    paths = page_paths(documents)
+    listing = table(
+        ["document", "section", "path"],
+        [
+            [
+                f'<a href="{ROOT_TOKEN}{esc(paths[document.relpath])}">'
+                f"{esc(document.title)}</a>",
+                esc(group_of(document.relpath)),
+                f'<code>{esc(document.relpath)}</code>',
+            ]
+            for document in documents
+        ],
+    )
+    body = (
+        "<h1>Documentation</h1>"
+        '<p class="subtitle">the documents the project wrote about itself, rendered '
+        "from the checkout this report was generated in</p>"
+        f'<div class="docs-layout">{_docs_menu(documents, None)}'
+        f'<div class="prose">{listing}</div></div>'
+    )
+    return page("Documentation", body, generated_at=generated_at)
+
+
+def render_docs_page(
+    document: Document, documents: list[Document], *, generated_at: str | None = None
+) -> str:
+    """One document, rendered, with the menu beside it."""
+    body = (
+        f'<div class="docs-layout">{_docs_menu(documents, document.relpath)}'
+        f'<article class="prose">{document.body}</article></div>'
+    )
+    return page(document.title, body, generated_at=generated_at)
+
+
 def asset_names() -> tuple[str, ...]:
     return ASSET_NAMES
 
@@ -1716,12 +2231,18 @@ def write_report_tree(
     *,
     generated_at: str | None = None,
     dataset: Any = None,
+    docs_root: Path | str | None = None,
 ) -> list[Path]:
     """Write the report tree under ``root``; returns every file written.
 
     ``dataset`` is the dataset the tasks came from. It is optional: a report of
     a database on its own loses the task prose, says so on each task page, and
     stays correct about everything else.
+
+    ``docs_root`` is the checkout whose documents are published under ``docs/``.
+    It is optional for the same reason: a report generated away from the
+    checkout carries the history and says the prose was not found, rather than
+    inventing it or leaving a menu of links to pages that were never written.
     """
     root = Path(root)
     written: list[Path] = []
@@ -1757,6 +2278,13 @@ def write_report_tree(
             f"experiments/{uid}/index.html",
             render_experiment(build_experiment_report(data, uid), generated_at=generated_at),
         )
+        for planned in data.variants_for(uid):
+            variant_report = build_variant_report(data, uid, str(planned.get("uid")))
+            if variant_report is not None:
+                write(
+                    variant_page_path(uid, planned.get("uid")),
+                    render_variant(variant_report, generated_at=generated_at),
+                )
     for task in data.tasks:
         uid = str(task["uid"])
         write(
@@ -1764,6 +2292,14 @@ def write_report_tree(
             render_task(
                 build_task_report(data, uid, dataset=dataset), generated_at=generated_at
             ),
+        )
+
+    documents = discover_documents(Path(docs_root)) if docs_root else []
+    write("docs/index.html", render_docs_index(documents, generated_at=generated_at))
+    for document in documents:
+        write(
+            page_paths(documents)[document.relpath],
+            render_docs_page(document, documents, generated_at=generated_at),
         )
 
     stats = dashboard(data)

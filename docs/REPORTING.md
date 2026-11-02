@@ -8,6 +8,8 @@ works from a USB stick as well as from a web server.
 data/reports/
   index.html                    dashboard
   experiments/<uid>/index.html  one page per experiment
+  experiments/<uid>/variants/<vuid>/index.html  one recording of a configuration,
+                                                 its runs and where it was ranked
   tasks/<uid>/index.html        one page per task
   tasks/index.html              every recorded task
   agents/index.html             one row per agent identity
@@ -26,6 +28,8 @@ data/reports/
   verdicts/<slug>/index.html    the runs that carry a verdict
   runs/index.html               every recorded run, newest first
   runs/<uid>/index.html         one run, in full
+  docs/index.html               the project's own documents, one page each
+  docs/<document>/index.html    one document, rendered, with the menu beside it
   assets/style.css
 ```
 
@@ -42,21 +46,54 @@ single-page commands do the same.
 ## What the dashboard shows
 
 Experiment and run counts, the success rate with how many runs it rests on,
-verdict breakdown, the leading configuration of every experiment, results
+verdict breakdown, the ranking of every recorded configuration, results
 grouped by task category and difficulty, wall-clock time, token totals, a
 per-agent, per-runtime, per-plugin and per-model comparison, and the recent
 experiments.
 
-Each experiment page adds a **Configuration ranking**: every variant with its
-place, its success rate, mean time and token totals, and its difference against
-the declared baseline, followed by the same numbers drawn as bars. A place is
-only stated for a configuration that has an evaluated run; a configuration
-that was never scored holds no place rather than reading as a zero, and ties
-share a place the way a competition ranks them. The same experiment is often
-recorded more than once — against another task set or on another day — and a
-configuration row would then repeat itself, so every ranking row also carries
-a **recording** column: which tasks it rests on and the start-to-finish window
-of the runs it was measured in.
+**The dashboard ranking is one row per configuration.** A configuration is the
+factor values together with the agent and the runtime that ran them, so the
+same values under another agent, or on another runtime, hold their own row.
+Everything else is pooled into the one row: the second recording of an
+experiment, and the same configuration recorded in another experiment, both
+add their runs to it. The success rate is therefore pooled — the passes over
+the evaluations of all those runs, not an average of the recordings — and the
+**place is stated over the pooled runs**, which is what lets one row answer
+which configuration won across the whole history. Because the recordings are
+pooled, a row states where it came from: the **experiments** it was recorded
+in (the first linked, the rest counted) and how many **recordings** it merged,
+over what task set and what window of time. Two recordings need not share a
+task set, a model or a day, and the note under the table says so rather than
+hiding it behind a merged number. The token and tool-call columns of a ranking
+are **means per run**, not sums: a sum over a different number of runs is not
+a number to compare, and a run whose agent reported nothing stays missing
+rather than reading as zero.
+
+Each experiment page adds the same **Configuration ranking** over its own
+recordings: a row pools the variants that carry one configuration — the same
+values run by the same agent on the same runtime — so two recordings of an
+experiment that planned the same values twice become the one row they
+describe, counted over all of their runs, with the same means-per-run token
+columns and its difference against the declared baseline, followed by the same
+numbers drawn as bars. A place is only stated for a configuration that has an
+evaluated run; a configuration that was never scored holds no place rather than
+reading as a zero, and ties share a place the way a competition ranks them.
+The **recording** column of a row states how many recordings it pooled, which
+tasks it rests on and the start-to-finish window of the runs it was measured
+in.
+
+**A variant is a page.** A variant uid names one recording of one
+configuration, and it opens that recording on its own page under the
+experiment that planned it. The page states what the recording was (the values,
+the config hash, the baseline), the numbers of that recording alone, the row of
+the configuration ranking it was pooled into — stated as the ranking states it,
+so the two cannot disagree — and the other variant uids that carry the same
+values. It is the place where the difference between two recordings of one
+configuration is visible again, because the ranking row merges them. The uid is
+linked from the experiment's variant table, from the run page of every run it
+was recorded under, and from the sibling recordings' pages; the experiment's
+variant table links to the same pages, and a uid that planned no runs still
+opens, with its runs table empty and its numbers unstated.
 
 **Run tables carry their own context.** Every run table — on the task, the
 experiment and the agent, runtime, plugin and model pages — shows the factor
@@ -84,6 +121,19 @@ tighten it further). The number columns hug their content, the text columns
 take what is left and wrap, and every text column keeps a floor below which
 the wrapper scrolls instead of the row having to be read by scrolling back and
 forth.
+
+**The project documents themselves.** The report publishes the checkout's own
+documents under `docs/`: a landing page with the menu of every document, and
+one page per document, rendered — headings with anchors, lists, fenced code,
+pipe tables, blockquotes, inline code, emphasis and links — in the same style
+as the rest of the report. The menu travels with every document page, marks
+the one being read, and lists its own headings, so a reader always knows where
+they are and what is left. The documents are read from the checkout the report
+is generated in: a report written elsewhere carries the history and says the
+documents were not found, rather than inventing prose or leaving a menu of
+links to pages that were never written. A document is untrusted input: it is
+escaped end to end, a script in a document stays text, and a link to a scheme
+the page must not run is dropped to a no-op anchor.
 
 **Run tables sort.** Clicking a column header of a run table reorders its rows
 by that column — the one exception to the no-scripting rule, and a small,
