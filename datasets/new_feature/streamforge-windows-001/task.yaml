@@ -1,0 +1,30 @@
+schema_version: "1.0"
+id: streamforge-windows-001
+version: "1.0.0"
+title: Implement event-time windows, corrections and durable restart
+description: >-
+  Complete a multi-module streaming engine with fixed, sliding and session
+  windows, partition watermarks, transitive late session merges, ordered
+  retract/upsert output, source deduplication and complete checkpoint recovery.
+  The executable contract is documented in the seed README and module docstrings.
+task:
+  category: new_feature
+  difficulty: expert
+  repository:
+    source: datasets/_sources/streamforge
+    ref: HEAD
+    notes: standard-library-only seed fixture directory
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 7200
+  constraints:
+    - preserve the public API and the README processing contract
+    - implement windows.py, reconcile.py and runtime.py; helpers may be added in these modules
+    - do not change the working infrastructure modules or repository tests
+    - do not add third-party dependencies
+    - do not use wall-clock time, sleeps, pickle or external services
+  notes: >-
+    Hidden tests intentionally fail on the seed because the operators are missing.
+    A reference implementation outside the seed proves solvability in integration
+    tests and is never copied into an agent workspace.
