@@ -8,7 +8,7 @@
 schema_version: "1.0"
 id: bookshop-tiers-001
 version: "1.0.0"
-created_at: "2026-11-01 19:00:00"
+created_at: "2026-11-01T19:00:00+01:00"
 title: The five percent tier is lost at exactly one hundred dollars
 description: >-
   A basket whose subtotal is exactly 10 000 cents (or 50 000, or 200 000) is

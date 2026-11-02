@@ -9,7 +9,7 @@
 schema_version: "1.0"
 id: stockpile-writeoff-001
 version: "1.0.0"
-created_at: "2026-11-01 19:00:00"
+created_at: "2026-11-01T19:00:00+01:00"
 title: A write-off destroys the reserved part of an expired lot
 description: >-
   Stock.write_off_expired removes the reserved quantity of an expired lot

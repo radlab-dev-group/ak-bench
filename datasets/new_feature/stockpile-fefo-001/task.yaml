@@ -8,7 +8,7 @@
 schema_version: "1.0"
 id: stockpile-fefo-001
 version: "1.0.0"
-created_at: "2026-11-01 19:00:00"
+created_at: "2026-11-01T19:00:00+01:00"
 title: Implement FEFO allocation from its specification
 description: >-
   allocate() in src/stockpile/allocate.py is declared, documented and tested,
