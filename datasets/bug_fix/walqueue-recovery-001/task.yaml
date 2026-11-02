@@ -8,6 +8,8 @@ description: >-
   writes can lose work, resurrect completed tasks, forget idempotency keys
   or allow stale lease acknowledgments. Restore the documented invariants
   without changing the API, storage format or crash-injection phases.
+authors:
+  - [codex_cli] Gpt 6.1 SOL
 task:
   category: bug_fix
   difficulty: expert

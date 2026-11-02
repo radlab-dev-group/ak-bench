@@ -7,6 +7,8 @@ description: >-
   windows, partition watermarks, transitive late session merges, ordered
   retract/upsert output, source deduplication and complete checkpoint recovery.
   The executable contract is documented in the seed README and module docstrings.
+authors:
+  - [codex_cli] Gpt 6.1 SOL
 task:
   category: new_feature
   difficulty: expert

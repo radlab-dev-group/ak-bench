@@ -7,6 +7,8 @@ description: >-
   inference, data elaboration, typed pattern matrices and portable module
   interfaces. Preserve soundness with mutable references, nominal data,
   abstract imported types and independent instantiation of public schemes.
+authors:
+  - [codex_cli] Gpt 6.1 SOL
 task:
   category: new_feature
   difficulty: expert

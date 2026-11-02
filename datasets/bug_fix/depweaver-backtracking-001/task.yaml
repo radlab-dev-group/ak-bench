@@ -7,6 +7,8 @@ description: >-
   handling loses solutions, omits activated dependencies, violates partial
   lockfile updates and leaks conflicts across solve calls. Preserve all eight
   protocol invariants, deterministic preferences and constraint-directed search.
+authors:
+  - [codex_cli] Gpt 6.1 SOL
 task:
   category: bug_fix
   difficulty: expert
