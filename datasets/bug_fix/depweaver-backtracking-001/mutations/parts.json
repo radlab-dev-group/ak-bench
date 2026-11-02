@@ -1,0 +1,34 @@
+[
+  {
+    "patch": "parts/01-rollback.patch",
+    "witness": "test_regression_01_rollback_discards_every_abandoned_decision"
+  },
+  {
+    "patch": "parts/02-reexpansion.patch",
+    "witness": "test_regression_02_late_feature_activation_reexpands_an_existing_release"
+  },
+  {
+    "patch": "parts/03-feature-union.patch",
+    "witness": "test_regression_03_feature_union_is_commutative_and_complete"
+  },
+  {
+    "patch": "parts/04-marker-context.patch",
+    "witness": "test_regression_04_markers_use_the_declaring_packages_features"
+  },
+  {
+    "patch": "parts/05-clause-context.patch",
+    "witness": "test_regression_05_learned_clause_keeps_all_contextual_decisions"
+  },
+  {
+    "patch": "parts/06-request-scope.patch",
+    "witness": "test_regression_06_failed_request_does_not_poison_a_different_target"
+  },
+  {
+    "patch": "parts/07-cache-context.patch",
+    "witness": "test_regression_07_candidate_cache_distinguishes_target_and_feature_context"
+  },
+  {
+    "patch": "parts/08-partial-pins.patch",
+    "witness": "test_regression_08_partial_update_keeps_every_unrequested_pin"
+  }
+]
