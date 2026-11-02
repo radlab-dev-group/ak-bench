@@ -7,6 +7,7 @@ Snapshots are written into the experiment record (plan section 9).
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -40,6 +41,14 @@ class DescriptorBase(_StrictModel):
         min_length=1,
         max_length=64,
         description="Version of this specific descriptor instance.",
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        description="Timestamp when this descriptor or task was created.",
+    )
+    authors: list[str] = Field(
+        default_factory=list,
+        description="List of authors or models that authored this descriptor or task.",
     )
     title: str | None = Field(
         default=None,

@@ -543,6 +543,8 @@ class HistoryStore:
                     "repository_uid": row.repository_uid,
                     "base_commit": row.base_commit,
                     "snapshot_digest": row.snapshot_digest,
+                    "created_at": row.task_created_at.isoformat() if row.task_created_at else None,
+                    "authors": _load(row.authors_json) or [],
                     "runs": by_task.get(row.uid, 0),
                 }
                 for row in rows
@@ -719,6 +721,13 @@ class HistoryStore:
             repository_uid = repo_row.uid
 
         task_row = session.scalar(select(Task).where(Task.uid == loaded.uid))
+        task_created_at = getattr(loaded.task, "created_at", None)
+        if isinstance(task_created_at, str):
+            task_created_at = _parse_time(task_created_at)
+
+        authors = getattr(loaded.task, "authors", None)
+        authors_json = _dump(authors) if authors else None
+
         if task_row is None:
             task_row = Task(
                 uid=loaded.uid,
@@ -728,10 +737,17 @@ class HistoryStore:
                 difficulty=str(loaded.task.difficulty),
                 evaluator=str(loaded.task.evaluator),
                 snapshot_digest=str(loaded.digest),
+                task_created_at=task_created_at,
+                authors_json=authors_json,
                 created_at=now,
                 updated_at=now,
             )
             session.add(task_row)
+        else:
+            if task_created_at is not None:
+                task_row.task_created_at = task_created_at
+            if authors_json is not None:
+                task_row.authors_json = authors_json
         task_row.repository_uid = repository_uid
         task_row.base_commit = getattr(loaded.task.task.repository, "ref", None)
         task_row.updated_at = now

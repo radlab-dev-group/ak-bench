@@ -120,6 +120,8 @@ class Task(Base, TimestampMixin):
     base_commit: Mapped[str | None] = mapped_column(String(64))
     mutation_version: Mapped[str | None] = mapped_column(String(64))
     snapshot_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    task_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    authors_json: Mapped[str | None] = mapped_column(Text)
 
 
 class Experiment(Base, TimestampMixin):
