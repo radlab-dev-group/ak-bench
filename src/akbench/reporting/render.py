@@ -46,6 +46,13 @@ from akbench.reporting.data import (
     variant_lookup,
     verdict_of,
 )
+from akbench.reporting.docs import (
+    Document,
+    discover_documents,
+    group_of,
+    group_order,
+    page_paths,
+)
 
 STYLE_NAME = "assets/style.css"
 ASSET_NAMES: tuple[str, ...] = (STYLE_NAME,)
@@ -319,6 +326,81 @@ tbody tr:nth-child(3) .place:not(.top) {
 .bar-note { color: var(--muted); font-size: .78rem; margin: -.5rem 0 1.3rem; }
 .cell .bar { margin-top: .35rem; }
 .cell { min-width: 5.5rem; }
+/* the documentation tree: a menu that stays beside the text it belongs to and
+   a body that reads like a document, not like a table. The prose keeps the
+   heading rhythm of the source file — a document has to read the same here as
+   it does in the editor — while every measurement on the rest of the report
+   stays as compact as a table needs. */
+.docs-layout {
+  display: grid; grid-template-columns: minmax(14rem, 19rem) minmax(0, 1fr);
+  gap: clamp(1.2rem, 2.5vw, 2.4rem); align-items: start;
+}
+.docs-menu {
+  position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--raise);
+  padding: .9rem 1rem 1.1rem; font-size: .82rem;
+}
+.docs-menu .menu-group { margin: 0 0 1rem; }
+.docs-menu .menu-group:last-child { margin-bottom: 0; }
+.docs-menu .menu-title {
+  color: var(--faint); font: 600 .68rem/1.4 var(--sans); letter-spacing: .12em;
+  text-transform: uppercase; margin: 0 0 .35rem;
+}
+.docs-menu ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .12rem; }
+.docs-menu a { display: block; color: var(--muted); padding: .2rem .45rem; border-radius: 6px; }
+.docs-menu a:hover { color: var(--bright); background: var(--accent-soft); border: none; }
+.docs-menu a.current { color: var(--bright); background: var(--accent-soft); font-weight: 600; }
+.docs-menu .toc { margin: .3rem 0 .1rem .55rem; display: grid; gap: .05rem; }
+.docs-menu .toc a { font-size: .76rem; padding: .1rem .4rem; }
+.prose { min-width: 0; }
+/* the document's own heading scale: the report's uppercase labels measure a
+   table, a document measures a page */
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  display: block; letter-spacing: -.01em; text-transform: none; color: var(--bright);
+  font-weight: 700; line-height: 1.3;
+}
+.prose h1 { font-size: 1.55rem; margin: 0 0 .6rem; }
+.prose h2 { font-size: 1.12rem; margin: 2.2rem 0 .7rem; padding-bottom: .3rem;
+  border-bottom: 1px solid var(--line-soft); }
+.prose h3 { font-size: .98rem; margin: 1.7rem 0 .5rem; }
+.prose h4 { font-size: .9rem; margin: 1.4rem 0 .4rem; color: var(--fg); }
+.prose h2::before, .prose h2::after { content: none; }
+.prose p, .prose li { font-size: .92rem; line-height: 1.65; }
+.prose p { margin: .7rem 0; }
+.prose ul, .prose ol { margin: .7rem 0 1rem; padding-left: 1.35rem; }
+.prose li { margin: .22rem 0; }
+.prose li > ul, .prose li > ol { margin: .2rem 0; }
+.prose code {
+  background: rgba(94, 177, 255, .1); border: 1px solid var(--line-soft);
+  border-radius: 4px; padding: .05rem .3rem; font-size: .85em;
+}
+.prose .code-block { position: relative; margin: .9rem 0 1.2rem; }
+.prose .code-block pre {
+  margin: 0; padding: .9rem 1rem; overflow-x: auto; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--head); font: .8rem/1.6 var(--mono);
+}
+.prose .code-block code { background: none; border: none; padding: 0; }
+.prose .code-lang {
+  position: absolute; top: .35rem; right: .7rem; color: var(--faint);
+  font: 600 .64rem/1 var(--sans); letter-spacing: .1em; text-transform: uppercase;
+}
+.prose blockquote {
+  margin: .9rem 0; padding: .1rem 0 .1rem .95rem; border-left: 2px solid var(--accent);
+  color: var(--muted);
+}
+.prose blockquote p { margin: .35rem 0; }
+.prose hr { border: none; border-top: 1px solid var(--line); margin: 1.8rem 0; }
+.prose .table-wrap table { font-size: .82rem; }
+.prose .table-wrap td { overflow-wrap: anywhere; }
+@media (max-width: 60rem) {
+  .docs-layout { grid-template-columns: 1fr; }
+  .docs-menu { position: static; max-height: none; }
+}
+@media print {
+  .docs-menu { display: none; }
+  .docs-layout { grid-template-columns: 1fr; }
+  .prose .code-block pre { white-space: pre-wrap; }
+}
 @media (max-width: 40rem) {
   .topbar { gap: .5rem; }
   .nav { margin-left: 0; }
@@ -600,6 +682,7 @@ def page(
             f'<a href="{ROOT_TOKEN}models/index.html">models</a>'
             f'<a href="{ROOT_TOKEN}tasks/index.html">tasks</a>'
             f'<a href="{ROOT_TOKEN}{RUNS_DIRECTORY}/index.html">runs</a>'
+            f'<a href="{ROOT_TOKEN}docs/index.html">docs</a>'
             "</nav></header>"
         )
     head = (
@@ -2056,6 +2139,88 @@ def render_listing(
     return page(title, body)
 
 
+def _docs_menu(documents: list[Document], current: str | None) -> str:
+    """The menu that travels with every documentation page.
+
+    Documents are listed under the part of the checkout they came from, with
+    the headings of the one being read listed under it, so a reader knows both
+    where they are and what is left to read.
+    """
+    paths = page_paths(documents)
+    groups: dict[str, list[Document]] = {}
+    for document in documents:
+        groups.setdefault(group_of(document.relpath), []).append(document)
+    parts: list[str] = []
+    for name in sorted(groups, key=group_order):
+        items: list[str] = []
+        for document in groups[name]:
+            href = f"{ROOT_TOKEN}{esc(paths[document.relpath])}"
+            css = ' class="current"' if document.relpath == current else ""
+            entry = f'<li><a{css} href="{href}">{esc(document.title)}</a>'
+            if document.relpath == current and document.headings:
+                entry += '<span class="toc">' + "".join(
+                    f'<a href="#{esc(anchor)}">{esc(title)}</a>'
+                    for level, anchor, title in document.headings
+                    if level <= 3
+                ) + "</span>"
+            items.append(entry + "</li>")
+        parts.append(
+            f'<div class="menu-group"><p class="menu-title">{esc(name)}</p>'
+            f'<ul>{"".join(items)}</ul></div>'
+        )
+    return f'<nav class="docs-menu">{"".join(parts)}</nav>'
+
+
+def render_docs_index(documents: list[Document], *, generated_at: str | None = None) -> str:
+    """The landing page of the documentation: the menu, and what is in it.
+
+    The page is written even when the checkout held no document to read, and
+    it then says so: an empty directory is a fact about the report, not a bug
+    it should hide.
+    """
+    if not documents:
+        body = (
+            "<h1>Documentation</h1>"
+            '<p class="subtitle">the documents the project wrote about itself</p>'
+            '<p class="muted">no document was found next to this report. The tree is '
+            "written from the checkout the report was generated in, so a report "
+            "written elsewhere carries the history and not the prose.</p>"
+        )
+        return page("Documentation", body, generated_at=generated_at)
+    paths = page_paths(documents)
+    listing = table(
+        ["document", "section", "path"],
+        [
+            [
+                f'<a href="{ROOT_TOKEN}{esc(paths[document.relpath])}">'
+                f"{esc(document.title)}</a>",
+                esc(group_of(document.relpath)),
+                f'<code>{esc(document.relpath)}</code>',
+            ]
+            for document in documents
+        ],
+    )
+    body = (
+        "<h1>Documentation</h1>"
+        '<p class="subtitle">the documents the project wrote about itself, rendered '
+        "from the checkout this report was generated in</p>"
+        f'<div class="docs-layout">{_docs_menu(documents, None)}'
+        f'<div class="prose">{listing}</div></div>'
+    )
+    return page("Documentation", body, generated_at=generated_at)
+
+
+def render_docs_page(
+    document: Document, documents: list[Document], *, generated_at: str | None = None
+) -> str:
+    """One document, rendered, with the menu beside it."""
+    body = (
+        f'<div class="docs-layout">{_docs_menu(documents, document.relpath)}'
+        f'<article class="prose">{document.body}</article></div>'
+    )
+    return page(document.title, body, generated_at=generated_at)
+
+
 def asset_names() -> tuple[str, ...]:
     return ASSET_NAMES
 
@@ -2066,12 +2231,18 @@ def write_report_tree(
     *,
     generated_at: str | None = None,
     dataset: Any = None,
+    docs_root: Path | str | None = None,
 ) -> list[Path]:
     """Write the report tree under ``root``; returns every file written.
 
     ``dataset`` is the dataset the tasks came from. It is optional: a report of
     a database on its own loses the task prose, says so on each task page, and
     stays correct about everything else.
+
+    ``docs_root`` is the checkout whose documents are published under ``docs/``.
+    It is optional for the same reason: a report generated away from the
+    checkout carries the history and says the prose was not found, rather than
+    inventing it or leaving a menu of links to pages that were never written.
     """
     root = Path(root)
     written: list[Path] = []
@@ -2121,6 +2292,14 @@ def write_report_tree(
             render_task(
                 build_task_report(data, uid, dataset=dataset), generated_at=generated_at
             ),
+        )
+
+    documents = discover_documents(Path(docs_root)) if docs_root else []
+    write("docs/index.html", render_docs_index(documents, generated_at=generated_at))
+    for document in documents:
+        write(
+            page_paths(documents)[document.relpath],
+            render_docs_page(document, documents, generated_at=generated_at),
         )
 
     stats = dashboard(data)

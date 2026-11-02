@@ -28,6 +28,8 @@ data/reports/
   verdicts/<slug>/index.html    the runs that carry a verdict
   runs/index.html               every recorded run, newest first
   runs/<uid>/index.html         one run, in full
+  docs/index.html               the project's own documents, one page each
+  docs/<document>/index.html    one document, rendered, with the menu beside it
   assets/style.css
 ```
 
@@ -119,6 +121,19 @@ tighten it further). The number columns hug their content, the text columns
 take what is left and wrap, and every text column keeps a floor below which
 the wrapper scrolls instead of the row having to be read by scrolling back and
 forth.
+
+**The project documents themselves.** The report publishes the checkout's own
+documents under `docs/`: a landing page with the menu of every document, and
+one page per document, rendered — headings with anchors, lists, fenced code,
+pipe tables, blockquotes, inline code, emphasis and links — in the same style
+as the rest of the report. The menu travels with every document page, marks
+the one being read, and lists its own headings, so a reader always knows where
+they are and what is left. The documents are read from the checkout the report
+is generated in: a report written elsewhere carries the history and says the
+documents were not found, rather than inventing prose or leaving a menu of
+links to pages that were never written. A document is untrusted input: it is
+escaped end to end, a script in a document stays text, and a link to a scheme
+the page must not run is dropped to a no-op anchor.
 
 **Run tables sort.** Clicking a column header of a run table reorders its rows
 by that column — the one exception to the no-scripting rule, and a small,

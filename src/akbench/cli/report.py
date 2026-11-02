@@ -68,6 +68,15 @@ def _dataset(context: CliContext) -> Dataset | None:
         return None
 
 
+def _project_root(context: CliContext) -> Path:
+    """The checkout whose documents are published under ``docs/``.
+
+    The prose lives in the checkout, not in the database, so a report written
+    away from it publishes the history and says the documents were not found.
+    """
+    return build_app_paths(context.loaded().settings).project_root
+
+
 def _reports_dir(context: CliContext, output: str | None) -> Path:
     if output:
         return Path(output)
@@ -98,6 +107,7 @@ def report_all_cmd(
         data,
         generated_at=utc_now().isoformat(),
         dataset=_dataset(context),
+        docs_root=_project_root(context),
     )
 
     if as_json:

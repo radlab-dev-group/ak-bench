@@ -1049,3 +1049,106 @@ def test_the_page_grows_with_the_window_rather_than_capping_early() -> None:
     assert "--page-max" in STYLE
     assert "width: min(100%, var(--page-max))" in STYLE
     assert "table.dense td.num, table.dense th.num { width: 1%; white-space: nowrap; }" in STYLE
+
+
+# --------------------------------------------------------- documentation tree
+
+
+def _mini_docs(root: Path) -> list[Path]:
+    """A tiny checkout of documents to publish: two areas, one odd link."""
+    (root / "docs").mkdir(parents=True)
+    readme = root / "README.md"
+    readme.write_text(
+        "# Demo project\n\nSome **bold** and `code` and a [link](https://example.test).\n",
+        encoding="utf-8",
+    )
+    cli = root / "docs" / "CLI.md"
+    cli.write_text(
+        "# CLI\n\n## Commands\n\n| Command | Notes |\n|---|---|\n"
+        "| `akbench x` | does x |\n\n"
+        "```\nplain code block\n```\n\n",
+        encoding="utf-8",
+    )
+    unsafe = root / "docs" / "Unsafe.md"
+    unsafe.write_text(
+        "# Unsafe\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(1))\n",
+        encoding="utf-8",
+    )
+    return [readme, cli, unsafe]
+
+
+def test_the_docs_tree_publishes_one_page_per_document(
+    database_url: str, tmp_path: Path
+) -> None:
+    """Every document of the checkout gets a page, and the menu names them all."""
+    data = collect_history(_seeded(database_url))
+    _mini_docs(tmp_path / "checkout")
+
+    written = write_report_tree(
+        tmp_path / "reports", data, docs_root=tmp_path / "checkout"
+    )
+    root = tmp_path / "reports"
+    relative = {str(path.relative_to(root)) for path in written}
+    assert "docs/index.html" in relative
+    assert "docs/readme/index.html" in relative
+    assert "docs/docs-cli/index.html" in relative
+    assert "docs/docs-unsafe/index.html" in relative
+
+    index = (root / "docs" / "index.html").read_text(encoding="utf-8")
+    assert "Documentation" in index
+    # the menu lists the documents of every area, and the dashboard links here
+    assert "Demo project" in index
+    assert "CLI" in index
+    assert "Unsafe" in index
+    assert "Handbook" in index and "Project" in index
+
+
+def test_the_document_page_renders_markdown_and_keeps_anchors(
+    database_url: str, tmp_path: Path
+) -> None:
+    """The page of one document is its source, formatted and linkable."""
+    data = collect_history(_seeded(database_url))
+    _mini_docs(tmp_path / "checkout")
+
+    write_report_tree(tmp_path / "reports", data, docs_root=tmp_path / "checkout")
+    root = tmp_path / "reports"
+    cli = (root / "docs" / "docs-cli" / "index.html").read_text(encoding="utf-8")
+
+    assert '<h1 id="cli">CLI</h1>' in cli
+    assert '<h2 id="commands">Commands</h2>' in cli
+    # the table is a real table, the block is a code block, both in prose
+    assert "<table" in cli and "<code>akbench x</code>" in cli
+    assert 'class="code-block"' in cli
+    # the menu marks the current document and lists its own headings
+    assert 'class="current"' in cli
+    assert 'href="#commands"' in cli
+
+
+def test_a_document_page_escapes_its_source(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A document is untrusted input: script stays text, a scheme link stays inert."""
+    data = collect_history(_seeded(database_url))
+    _mini_docs(tmp_path / "checkout")
+
+    write_report_tree(tmp_path / "reports", data, docs_root=tmp_path / "checkout")
+    root = tmp_path / "reports"
+    unsafe = (root / "docs" / "docs-unsafe" / "index.html").read_text(encoding="utf-8")
+
+    assert "<script>alert(1)</script>" not in unsafe
+    assert "&lt;script&gt;" in unsafe
+    assert 'href="javascript:' not in unsafe
+
+
+def test_the_docs_index_says_when_no_document_was_found(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A report written away from a checkout says the prose was not found."""
+    data = collect_history(_seeded(database_url))
+
+    written = write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+    index = (root / "docs" / "index.html").read_text(encoding="utf-8")
+    assert "no document was found" in index
+    # the dashboard still links to the page, and the page is written
+    assert "docs/index.html" in {str(path.relative_to(root)) for path in written}
