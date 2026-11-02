@@ -1,0 +1,8 @@
+[project]
+name = "ledgerlite"
+version = "1.0.0"
+description = "Double-entry ledger with FX conversion and period close, for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

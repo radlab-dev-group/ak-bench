@@ -1,0 +1,45 @@
+# Bug-fix task: a conversion answers with the rate that was in force longest,
+# not the one that was in force last.
+#
+# The defect leaves every count the repository suite looks at intact, because
+# the suite only ever publishes one rate per currency and converts after it.
+# What breaks is the rule the module documents: the latest published rate at
+# or before the moment wins, and a rate published later must not shadow an
+# earlier one.
+schema_version: "1.0"
+id: ledgerlite-rates-001
+version: "1.0.0"
+title: A conversion answers with the oldest rate in force
+description: >-
+  RateBook.rate_for returns the first published rate at or before the moment
+  instead of the last, so once a currency's rate has been revised, every
+  conversion answers with the superseded rate. Restore the documented rule:
+  the rate published most recently at or before the moment is the one in force.
+
+task:
+  category: bug_fix
+  difficulty: expert
+
+  repository:
+    source: datasets/_sources/ledgerlite
+    ref: HEAD
+    notes: seed fixture directory
+
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      rate_for() selects in_force[0] instead of in_force[-1]. The repository
+      suite keeps passing: it publishes a single rate per currency, for which
+      the first and the last in-force rate are the same.
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 900
+  constraints:
+    - do not change the public API of the ledgerlite package
+    - do not modify the repository test suite under tests/
+    - do not change how rates are published or how a conversion rounds
+    - do not add third-party dependencies

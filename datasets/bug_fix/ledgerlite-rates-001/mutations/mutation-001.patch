@@ -1,0 +1,13 @@
+diff --git a/src/ledgerlite/fx.py b/src/ledgerlite/fx.py
+index 0000000..1111111 100644
+--- a/src/ledgerlite/fx.py
++++ b/src/ledgerlite/fx.py
+@@ -97,7 +97,7 @@ class RateBook:
+         in_force = [rate for rate in self._rates if rate.currency == currency and rate.before(at)]
+         if not in_force:
+             raise MissingRate(currency, at)
+-        return in_force[-1]
++        return in_force[0]
+ 
+     def convert(self, money: Money, to_currency: str, at: datetime) -> Conversion:
+         """Convert ``money`` into ``to_currency``, using the rates in force at ``at``.

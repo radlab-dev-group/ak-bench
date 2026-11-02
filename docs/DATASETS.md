@@ -102,6 +102,8 @@ pass.
 | `notes-sync-001` | `new_feature` | expert | `notesapi` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
 | `cadence-catchup-001` | `new_feature` | expert | `cadence` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
 | `cadence-takeover-001` | `bug_fix` | expert | `cadence` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `ledgerlite-reconcile-001` | `new_feature` | expert | `ledgerlite` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `ledgerlite-rates-001` | `bug_fix` | expert | `ledgerlite` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
@@ -135,6 +137,19 @@ suite only ever takes a resource back by the epoch it still carries.
 occurrence in the module docstring (the window, the two dependencies and their
 skip propagation, the per-task cap, the ordering) and not yet written; the
 plan must come back in an order the scheduler could execute top-down.
+
+The two `ledgerlite` tasks run on a complete, stdlib-only double-entry ledger:
+a chart of accounts with normal sides, an append-only journal that refuses
+unbalanced entries, an FX rate book that converts as of a moment, a half-open
+period close, and a bank reconciliation. `ledgerlite-rates-001` is the harder
+of the pair: once a currency's rate is revised, `rate_for` answers with the
+first published rate at or before the moment instead of the last, so every
+conversion is silently valued at the superseded rate — and the repository suite
+only ever publishes one rate per currency, for which first and last are the
+same. `ledgerlite-reconcile-001` is the reconciliation itself: declared and
+specified to the claim in the module docstring (the exact-amount rule, the
+window and how days are counted, the two passes and their ordering, what stays
+open) and not yet written.
 
 ### Fixtures and their dependencies
 
