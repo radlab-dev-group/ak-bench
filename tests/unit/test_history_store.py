@@ -25,6 +25,9 @@ def _store(database_url: str) -> HistoryStore:
 
 
 def _task_stub(digest: str = "sha256:task") -> SimpleNamespace:
+    from datetime import datetime, timezone, timedelta
+
+    tz = timezone(timedelta(hours=1))
     repository = SimpleNamespace(source="https://example.test/wc.git", ref="abc1234")
     body = SimpleNamespace(repository=repository)
     descriptor = SimpleNamespace(
@@ -33,6 +36,8 @@ def _task_stub(digest: str = "sha256:task") -> SimpleNamespace:
         category="bug_fix",
         difficulty="easy",
         evaluator="pytest",
+        created_at=datetime(2026, 11, 1, 19, 0, 0, tzinfo=tz),
+        authors=["Alice", "Bob"],
         task=body,
     )
     return SimpleNamespace(uid="wordcount-001@1.0.0", digest=digest, task=descriptor)
@@ -205,8 +210,15 @@ def test_record_run_creates_the_task_and_repository_rows(database_url: str) -> N
         assert task.uid == "wordcount-001@1.0.0"
         assert task.evaluator == "pytest"
         assert task.base_commit == "abc1234"
+        assert task.authors_json == '["Alice", "Bob"]'
+        assert task.task_created_at is not None
         repository = session.scalar(select(Repository))
         assert repository.source == "https://example.test/wc.git"
+
+    tasks = store.tasks()
+    assert len(tasks) == 1
+    assert tasks[0]["authors"] == ["Alice", "Bob"]
+    assert tasks[0]["created_at"] == "2026-11-01T19:00:00"
 
 
 def test_re_recording_a_run_updates_it_in_place(database_url: str) -> None:

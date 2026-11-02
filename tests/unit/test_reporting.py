@@ -45,6 +45,8 @@ def _store(database_url: str) -> HistoryStore:
 
 
 def _task_stub(uid: str = "wordcount-001@1.0.0") -> SimpleNamespace:
+    from datetime import datetime
+
     repository = SimpleNamespace(source="https://example.test/wc.git", ref="abc1234")
     return SimpleNamespace(
         uid=uid,
@@ -55,6 +57,8 @@ def _task_stub(uid: str = "wordcount-001@1.0.0") -> SimpleNamespace:
             category="bug_fix",
             difficulty="easy",
             evaluator="pytest",
+            created_at=datetime(2026, 11, 1, 12, 0, 0),
+            authors=["Alice", "Bob"],
             task=SimpleNamespace(repository=repository),
         ),
     )
@@ -799,6 +803,8 @@ def test_task_page_lists_every_run_of_the_task(database_url: str, tmp_path: Path
     ).read_text(encoding="utf-8")
     assert "run-pass" in page and "run-fail" in page
     assert "bug_fix" in page
+    assert "Alice, Bob" in page
+    assert "2026-11-01" in page
 
 
 def test_tasks_listing_page_includes_success_rate_and_tokens(
