@@ -176,7 +176,7 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "evaluated": len(evaluated),
         "passed": len(passed),
         "not_passed": len(runs) - len(passed),
-        "success_rate": _rate(len(passed), len(evaluated)),
+        "success_rate": _rate(len(passed), len(runs)) if evaluated else None,
         "mean_duration_seconds": _mean(durations),
         "measured_durations": len(durations),
         "total_tokens": tokens,
