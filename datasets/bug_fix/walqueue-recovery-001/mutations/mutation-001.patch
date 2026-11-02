@@ -1,0 +1,101 @@
+diff --git a/src/walqueue/snapshot.py b/src/walqueue/snapshot.py
+--- a/src/walqueue/snapshot.py
++++ b/src/walqueue/snapshot.py
+@@ -19,31 +19,47 @@
+ 
+     def load(self) -> tuple[int, State]:
+         current = self.root / "CURRENT"
+-        if not current.exists():
+-            return 0, State()
+-        pointer = read_document(current)
+-        try:
+-            filename = pointer["snapshot"]
+-            if not isinstance(filename, str) or not SNAPSHOT.fullmatch(filename):
+-                raise ValueError("invalid snapshot filename")
+-            through = integer(pointer["through"], "snapshot sequence")
+-            if int(SNAPSHOT.fullmatch(filename)[1]) != through:
+-                raise ValueError("snapshot filename/sequence mismatch")
+-            document = read_document(self.root / filename)
+-            if document["version"] != 1 or document["through"] != through:
+-                raise ValueError("snapshot/pointer mismatch")
+-            return through, State.restore(document["state"])
+-        except (KeyError, TypeError, ValueError) as error:
+-            raise CorruptStore("invalid snapshot pointer") from error
+-
+-    def publish(self, through: int, state: State) -> None:
+-        filename = f"snapshot-{through:016d}.json"
+-        write_document(
+-            self.root / filename,
+-            {
+-                "version": 1,
+-                "through": through,
+-                "state": state.document(),
++        candidates = sorted(self.root.glob("snapshot-*.json"))
++        if not current.exists() and not candidates:
++            return 0, State()
++        if candidates:
++            filename = candidates[-1].name
++            pointer = {"snapshot": filename, "through": int(filename[9:-5])}
++        else:
++            pointer = read_document(current)
++        try:
++            filename = pointer["snapshot"]
++            if not isinstance(filename, str) or not SNAPSHOT.fullmatch(filename):
++                raise ValueError("invalid snapshot filename")
++            through = integer(pointer["through"], "snapshot sequence")
++            if int(SNAPSHOT.fullmatch(filename)[1]) != through:
++                raise ValueError("snapshot filename/sequence mismatch")
++            document = read_document(self.root / filename)
++            if document["version"] != 1 or document["through"] != through:
++                raise ValueError("snapshot/pointer mismatch")
++            return through, State.restore(document["state"])
++        except (KeyError, TypeError, ValueError) as error:
++            raise CorruptStore("invalid snapshot pointer") from error
++
++    def publish(self, through: int, state: State) -> None:
++        filename = f"snapshot-{through:016d}.json"
++        projected = state.document()
++        projected["tasks"] = [
++            row for row in projected["tasks"] if row["status"] in {"ready", "leased"}
++        ]
++        for row in projected["tasks"]:
++            row.update(status="ready", attempts=0, generation=0, worker=None, deadline=None)
++        live_ids = {row["task_id"] for row in projected["tasks"]}
++        projected["keys"] = {
++            key: identity for key, identity in projected["keys"].items()
++            if identity["task_id"] in live_ids
++        }
++        write_document(
++            self.root / filename,
++            {
++                "version": 1,
++                "through": through,
++                "state": projected,
+             },
+         )
+         self.hook("compact.snapshot")
+diff --git a/src/walqueue/recovery.py b/src/walqueue/recovery.py
+--- a/src/walqueue/recovery.py
++++ b/src/walqueue/recovery.py
+@@ -10,6 +10,9 @@
+     through, state = snapshots.load()
+     sequence = through
+     for transaction in journal.recover(through):
++        sequence = transaction["sequence"]
++        if through and sequence == through + 1:
++            continue
+         candidate = state.clone()
+         try:
+             candidate.apply(transaction["commands"])
+diff --git a/src/walqueue/journal.py b/src/walqueue/journal.py
+--- a/src/walqueue/journal.py
++++ b/src/walqueue/journal.py
+@@ -80,7 +80,7 @@
+                     raise CorruptStore("invalid transaction sequence or shape") from error
+             if decoded.torn:
+                 with path.open("r+b") as stream:
+-                    stream.truncate(decoded.valid_bytes)
++                    stream.truncate(0)
+                     stream.flush()
+                     os.fsync(stream.fileno())
+         return recovered

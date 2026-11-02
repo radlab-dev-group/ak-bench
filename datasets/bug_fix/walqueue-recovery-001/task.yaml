@@ -1,0 +1,35 @@
+schema_version: "1.0"
+id: walqueue-recovery-001
+version: "1.0.0"
+title: Repair queue recovery across compaction, torn writes and stale workers
+description: >-
+  Diagnose a regression in the queue's snapshot/replay protocol. Ordinary
+  live operations and simple restarts work, but compaction and interrupted
+  writes can lose work, resurrect completed tasks, forget idempotency keys
+  or allow stale lease acknowledgments. Restore the documented invariants
+  without changing the API, storage format or crash-injection phases.
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/walqueue
+    ref: HEAD
+    notes: standard-library-only seed fixture directory
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      A faulty recovery fast path spans snapshot state projection, publication
+      selection, the post-snapshot replay boundary and torn-tail repair.
+      Live queue operations and the seed repository suite remain green.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 7200
+  constraints:
+    - preserve the public API, storage format and README contract
+    - do not change the repository tests or fault injection phase names
+    - do not add third-party dependencies, sleeps or background processes
+    - keep transaction validation and checksums enabled
+    - maintain generation fencing and permanent idempotency across recovery
