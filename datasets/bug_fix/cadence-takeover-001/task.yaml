@@ -7,13 +7,16 @@
 schema_version: "1.0"
 id: cadence-takeover-001
 version: "1.0.0"
+created_at: "2026-11-01 19:00:00"
 title: A worker with a stale epoch can take a live lease back
 description: >-
   LeaseBook.takeover accepts a request whose epoch no longer matches the
   resource's current lease, so a worker that was cut off and comes back can
   steal the resource from the worker that holds it now. Restore the documented
   rule that only the holder of the current epoch may take a resource back.
-
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
 task:
   category: bug_fix
   difficulty: expert

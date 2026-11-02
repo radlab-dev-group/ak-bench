@@ -7,13 +7,16 @@
 schema_version: "1.0"
 id: ledgerlite-reconcile-001
 version: "1.0.0"
+created_at: "2026-11-01 19:00:00"
 title: Implement bank reconciliation from its specification
 description: >-
   reconcile() in src/ledgerlite/reconcile.py is declared, documented and tested,
   but its body raises NotImplementedError. Implement it from the written
   contract — the window, the exact-amount rule, the two passes and their
   ordering, what counts as open — without touching the rest of the package.
-
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
 task:
   category: new_feature
   difficulty: expert

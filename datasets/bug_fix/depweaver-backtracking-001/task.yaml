@@ -1,6 +1,7 @@
 schema_version: "1.0"
 id: depweaver-backtracking-001
 version: "1.0.0"
+created_at: "2026-11-02 14:00:00"
 title: Repair eight interacting backtracking, feature, learning and cache regressions
 description: >-
   Repair an offline dependency resolver whose optimized branch and context
@@ -8,7 +9,7 @@ description: >-
   lockfile updates and leaks conflicts across solve calls. Preserve all eight
   protocol invariants, deterministic preferences and constraint-directed search.
 authors:
-  - [codex_cli] Gpt 6.1 SOL
+  - "[codex_cli] Gpt 6.1 SOL"
 task:
   category: bug_fix
   difficulty: expert

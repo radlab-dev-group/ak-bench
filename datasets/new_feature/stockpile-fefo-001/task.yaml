@@ -8,13 +8,16 @@
 schema_version: "1.0"
 id: stockpile-fefo-001
 version: "1.0.0"
+created_at: "2026-11-01 19:00:00"
 title: Implement FEFO allocation from its specification
 description: >-
   allocate() in src/stockpile/allocate.py is declared, documented and tested,
   but its body raises NotImplementedError. Implement it from the written
   contract — which lots may give, in which order, how much each gives, what a
   plan is and what it is not — without touching the rest of the package.
-
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
 task:
   category: new_feature
   difficulty: expert
