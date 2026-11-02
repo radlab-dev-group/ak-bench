@@ -11,6 +11,8 @@ schema_version: "1.0"
 id: knowledge-on-off
 version: "1.0.0"
 title: Knowledge plugin on/off
+description: >-
+  Does the knowledge plugin change the outcome when the agent, the model and the task set are held still? The toggle is the only factor and the model is pinned explicitly, because an agent left to its own default may be served something else by the router under test. The runtime is managed on purpose: a factor that cannot be pinned to a run is not an experimental control.
 
 experiment:
   type: configuration

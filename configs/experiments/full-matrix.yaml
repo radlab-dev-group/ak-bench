@@ -8,6 +8,8 @@ schema_version: "1.0"
 id: full-matrix
 version: "1.0.0"
 title: Knowledge and model full factorial
+description: >-
+  Every combination of the knowledge toggle and the model on two bug-fix tasks, as a full factorial. It is the same two factors that knowledge-on-off and model-comparison each isolate, crossed instead of held apart, so a difference between the three experiments belongs to what they hold fixed rather than to what they measured.
 
 experiment:
   type: configuration

@@ -128,6 +128,9 @@ class Experiment(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     uid: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     title: Mapped[str | None] = mapped_column(String(255))
+    # what the experiment says it is about, read from its descriptor: a title
+    # names an experiment, this states the question it asks and how it asks it
+    description: Mapped[str | None] = mapped_column(Text)
     experiment_type: Mapped[str | None] = mapped_column(String(64))
     descriptor_id: Mapped[str | None] = mapped_column(String(128))
     descriptor_version: Mapped[str | None] = mapped_column(String(64))

@@ -308,6 +308,7 @@ def _run_experiment(
         store_history.record_plan(
             experiment_uid=experiment.identity,
             title=experiment.descriptor.title,
+            description=experiment.descriptor.description,
             experiment_type=experiment.descriptor.experiment.type.value,
             descriptor_id=experiment.descriptor.id,
             descriptor_version=experiment.descriptor.version,
@@ -518,6 +519,7 @@ def _store_plan(
     stored = store.record_plan(
         experiment_uid=experiment.identity,
         title=experiment.descriptor.title,
+        description=experiment.descriptor.description,
         experiment_type=body.type.value,
         descriptor_id=experiment.descriptor.id,
         descriptor_version=experiment.descriptor.version,

@@ -79,6 +79,7 @@ class HistoryStore:
         *,
         experiment_uid: str,
         title: str | None = None,
+        description: str | None = None,
         experiment_type: str | None = None,
         descriptor_id: str | None = None,
         descriptor_version: str | None = None,
@@ -107,6 +108,8 @@ class HistoryStore:
             # hash the plan recorded for it.
             if title is not None:
                 experiment.title = title
+            if description is not None:
+                experiment.description = description
             if experiment_type is not None:
                 experiment.experiment_type = experiment_type
             if descriptor_id is not None:
@@ -923,6 +926,7 @@ class HistoryStore:
         return {
             "uid": row.uid,
             "title": row.title,
+            "description": row.description,
             "type": row.experiment_type,
             "descriptor": f"{row.descriptor_id}@{row.descriptor_version}"
             if row.descriptor_id

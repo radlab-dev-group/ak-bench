@@ -14,6 +14,8 @@ schema_version: "1.0"
 id: model-comparison
 version: "1.0.0"
 title: Model comparison on bug-fix tasks
+description: >-
+  Which model serves best under one agent and one configuration, on bug-fix tasks. Only the models the router really serves are listed; the auto_codex alias is the knowledge plugin's routing trigger, not a model to be sent in a raw comparison. What the router eventually served is recorded per run, never inferred from the value asked for here.
 
 experiment:
   type: model_comparison

@@ -8,6 +8,8 @@ schema_version: "1.0"
 id: wordcount-direct-sanity
 version: "1.0.0"
 title: Wordcount sanity run without factors
+description: >-
+  The smallest runnable experiment: one agent, one task, no factors. It exists to prove the pipeline end to end and to be the reference every later comparison is measured against; with no factors the matrix holds exactly one variant, so a difference from a later experiment belongs to the factors that experiment adds.
 
 experiment:
   type: configuration
