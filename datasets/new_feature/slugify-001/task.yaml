@@ -27,7 +27,7 @@ task:
   evaluator: pytest_evaluator
   hidden_tests: hidden_tests
   public_tests: public_tests
-  timeout_seconds: 300
+  timeout_seconds: 180
   constraints:
     - do not change the public API of the textkit package
     - do not modify the tests
