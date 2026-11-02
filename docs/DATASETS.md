@@ -104,6 +104,8 @@ pass.
 | `cadence-takeover-001` | `bug_fix` | expert | `cadence` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
 | `ledgerlite-reconcile-001` | `new_feature` | expert | `ledgerlite` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
 | `ledgerlite-rates-001` | `bug_fix` | expert | `ledgerlite` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `stockpile-fefo-001` | `new_feature` | expert | `stockpile` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `stockpile-writeoff-001` | `bug_fix` | expert | `stockpile` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
@@ -150,6 +152,18 @@ same. `ledgerlite-reconcile-001` is the reconciliation itself: declared and
 specified to the claim in the module docstring (the exact-amount rule, the
 window and how days are counted, the two passes and their ordering, what stays
 open) and not yet written.
+
+The two `stockpile` tasks run on an inventory engine: lots with receipt and
+expiry dates, reservations that are not taking, commits that are, transfers
+that carry the expiry with them, and a movement ledger. `stockpile-fefo-001`
+is the first-expired-first-out allocation: declared and specified to the unit
+in the module docstring (eligibility, what an earlier plan does to a lot, the
+order and its two tie-breaks, how much each lot gives, and why a partial plan
+is never returned) and not yet written. `stockpile-writeoff-001` is the
+harder of the pair: a write-off zeroes the reserved quantity of an expired lot
+along with its free quantity, so an order already holding stock on the lot is
+left with nothing to commit — and the repository suite only ever writes off an
+expired lot that carries no reservation.
 
 ### Fixtures and their dependencies
 

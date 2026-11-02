@@ -1,0 +1,41 @@
+# New-feature task: FEFO allocation.
+#
+# stockpile is a complete inventory engine: lots with receipt and expiry
+# dates, reservations that are not taking, commits that are, transfers that
+# carry the expiry with them, and a movement ledger. allocate() is declared
+# and specified to the unit in the module docstring; the hidden tests fail on
+# the base commit by design.
+schema_version: "1.0"
+id: stockpile-fefo-001
+version: "1.0.0"
+title: Implement FEFO allocation from its specification
+description: >-
+  allocate() in src/stockpile/allocate.py is declared, documented and tested,
+  but its body raises NotImplementedError. Implement it from the written
+  contract — which lots may give, in which order, how much each gives, what a
+  plan is and what it is not — without touching the rest of the package.
+
+task:
+  category: new_feature
+  difficulty: expert
+
+  repository:
+    source: datasets/_sources/stockpile
+    ref: HEAD
+    notes: seed fixture directory
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 1800
+  constraints:
+    - do not change the public API of the stockpile package
+    - do not modify the repository test suite under tests/
+    - do not change the stock, the lots or the reservation lifecycle
+    - do not add third-party dependencies
+    - do not modify the allocation spec in the allocate module docstring
+    - "an allocation is a plan: it reads the stock and never reserves anything"
+  notes: >-
+    The base state fails the hidden tests by design: the feature is missing,
+    which is the opposite of the bug-fix convention where hidden tests pass on
+    the base commit.
