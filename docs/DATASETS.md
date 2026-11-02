@@ -107,6 +107,10 @@ pass.
 | `stockpile-fefo-001` | `new_feature` | expert | `stockpile` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
 | `stockpile-writeoff-001` | `bug_fix` | expert | `stockpile` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
 | `freight-shop-001` | `new_feature` | expert | `freight` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `streamforge-windows-001` | `new_feature` | expert | `streamforge` | missing operators fail public and hidden tests; an external reference implementation passes both |
+| `walqueue-recovery-001` | `bug_fix` | expert | `walqueue` | base passes; a multi-module recovery regression fails hidden tests while the seed suite stays green |
+| `typeweave-inference-001` | `new_feature` | expert | `typeweave` | missing typechecker fails; an isolated reference passes source, public and hidden tests |
+| `depweaver-backtracking-001` | `bug_fix` | expert | `depweaver` | base passes; eight independent regressions fail their own witnesses and the combined mutation preserves the seed suite |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
@@ -175,6 +179,102 @@ gets asked and who is refused with what reason, per-carrier billable weight,
 the surcharge pass in declaration order with its groups and its tie between
 equal amounts, the two tie-breaks of the cheapest quote, and why an empty run
 is an error — and not yet written.
+
+### Durable-state expert tasks
+
+`streamforge-windows-001` requires coordinated implementation in three modules,
+not a single function: fixed and non-divisible sliding windows, transitively
+merged sessions, ordered retract/upsert output, partition watermarks and
+idleness, deduplication, strict finalization and complete checkpoint recovery.
+Late input can merge emitted sessions and reopen the resulting session, so
+window arithmetic alone is insufficient. Negative event times, independent
+keys, reordered declarations, atomic error handling and fresh-process restore
+are specified. Hidden tests compare generated traces against an independent
+batch implementation that groups raw events rather than using production
+operators. Operator-level tests also check snapshot consistency and ownership.
+
+`walqueue-recovery-001` provides a complete transaction queue with segmented,
+checksummed WAL frames, atomic snapshot publication, permanent request keys,
+retry/dead-letter states and generation-fenced leases. Its mutation introduces
+a faulty recovery fast path across snapshot projection, publication selection,
+replay boundaries and torn-tail repair. A successful fix must preserve the
+entire protocol: completed/dead tombstones, active leases, generations, original
+idempotency identities, and every complete transaction before a torn tail.
+Hidden tests cover every append/compaction crash phase, second restarts, suffix
+replay, orphan snapshots, corruption and independent generated queue traces.
+Crashes are deterministic exceptions at explicit phases; tests use no sleeps,
+real services or assumptions about worker timing.
+
+Both tasks allow 7200 seconds for an agent and use the existing `expert`
+difficulty and `pytest_evaluator`. This timeout is an upper bound, not a claim
+about required runtime or a guarantee that any particular model will fail.
+Their infrastructure and seeds depend only on the standard library; pytest
+is supplied by AK-Bench. The integration proof is
+`tests/integration/test_durable_dataset_tasks.py`. The Streamforge reference
+implementation lives under `tests/fixtures/streamforge_solution`, outside the
+seed, so agents never receive it in their prepared workspace.
+
+Run the focused benchmark integrity checks with:
+
+```bash
+python -m pytest tests/integration/test_durable_dataset_tasks.py
+akbench dataset validate --check-repositories --verify-mutations
+```
+
+The integrity checks prove missing-feature failures, reference-solution passes,
+base/mutated bug detection, and seed-suite compatibility. Hidden tests and
+reference code must remain outside the source projects. Runtime APIs and the
+source README contracts are English, as are the other shipped tasks.
+
+### Compiler and dependency-solver expert tasks
+
+`typeweave-inference-001` supplies approximately 4,000 lines of production Python
+across a working compiler front end, interpreter, independent bytecode VM, AST
+and artifact codecs, source packages, dependency graphs, incremental compilation,
+module linking and versioned editor services. The missing feature occupies five
+modules: substitution/unification, Hindley–Milner inference, nominal datatype
+elaboration, recursive pattern matrices and portable module interfaces. A correct
+implementation must combine normalized environment generalization, monomorphic
+recursive SCCs, a conservative value restriction, an occurs-check, deferred typed
+coverage and closed alpha-normalized exports. Hidden tests include transitive
+nominal types, opaque constructor families, independently loaded schemes, deep
+patterns, source provenance, generated programs and their ill-typed neighbors.
+They exercise both runtimes, typed editor inspections and interface-sensitive
+artifact reuse. The reference lives in `tests/fixtures/typeweave_solution`, never
+inside the seed or the prepared agent workspace.
+
+`depweaver-backtracking-001` supplies approximately 4,300 lines of production
+Python: semantic versions, parsed environment markers, metadata indexes,
+fixed-point feature propagation, a trailed solver, contextual clause learning,
+backjumping, domain caching, target-bound lockfiles and partial updates. Project
+tooling includes TOML profiles, multi-target bundles, replayable sessions,
+transactional workspace lock publication, independent validation, graph and
+conflict explanations, offline advisories, installation plans, inventories,
+wheel/RECORD inspection and content-addressed artifact storage. Eight injected
+regressions affect rollback, re-expansion after feature activation, feature union,
+owner-relative markers, clause context, request scoping, cache context and pins
+outside the update set. Tests check each defect independently, compare generated
+small repositories against an exhaustive oracle, and include larger domains
+with a decision budget. The oracle is only a test tool; production search must
+retain working caching, learning and nonchronological conflict return.
+
+Production line counts exclude tests, documentation, patches and external
+reference code. Both tasks use `expert`, `pytest_evaluator` and a 10,800-second
+agent timeout. The timeout permits sustained work; difficulty is established by
+the specified interactions and regression proofs, not by guaranteed failure of
+a particular model. Both projects require only Python 3.12's standard library
+plus the benchmark's pytest runner.
+
+The integrity suite is `tests/integration/test_senior_dataset_tasks.py`. It proves
+the compiler feature is missing on the seed and complete under its isolated
+reference, verifies the resolver's combined base/mutated behavior, confirms the
+source suite stays green after mutation, and applies each of eight separate
+regression patches against its named hidden witness. These checks complement
+the earlier durable-state tasks and dataset CLI discovery/validation checks.
+
+```bash
+python -m pytest tests/integration/test_senior_dataset_tasks.py
+```
 
 ### Fixtures and their dependencies
 
