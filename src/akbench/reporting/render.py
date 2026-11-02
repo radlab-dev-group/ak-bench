@@ -331,27 +331,99 @@ tbody tr:nth-child(3) .place:not(.top) {
    heading rhythm of the source file — a document has to read the same here as
    it does in the editor — while every measurement on the rest of the report
    stays as compact as a table needs. */
+.docs-shell { width: 100%; }
+.docs-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 1.5rem;
+  padding: 1rem 0 2rem; margin-bottom: 1.8rem; border-bottom: 1px solid var(--line);
+}
+.docs-eyebrow {
+  color: var(--accent); font-size: .7rem; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; margin: 0 0 .65rem;
+}
+.docs-hero h1 { font-size: clamp(1.8rem, 3vw, 2.6rem); letter-spacing: -.04em; }
+.docs-intro { color: var(--muted); max-width: 42rem; margin: .65rem 0 0; }
+.docs-total {
+  flex-shrink: 0; padding: .7rem 1.3rem; border-left: 1px solid var(--line);
+  color: var(--muted); font-size: .8rem;
+}
+.docs-total strong { display: block; color: var(--bright); font-size: 2rem; line-height: 1.2; }
 .docs-layout {
-  display: grid; grid-template-columns: minmax(14rem, 19rem) minmax(0, 1fr);
-  gap: clamp(1.2rem, 2.5vw, 2.4rem); align-items: start;
+  display: grid; grid-template-columns: 15rem minmax(0, 1fr);
+  gap: clamp(1.5rem, 3vw, 3rem); align-items: start;
 }
 .docs-menu {
   position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto;
-  border: 1px solid var(--line); border-radius: 10px; background: var(--raise);
-  padding: .9rem 1rem 1.1rem; font-size: .82rem;
+  padding: .3rem 1rem .8rem 0; font-size: .84rem;
 }
-.docs-menu .menu-group { margin: 0 0 1rem; }
+.docs-menu .menu-group { margin: .7rem 0; border-top: 1px solid var(--line-soft); }
 .docs-menu .menu-group:last-child { margin-bottom: 0; }
-.docs-menu .menu-title {
-  color: var(--faint); font: 600 .68rem/1.4 var(--sans); letter-spacing: .12em;
-  text-transform: uppercase; margin: 0 0 .35rem;
+.docs-menu .menu-title, .docs-menu > .menu-title {
+  color: var(--muted); font: 600 .7rem/1.5 var(--sans); letter-spacing: .1em;
+  text-transform: uppercase; padding: .8rem .55rem; margin: 0;
 }
+.docs-menu summary.menu-title { display: flex; align-items: center; gap: .5rem; }
+.docs-menu summary.menu-title::before { content: "\\203a"; font-size: 1rem; }
+.docs-menu details[open] > summary::before { transform: rotate(90deg); }
+.docs-menu summary::-webkit-details-marker { display: none; }
+.docs-count { margin-left: auto; color: var(--muted); font-size: .75rem; font-weight: 400; }
 .docs-menu ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .12rem; }
-.docs-menu a { display: block; color: var(--muted); padding: .2rem .45rem; border-radius: 6px; }
-.docs-menu a:hover { color: var(--bright); background: var(--accent-soft); border: none; }
-.docs-menu a.current { color: var(--bright); background: var(--accent-soft); font-weight: 600; }
-.docs-menu .toc { margin: .3rem 0 .1rem .55rem; display: grid; gap: .05rem; }
+.docs-menu a {
+  display: block; color: var(--muted); padding: .45rem .6rem; border-radius: 6px;
+  border: 1px solid transparent; overflow-wrap: anywhere;
+}
+.docs-menu a:hover { color: var(--bright); background: var(--accent-soft); }
+.docs-menu a.current {
+  color: var(--accent); background: var(--accent-soft); font-weight: 600;
+  border-left: 2px solid var(--accent);
+}
+.docs-menu .toc {
+  margin: .4rem 0 .7rem .9rem; padding-left: .5rem;
+  border-left: 1px solid var(--line); display: grid; gap: .1rem;
+}
 .docs-menu .toc a { font-size: .76rem; padding: .1rem .4rem; }
+.docs-menu .toc .toc-sub { padding-left: 1rem; }
+.docs-menu .docs-section-link { display: flex; align-items: center; gap: .5rem; }
+.docs-directory { min-width: 0; display: grid; gap: 2.3rem; }
+.docs-section { scroll-margin-top: 1.5rem; }
+.docs-section-heading { display: flex; align-items: baseline; gap: .7rem; margin-bottom: .9rem; }
+.docs-section-heading h2 {
+  margin: 0; color: var(--bright); font-size: 1.15rem; text-transform: none; letter-spacing: -.02em;
+}
+.docs-section-heading h2::before, .docs-section-heading h2::after { content: none; }
+.docs-section-heading span { color: var(--muted); font-size: .78rem; }
+.docs-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; }
+.doc-link {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .45rem 1rem;
+  align-content: start; padding: 1rem 1.1rem;
+  background: linear-gradient(135deg, var(--raise), var(--panel));
+  border: 1px solid var(--line); border-radius: 10px; color: var(--fg);
+}
+.doc-link:hover { border-color: var(--accent); background: var(--accent-soft); }
+.doc-link strong { font-size: .92rem; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.doc-link .doc-arrow { grid-column: 2; grid-row: 1 / 3; color: var(--accent); }
+.doc-path {
+  color: var(--muted); font: .7rem/1.6 var(--mono); overflow-wrap: anywhere;
+}
+.doc-link:focus-visible, .docs-menu a:focus-visible, .docs-menu summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+.docs-breadcrumb {
+  display: flex; flex-wrap: wrap; gap: .5rem; color: var(--muted);
+  font-size: .8rem; margin: .3rem 0 1.5rem;
+}
+.docs-article {
+  min-width: 0; padding: clamp(1.2rem, 3vw, 3rem);
+  border: 1px solid var(--line); border-radius: 12px; background: var(--bg);
+}
+.docs-source { margin: 0 0 1.8rem; padding-bottom: .9rem; border-bottom: 1px solid var(--line); }
+.docs-article .prose { overflow-wrap: anywhere; }
+.docs-article .prose h1 { font-size: clamp(1.6rem, 2.7vw, 2.2rem); letter-spacing: -.03em; }
+.docs-article .prose h2 { font-size: 1.35rem; margin-top: 2.5rem; }
+.docs-article .prose h3 { font-size: 1.1rem; }
+.docs-article .prose p, .docs-article .prose li { font-size: 1rem; line-height: 1.8; }
+.docs-article .prose :is(h1, h2, h3, h4, h5, h6) { scroll-margin-top: 1.5rem; }
+.docs-article .prose td { font-family: var(--sans); }
+.docs-article .code-block pre { padding-top: 1.8rem; }
 .prose { min-width: 0; }
 /* the document's own heading scale: the report's uppercase labels measure a
    table, a document measures a page */
@@ -392,13 +464,31 @@ tbody tr:nth-child(3) .place:not(.top) {
 .prose hr { border: none; border-top: 1px solid var(--line); margin: 1.8rem 0; }
 .prose .table-wrap table { font-size: .82rem; }
 .prose .table-wrap td { overflow-wrap: anywhere; }
+@media (max-width: 90rem) {
+  .docs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 60rem) {
+  .docs-layout { grid-template-columns: 12rem minmax(0, 1fr); gap: 1.2rem; }
+  .docs-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 40rem) {
   .docs-layout { grid-template-columns: 1fr; }
-  .docs-menu { position: static; max-height: none; }
+  .docs-menu {
+    position: static; max-height: 18rem; padding: .5rem;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--raise);
+  }
+  .docs-hero { display: block; padding-top: .2rem; }
+  .docs-total { display: flex; align-items: baseline; gap: .4rem;
+    border: none; padding: 0; margin-top: 1rem; }
+  .docs-total strong { font-size: 1rem; }
+  .docs-intro { font-size: .88rem; }
 }
 @media print {
   .docs-menu { display: none; }
   .docs-layout { grid-template-columns: 1fr; }
+  .docs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .doc-link { break-inside: avoid; }
+  .docs-article { padding: 0; border: none; }
   .prose .code-block pre { white-space: pre-wrap; }
 }
 @media (max-width: 40rem) {
@@ -2159,6 +2249,13 @@ def render_listing(
     return page(title, body)
 
 
+def _docs_groups(documents: list[Document]) -> dict[str, list[Document]]:
+    groups: dict[str, list[Document]] = {}
+    for document in documents:
+        groups.setdefault(group_of(document.relpath), []).append(document)
+    return {name: groups[name] for name in sorted(groups, key=group_order)}
+
+
 def _docs_menu(documents: list[Document], current: str | None) -> str:
     """The menu that travels with every documentation page.
 
@@ -2167,28 +2264,39 @@ def _docs_menu(documents: list[Document], current: str | None) -> str:
     where they are and what is left to read.
     """
     paths = page_paths(documents)
-    groups: dict[str, list[Document]] = {}
-    for document in documents:
-        groups.setdefault(group_of(document.relpath), []).append(document)
-    parts: list[str] = []
-    for name in sorted(groups, key=group_order):
+    groups = _docs_groups(documents)
+    overview_css = ' class="current" aria-current="page"' if current is None else ""
+    parts = [f'<a{overview_css} href="{ROOT_TOKEN}docs/index.html">Documentation overview</a>']
+    if current is None:
+        parts.append('<p class="menu-title">Browse sections</p>')
+        for index, (name, members) in enumerate(groups.items()):
+            parts.append(
+                f'<a class="docs-section-link" href="#docs-section-{index}">{esc(name)}'
+                f'<span class="docs-count">{len(members)}</span></a>'
+            )
+        return f'<nav class="docs-menu" aria-label="Documentation">{"".join(parts)}</nav>'
+    for name, members in groups.items():
         items: list[str] = []
-        for document in groups[name]:
+        for document in members:
             href = f"{ROOT_TOKEN}{esc(paths[document.relpath])}"
-            css = ' class="current"' if document.relpath == current else ""
+            css = ' class="current" aria-current="page"' if document.relpath == current else ""
             entry = f'<li><a{css} href="{href}">{esc(document.title)}</a>'
             if document.relpath == current and document.headings:
                 entry += '<span class="toc">' + "".join(
-                    f'<a href="#{esc(anchor)}">{esc(title)}</a>'
+                    f'<a class="toc-sub" href="#{esc(anchor)}">{esc(title)}</a>'
+                    if level == 3 else f'<a href="#{esc(anchor)}">{esc(title)}</a>'
                     for level, anchor, title in document.headings
                     if level <= 3
                 ) + "</span>"
             items.append(entry + "</li>")
+        opened = " open" if any(document.relpath == current for document in members) else ""
         parts.append(
-            f'<div class="menu-group"><p class="menu-title">{esc(name)}</p>'
-            f'<ul>{"".join(items)}</ul></div>'
+            f'<details class="menu-group"{opened}>'
+            f'<summary class="menu-title">{esc(name)}'
+            f'<span class="docs-count">{len(members)}</span></summary>'
+            f'<ul>{"".join(items)}</ul></details>'
         )
-    return f'<nav class="docs-menu">{"".join(parts)}</nav>'
+    return f'<nav class="docs-menu" aria-label="Documentation">{"".join(parts)}</nav>'
 
 
 def render_docs_index(documents: list[Document], *, generated_at: str | None = None) -> str:
@@ -2208,24 +2316,30 @@ def render_docs_index(documents: list[Document], *, generated_at: str | None = N
         )
         return page("Documentation", body, generated_at=generated_at)
     paths = page_paths(documents)
-    listing = table(
-        ["document", "section", "path"],
-        [
-            [
-                f'<a href="{ROOT_TOKEN}{esc(paths[document.relpath])}">'
-                f"{esc(document.title)}</a>",
-                esc(group_of(document.relpath)),
-                f'<code>{esc(document.relpath)}</code>',
-            ]
-            for document in documents
-        ],
-    )
+    sections: list[str] = []
+    for index, (name, members) in enumerate(_docs_groups(documents).items()):
+        links = "".join(
+            f'<a class="doc-link" href="{ROOT_TOKEN}{esc(paths[document.relpath])}">'
+            f'<strong>{esc(document.title)}</strong>'
+            '<span class="doc-arrow" aria-hidden="true">&#8594;</span>'
+            f'<span class="doc-path">{esc(document.relpath)}</span></a>'
+            for document in members
+        )
+        count = f"{len(members)} document{'s' if len(members) != 1 else ''}"
+        sections.append(
+            f'<section class="docs-section" id="docs-section-{index}" '
+            f'aria-labelledby="docs-heading-{index}">'
+            f'<div class="docs-section-heading"><h2 id="docs-heading-{index}">{esc(name)}</h2>'
+            f'<span>{count}</span></div><div class="docs-grid">{links}</div></section>'
+        )
     body = (
-        "<h1>Documentation</h1>"
-        '<p class="subtitle">the documents the project wrote about itself, rendered '
-        "from the checkout this report was generated in</p>"
+        '<div class="docs-shell"><header class="docs-hero"><div>'
+        '<p class="docs-eyebrow">AK-Bench / Knowledge base</p>'
+        '<h1>Documentation</h1><p class="docs-intro">Explore the project, learn the tools, '
+        'and find the details behind each benchmark.</p></div>'
+        f'<div class="docs-total"><strong>{len(documents)}</strong>documents</div></header>'
         f'<div class="docs-layout">{_docs_menu(documents, None)}'
-        f'<div class="prose">{listing}</div></div>'
+        f'<div class="docs-directory">{"".join(sections)}</div></div></div>'
     )
     return page("Documentation", body, generated_at=generated_at)
 
@@ -2235,8 +2349,14 @@ def render_docs_page(
 ) -> str:
     """One document, rendered, with the menu beside it."""
     body = (
+        '<div class="docs-shell"><nav class="docs-breadcrumb" aria-label="Breadcrumb">'
+        f'<a href="{ROOT_TOKEN}docs/index.html">Documentation</a>'
+        f'<span aria-hidden="true">/</span><span>{esc(group_of(document.relpath))}</span>'
+        '</nav>'
         f'<div class="docs-layout">{_docs_menu(documents, document.relpath)}'
-        f'<article class="prose">{document.body}</article></div>'
+        '<div class="docs-article">'
+        f'<p class="docs-source doc-path">{esc(document.relpath)}</p>'
+        f'<article class="prose">{document.body}</article></div></div></div>'
     )
     return page(document.title, body, generated_at=generated_at)
 
