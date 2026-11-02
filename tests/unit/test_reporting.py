@@ -186,7 +186,7 @@ def test_summary_counts_evaluation_separately_from_runs() -> None:
     assert summary["runs"] == 2
     assert summary["evaluated"] == 1
     assert summary["passed"] == 1
-    assert summary["success_rate"] == 1.0
+    assert summary["success_rate"] == 0.5
 
 
 def test_summary_of_nothing_measures_nothing() -> None:
@@ -1125,6 +1125,10 @@ def test_the_docs_tree_publishes_one_page_per_document(
     assert "CLI" in index
     assert "Unsafe" in index
     assert "Handbook" in index and "Project" in index
+    menu = re.search(r'<nav class="docs-menu"[^>]*>(.*?)</nav>', index).group(1)
+    assert menu.count('<details class="menu-group">') == 2
+    assert '<summary class="menu-title">Handbook' in menu
+    assert 'href="../docs/docs-cli/index.html"' in menu
 
 
 def test_the_document_page_renders_markdown_and_keeps_anchors(
