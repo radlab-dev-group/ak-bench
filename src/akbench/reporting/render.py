@@ -2032,6 +2032,18 @@ def _definition_section(report: TaskReport) -> str:
         if definition.get("notes"):
             parts.append(f'<h3>Notes</h3><p class="task-notes">{esc(definition["notes"])}</p>')
 
+    created_at_val = (
+        definition.get("created_at")
+        if definition and definition.get("created_at")
+        else task.get("created_at")
+    )
+    authors_val = (
+        definition.get("authors")
+        if definition and definition.get("authors")
+        else task.get("authors")
+    )
+    authors_str = ", ".join(authors_val) if authors_val else None
+
     parts.append("<h3>Recorded identity</h3>")
     parts.append(
         table(
@@ -2041,6 +2053,8 @@ def _definition_section(report: TaskReport) -> str:
                 ["category", esc(task.get("category"))],
                 ["difficulty", esc(task.get("difficulty"))],
                 ["evaluator", esc(task.get("evaluator"))],
+                ["created at", esc(created_at_val) if created_at_val else NOT_MEASURED],
+                ["authors", esc(authors_str) if authors_str else NOT_MEASURED],
                 ["base commit", esc(task.get("base_commit"))],
                 ["repository", esc(task.get("repository_uid"))],
                 ["snapshot digest", f'<code>{esc(task.get("snapshot_digest"))}</code>'],
