@@ -382,7 +382,6 @@ tbody tr:nth-child(3) .place:not(.top) {
 }
 .docs-menu .toc a { font-size: .76rem; padding: .1rem .4rem; }
 .docs-menu .toc .toc-sub { padding-left: 1rem; }
-.docs-menu .docs-section-link { display: flex; align-items: center; gap: .5rem; }
 .docs-directory { min-width: 0; display: grid; gap: 2.3rem; }
 .docs-section { scroll-margin-top: 1.5rem; }
 .docs-section-heading { display: flex; align-items: baseline; gap: .7rem; margin-bottom: .9rem; }
@@ -2269,12 +2268,6 @@ def _docs_menu(documents: list[Document], current: str | None) -> str:
     parts = [f'<a{overview_css} href="{ROOT_TOKEN}docs/index.html">Documentation overview</a>']
     if current is None:
         parts.append('<p class="menu-title">Browse sections</p>')
-        for index, (name, members) in enumerate(groups.items()):
-            parts.append(
-                f'<a class="docs-section-link" href="#docs-section-{index}">{esc(name)}'
-                f'<span class="docs-count">{len(members)}</span></a>'
-            )
-        return f'<nav class="docs-menu" aria-label="Documentation">{"".join(parts)}</nav>'
     for name, members in groups.items():
         items: list[str] = []
         for document in members:

@@ -439,7 +439,8 @@ class CodexAdapter:
             lines.append("")
             lines.append(f"[model_providers.{provider_id}]")
             lines.append(f"name = {_toml_value(self.options.provider_name)}")
-            lines.append(f"base_url = {_toml_value(f'{binding.base_url.rstrip("/")}/v1')}")
+            base_url_val = f"{binding.base_url.rstrip('/')}/v1"
+            lines.append(f"base_url = {_toml_value(base_url_val)}")
             lines.append(f"wire_api = {_toml_value(self.options.wire_api)}")
             if binding.api_key_env:
                 lines.append(f"env_key = {_toml_value(binding.api_key_env)}")
