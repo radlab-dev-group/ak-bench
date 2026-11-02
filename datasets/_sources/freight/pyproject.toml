@@ -1,0 +1,8 @@
+[project]
+name = "freight"
+version = "1.0.0"
+description = "Freight rate-shopping engine with zones, surcharges and rounding, for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

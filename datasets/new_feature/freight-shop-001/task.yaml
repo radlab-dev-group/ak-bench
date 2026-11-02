@@ -1,0 +1,42 @@
+# New-feature task: rate shopping.
+#
+# freight is a complete rate engine: a zone table that reads postal codes,
+# a billable-weight rule that rounds exactly once, rate cards that refuse
+# what they will not carry, and surcharges with their own base and group
+# rules. shop() is declared and specified to the cent in the module docstring;
+# the hidden tests fail on the base commit by design.
+schema_version: "1.0"
+id: freight-shop-001
+version: "1.0.0"
+title: Implement rate shopping from its specification
+description: >-
+  shop() in src/freight/shop.py is declared, documented and tested, but its
+  body raises NotImplementedError. Implement it from the written contract —
+  who gets quoted, per-carrier billable weight, the surcharge pass and its
+  groups, what is rejected and why, and how the cheapest quote is chosen —
+  without touching the rest of the package.
+
+task:
+  category: new_feature
+  difficulty: expert
+
+  repository:
+    source: datasets/_sources/freight
+    ref: HEAD
+    notes: seed fixture directory
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 1800
+  constraints:
+    - do not change the public API of the freight package
+    - do not modify the repository test suite under tests/
+    - do not change the zone table, the weight rules, the rate cards or the surcharges
+    - do not add third-party dependencies
+    - do not modify the shopping spec in the shop module docstring
+    - "shopping is a pure function: nothing is booked and the result must not depend on card order"
+  notes: >-
+    The base state fails the hidden tests by design: the feature is missing,
+    which is the opposite of the bug-fix convention where hidden tests pass on
+    the base commit.

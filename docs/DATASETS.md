@@ -106,6 +106,7 @@ pass.
 | `ledgerlite-rates-001` | `bug_fix` | expert | `ledgerlite` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
 | `stockpile-fefo-001` | `new_feature` | expert | `stockpile` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
 | `stockpile-writeoff-001` | `bug_fix` | expert | `stockpile` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `freight-shop-001` | `new_feature` | expert | `freight` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
@@ -164,6 +165,16 @@ harder of the pair: a write-off zeroes the reserved quantity of an expired lot
 along with its free quantity, so an order already holding stock on the lot is
 left with nothing to commit — and the repository suite only ever writes off an
 expired lot that carries no reservation.
+
+The `freight-shop-001` task runs on a freight rate-shopping engine: a zone
+table that reads postal codes by longest prefix, a billable-weight rule that
+rounds exactly once and only at the end, rate cards that refuse what they will
+not carry, and surcharges with their own base, group and ordering rules.
+`shop` is declared and specified to the cent in the module docstring — who
+gets asked and who is refused with what reason, per-carrier billable weight,
+the surcharge pass in declaration order with its groups and its tie between
+equal amounts, the two tie-breaks of the cheapest quote, and why an empty run
+is an error — and not yet written.
 
 ### Fixtures and their dependencies
 
