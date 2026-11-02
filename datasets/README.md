@@ -22,8 +22,31 @@
 
 Below is the list of the all available tasks without a split to task type
 
+Single line
 ```yaml
 task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledgerlite-rates-001, stockpile-writeoff-001, wordcount-001, walqueue-recovery-001, depweaver-backtracking-001, cadence-catchup-001, freight-shop-001, ledgerlite-reconcile-001, notes-search-001, notes-sync-001, slugify-001, stockpile-fefo-001, streamforge-windows-001, typeweave-inference-001 ]
+```
+
+Multiline
+```yaml
+task_ids:
+  - bookshop-stock-002
+  - bookshop-tiers-001
+  - cadence-takeover-001
+  - ledgerlite-rates-001
+  - stockpile-writeoff-001
+  - wordcount-001
+  - walqueue-recovery-001
+  - depweaver-backtracking-001
+  - cadence-catchup-001
+  - freight-shop-001
+  - ledgerlite-reconcile-001
+  - notes-search-001
+  - notes-sync-001
+  - slugify-001
+  - stockpile-fefo-001
+  - streamforge-windows-001
+  - typeweave-inference-001
 ```
 
 ### Bugfix tasks
@@ -32,20 +55,54 @@ task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledger
 
 **All `bugfix` tasks created by the local qwen models**
 
+Single line
 ```yaml
 task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledgerlite-rates-001, stockpile-writeoff-001, wordcount-001 ]
 ```
 
+Multiline
+```yaml
+task_ids:
+  - bookshop-stock-002
+  - bookshop-tiers-001
+  - cadence-takeover-001
+  - ledgerlite-rates-001
+  - stockpile-writeoff-001
+  - wordcount-001
+```
+
 **All `bugfix` tasks created by claude GPT 6.1 Sol model**
 
+Single line
 ```yaml
 task_ids: [ walqueue-recovery-001, depweaver-backtracking-001 ]
 ```
 
+Multiline
+```yaml
+task_ids:
+  - walqueue-recovery-001
+  - depweaver-backtracking-001
+```
+
 **list of all `bugfix` tasks**
 
+Single line
 ```yaml
 task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledgerlite-rates-001, stockpile-writeoff-001, wordcount-001, walqueue-recovery-001, depweaver-backtracking-001 ]
+```
+
+Multiline
+```yaml
+task_ids:
+  - bookshop-stock-002
+  - bookshop-tiers-001
+  - cadence-takeover-001
+  - ledgerlite-rates-001
+  - stockpile-writeoff-001
+  - wordcount-001
+  - walqueue-recovery-001
+  - depweaver-backtracking-001
 ```
 
 ---
@@ -54,20 +111,56 @@ task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledger
 
 **All `new_feature` tasks created by the local qwen models**
 
+Single line
 ```yaml
 task_ids: [ cadence-catchup-001, freight-shop-001, ledgerlite-reconcile-001, notes-search-001, notes-sync-001, slugify-001, stockpile-fefo-001 ]
 ```
 
+Multiline
+```yaml
+task_ids:
+  - cadence-catchup-001
+  - freight-shop-001
+  - ledgerlite-reconcile-001
+  - notes-search-001
+  - notes-sync-001
+  - slugify-001
+  - stockpile-fefo-001
+```
+
 **All `new_feature` tasks created by claude GPT 6.1 Sol model**
 
+Single line
 ```yaml
 task_ids: [ streamforge-windows-001, typeweave-inference-001 ]
 ```
 
+Multiline
+```yaml
+task_ids:
+  - streamforge-windows-001
+  - typeweave-inference-001
+```
+
 **list of all `new_feature` tasks**
 
+Single line
 ```yaml
 task_ids: [ cadence-catchup-001, freight-shop-001, ledgerlite-reconcile-001, notes-search-001, notes-sync-001, slugify-001, stockpile-fefo-001, streamforge-windows-001, typeweave-inference-001 ]
+```
+
+Multiline
+```yaml
+task_ids:
+  - cadence-catchup-001
+  - freight-shop-001
+  - ledgerlite-reconcile-001
+  - notes-search-001
+  - notes-sync-001
+  - slugify-001
+  - stockpile-fefo-001
+  - streamforge-windows-001
+  - typeweave-inference-001
 ```
 
 ---
