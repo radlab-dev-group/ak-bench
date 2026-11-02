@@ -1637,6 +1637,25 @@ def _experiment_subtitle(experiment: dict[str, Any]) -> str:
     return f'<p class="subtitle">{esc(experiment.get("uid"))} - {esc(title)}</p>'
 
 
+def _experiment_description(experiment: dict[str, Any]) -> str:
+    """What the experiment says about itself, in its own words.
+
+    The description is recorded from the experiment file at plan time, so the
+    report states the question the runs were meant to answer rather than a
+    reader guessing it from a matrix. It is escaped and its line breaks are
+    kept; a run record never reaches it, but an experiment file written in a
+    hurry is still treated as text.
+    """
+    description = experiment.get("description")
+    if not description:
+        return ""
+    paragraphs = [part.strip() for part in str(description).split("\n\n") if part.strip()]
+    if not paragraphs:
+        return ""
+    body = "".join(f"<p>{esc(part)}</p>" for part in paragraphs)
+    return f'<div class="prose experiment-description">{body}</div>'
+
+
 def _variant_run_count(runs: list[dict[str, Any]], variant_uid: Any) -> int:
     return sum(1 for run in runs if run.get("variant_uid") == variant_uid)
 
@@ -1649,6 +1668,7 @@ def render_experiment(
     body = [
         "<h1>Experiment</h1>",
         _experiment_subtitle(experiment),
+        _experiment_description(experiment),
         cards(
             [
                 ("runs", number(summary.get("runs"))),

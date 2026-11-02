@@ -1,0 +1,8 @@
+[project]
+name = "stockpile"
+version = "1.0.0"
+description = "Inventory engine with lots, expiry, reservations and transfers, for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

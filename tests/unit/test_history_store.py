@@ -124,6 +124,33 @@ def test_recording_the_same_plan_twice_updates_instead_of_forking(database_url: 
         assert len(session.scalars(select(ExperimentVariant)).all()) == 1
 
 
+def test_record_plan_stores_the_description_of_the_experiment(database_url: str) -> None:
+    """A description names the question the experiment asks; None keeps the record honest."""
+    store = _store(database_url)
+
+    store.record_plan(experiment_uid="demo@1.0.0", title="demo")
+    store.record_plan(
+        experiment_uid="demo@1.0.0",
+        title="demo",
+        description="Does the toggle change the outcome when nothing else moves?",
+    )
+    store.record_plan(experiment_uid="plain@1.0.0", title="plain")
+
+    experiments = {item["uid"]: item for item in store.experiments()}
+    assert experiments["demo@1.0.0"]["description"] == (
+        "Does the toggle change the outcome when nothing else moves?"
+    )
+    assert experiments["plain@1.0.0"]["description"] is None
+    with session_scope(create_db_engine(database_url)) as session:
+        from akbench.storage.models import Experiment
+
+        rows = {row.uid: row for row in session.scalars(select(Experiment)).all()}
+        assert rows["demo@1.0.0"].description == (
+            "Does the toggle change the outcome when nothing else moves?"
+        )
+        assert rows["plain@1.0.0"].description is None
+
+
 def test_record_run_links_evaluation_observations_and_events(database_url: str) -> None:
     store = _store(database_url)
     store.record_plan(experiment_uid="demo@1.0.0")

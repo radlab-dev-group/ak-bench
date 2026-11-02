@@ -17,6 +17,8 @@ schema_version: "1.0"
 id: router-config-comparison
 version: "1.0.0"
 title: Router models versus Auto Codex, with and without knowledge
+description: >-
+  Four configurations asked for side by side — two router models and the Auto Codex alias with knowledge off and on — on every task of the dataset. The matrix is explicit rather than a full product: a full one would add arms nobody reads, and every arm costs real router time. Knowledge here is a request, not a confirmed state: the shared router refuses per-run plugin control, so the knowledge arm records the value it asked for and an unverified plugin state, and its ranking reads as "the auto_codex alias, with knowledge asked for".
 
 experiment:
   type: configuration
@@ -35,14 +37,31 @@ experiment:
 
   dataset:
     filters:
-      categories: [bug_fix, new_feature]
-      task_ids: [bookshop-stock-002, bookshop-tiers-001, wordcount-001, slugify-001, notes-search-001, notes-sync-001]
+      categories: [ bug_fix, new_feature ]
+      task_ids:
+        - bookshop-stock-002
+        - bookshop-tiers-001
+        - cadence-takeover-001
+        - ledgerlite-rates-001
+        - stockpile-writeoff-001
+        - wordcount-001
+        - walqueue-recovery-001
+        - depweaver-backtracking-001
+        - cadence-catchup-001
+        - freight-shop-001
+        - ledgerlite-reconcile-001
+        - notes-search-001
+        - notes-sync-001
+        - slugify-001
+        - stockpile-fefo-001
+        - streamforge-windows-001
+        - typeweave-inference-001
 
   factors:
     strategy: custom_matrix
     dimensions:
       - id: model
-        values: [qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next, auto_codex]
+        values: [ qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next, auto_codex ]
       - id: knowledge_enabled
     baseline:
       model: qwen/Qwen3.8-27B
@@ -64,7 +83,7 @@ experiment:
     retry_infrastructure_errors: 1
 
   evaluation:
-    evaluators: [pytest_evaluator]
+    evaluators: [ pytest_evaluator ]
 
   metrics:
     - task_success_rate
@@ -73,4 +92,4 @@ experiment:
     - total_tokens
 
   limits:
-    max_runs: 64
+    max_runs: 128

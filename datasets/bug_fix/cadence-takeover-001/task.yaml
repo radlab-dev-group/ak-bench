@@ -1,0 +1,42 @@
+# Bug-fix task: a lease that was taken over can be stolen back.
+#
+# The defect leaves every count the repository suite looks at intact: the
+# suite only takes a resource back by the epoch it still holds. What breaks is
+# the one guarantee that keeps two workers from running the same run — a
+# stale epoch must not be able to take a live lease back.
+schema_version: "1.0"
+id: cadence-takeover-001
+version: "1.0.0"
+title: A worker with a stale epoch can take a live lease back
+description: >-
+  LeaseBook.takeover accepts a request whose epoch no longer matches the
+  resource's current lease, so a worker that was cut off and comes back can
+  steal the resource from the worker that holds it now. Restore the documented
+  rule that only the holder of the current epoch may take a resource back.
+
+task:
+  category: bug_fix
+  difficulty: expert
+
+  repository:
+    source: datasets/_sources/cadence
+    ref: HEAD
+    notes: seed fixture directory
+
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      The epoch check in takeover() is removed. The repository suite keeps
+      passing: it only ever asks a holder back by the epoch it still carries.
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 900
+  constraints:
+    - do not change the public API of the cadence package
+    - do not modify the repository test suite under tests/
+    - do not change the lease epoch numbering or the acquisition rules
+    - do not add third-party dependencies

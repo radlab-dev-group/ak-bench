@@ -1,0 +1,14 @@
+diff --git a/src/stockpile/stock.py b/src/stockpile/stock.py
+index 0000000..1111111 100644
+--- a/src/stockpile/stock.py
++++ b/src/stockpile/stock.py
+@@ -273,7 +273,8 @@ class Stock:
+             if not lot.is_expired(now) or lot.free() <= 0:
+                 continue
+             amount = lot.free()
+-            lot.quantity = lot.reserved
++            lot.quantity = 0
++            lot.reserved = 0
+             self._log("write-off", lot.sku, lot.warehouse, amount, now)
+             written.append(lot.lot_id)
+         return written

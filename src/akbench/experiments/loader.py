@@ -39,6 +39,7 @@ class LoadedExperiment:
             "id": self.descriptor.id,
             "version": self.descriptor.version,
             "title": self.descriptor.title,
+            "description": self.descriptor.description,
             "identity": self.identity,
             "digest": self.digest,
             "path": str(self.path) if self.path else None,

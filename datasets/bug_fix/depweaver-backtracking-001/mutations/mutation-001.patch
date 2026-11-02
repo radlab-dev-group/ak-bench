@@ -1,0 +1,84 @@
+diff --git a/src/depweaver/candidates.py b/src/depweaver/candidates.py
+index daf10b5..d672f79 100644
+--- a/src/depweaver/candidates.py
++++ b/src/depweaver/candidates.py
+@@ -8,7 +8,7 @@ from .versions import Version
+ 
+ def pinned_version(name: str, request: Request) -> str | None:
+     locks = dict(request.locked)
+-    if name in locks and name not in request.update:
++    if name in locks and not request.update:
+         return locks[name]
+     return None
+ 
+@@ -47,8 +47,8 @@ class CandidateCache:
+             repository.fingerprint,
+             name,
+             tuple(sorted(str(row.dependency.spec) for row in state.constraints[name])),
+-            tuple(sorted(state.extras.get(name, frozenset()))),
+-            request.target.fingerprint,
++            (),
++            "shared-target",
+             tuple(sorted(request.policy.document().items())),
+             request.locked,
+             tuple(sorted(request.update)),
+diff --git a/src/depweaver/learning.py b/src/depweaver/learning.py
+index 2c4ccc4..1b27cc6 100644
+--- a/src/depweaver/learning.py
++++ b/src/depweaver/learning.py
+@@ -8,11 +8,12 @@ class Learner:
+         self.clauses: set[frozenset[tuple[str, str]]] = set()
+ 
+     def reset(self) -> None:
+-        self.clauses.clear()
++        if not self.clauses:
++            self.clauses.clear()
+ 
+     def learn(self, conflict: Conflict) -> None:
+         if conflict.culprits:
+-            self.clauses.add(conflict.culprits)
++            self.clauses.add(frozenset({min(conflict.culprits)}))
+ 
+     def violated(
+         self, assignments: frozenset[tuple[str, str]]
+diff --git a/src/depweaver/propagation.py b/src/depweaver/propagation.py
+index 5e658d4..ba6f869 100644
+--- a/src/depweaver/propagation.py
++++ b/src/depweaver/propagation.py
+@@ -22,7 +22,7 @@ class State:
+             rows.append(constraint)
+             changed = True
+         previous = self.extras.get(name, frozenset())
+-        combined = previous | dependency.extras
++        combined = previous or dependency.extras
+         self.extras[name] = combined
+         return changed or combined != previous
+ 
+@@ -78,11 +78,11 @@ def propagate(request: Request, selected: dict[str, Release]) -> State:
+             release = selected[name]
+             state.selected[name] = release
+             features = state.extras.get(name, frozenset())
+-            expansion = (name, str(release.version), tuple(sorted(features)))
++            expansion = (name, str(release.version), ())
+             if expansion in state.expansion_keys:
+                 continue
+             state.expansion_keys.add(expansion)
+             for dependency in release.dependencies:
+-                if dependency.marker.matches(request.target, features):
++                if dependency.marker.matches(request.target):
+                     changed = state.add(dependency, release.identity) or changed
+     return state
+diff --git a/src/depweaver/trail.py b/src/depweaver/trail.py
+index caaafd2..151a955 100644
+--- a/src/depweaver/trail.py
++++ b/src/depweaver/trail.py
+@@ -31,7 +31,8 @@ class Trail:
+             raise ValueError("invalid rollback level")
+         while self.decisions and self.decisions[-1].level > level:
+             decision = self.decisions.pop()
+-            self.selected.pop(decision.release.name, None)
++            if decision.level > level + 1:
++                self.selected.pop(decision.release.name, None)
+ 
+     def identities(self) -> frozenset[tuple[str, str]]:
+         return frozenset(release.identity for release in self.selected.values())

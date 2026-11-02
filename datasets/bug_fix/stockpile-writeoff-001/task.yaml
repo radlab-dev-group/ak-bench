@@ -1,0 +1,46 @@
+# Bug-fix task: a write-off destroys the reserved quantity of an expired lot.
+#
+# The defect leaves every count the repository suite looks at intact: the
+# suite only ever writes off an expired lot that nobody is holding, for which
+# "keep the reserved part" and "destroy everything" are the same. What breaks
+# is the rule the method documents: a write-off removes only what is free,
+# because reserved quantity is somebody's claim and destroying it would leave
+# the warehouse unable to fulfil an order it already promised.
+schema_version: "1.0"
+id: stockpile-writeoff-001
+version: "1.0.0"
+title: A write-off destroys the reserved part of an expired lot
+description: >-
+  Stock.write_off_expired removes the reserved quantity of an expired lot
+  along with its free quantity, so an order that is already holding stock on
+  the lot is left with nothing to commit. Restore the documented rule that a
+  write-off removes only the free quantity and leaves the lot alive while a
+  claim still rides on it.
+
+task:
+  category: bug_fix
+  difficulty: expert
+
+  repository:
+    source: datasets/_sources/stockpile
+    ref: HEAD
+    notes: seed fixture directory
+
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      write_off_expired() zeroes the reserved quantity along with the free
+      one. The repository suite keeps passing: it only writes off expired
+      lots that carry no reservation.
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 900
+  constraints:
+    - do not change the public API of the stockpile package
+    - do not modify the repository test suite under tests/
+    - do not change how reservations, commits or transfers work
+    - do not add third-party dependencies

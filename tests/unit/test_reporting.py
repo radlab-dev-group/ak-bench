@@ -544,6 +544,30 @@ def test_experiment_page_shows_the_ranking_with_bars(database_url: str) -> None:
     assert "against the baseline" in page
 
 
+def test_the_experiment_page_states_the_description_of_the_experiment(
+    database_url: str,
+) -> None:
+    """The description recorded at plan time is the question the runs answer."""
+    store = _store(database_url)
+    store.record_plan(
+        experiment_uid="demo@1.0.0",
+        title="demo",
+        description="Does the toggle <matter> when the model is pinned?",
+    )
+    store.record_plan(
+        experiment_uid="plain@1.0.0",
+        title="plain",
+    )
+
+    data = collect_history(store)
+    page = render_experiment(build_experiment_report(data, "demo@1.0.0"))
+    assert 'class="prose experiment-description"' in page
+    assert "Does the toggle &lt;matter&gt; when the model is pinned?" in page
+
+    bare = render_experiment(build_experiment_report(data, "plain@1.0.0"))
+    assert "experiment-description" not in bare
+
+
 def test_the_experiment_page_links_each_variant_to_its_own_page(
     database_url: str, tmp_path: Path
 ) -> None:

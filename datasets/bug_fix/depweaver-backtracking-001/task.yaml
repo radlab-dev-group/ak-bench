@@ -1,0 +1,35 @@
+schema_version: "1.0"
+id: depweaver-backtracking-001
+version: "1.0.0"
+title: Repair eight interacting backtracking, feature, learning and cache regressions
+description: >-
+  Repair an offline dependency resolver whose optimized branch and context
+  handling loses solutions, omits activated dependencies, violates partial
+  lockfile updates and leaks conflicts across solve calls. Preserve all eight
+  protocol invariants, deterministic preferences and constraint-directed search.
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/depweaver
+    ref: HEAD
+    notes: standard-library-only dependency solver seed
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      Eight independently detectable regression parts span trail rollback,
+      feature re-expansion, feature union, owner marker context, contextual
+      clause learning, request scoping, cache isolation and partial lock pins.
+      Each part is separately verified by the benchmark integrity suite.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the complete README and SPEC contracts, public APIs and disk formats
+    - do not modify the repository tests or disable validation
+    - retain functional caching, clause learning and nonchronological conflict return
+    - do not replace search with full repository Cartesian enumeration
+    - do not add third-party dependencies, external solvers or network calls

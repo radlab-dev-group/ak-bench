@@ -1,0 +1,13 @@
+diff --git a/src/cadence/lease.py b/src/cadence/lease.py
+index 0000000..1111111 100644
+--- a/src/cadence/lease.py
++++ b/src/cadence/lease.py
+@@ -98,8 +98,6 @@ class LeaseBook:
+         current = self.holder_of(resource)
+         if current is None:
+             return self.acquire(resource, holder, ttl=ttl)
+-        if current.epoch != epoch:
+-            raise LeaseHeld(resource, current.holder, current.until)
+         taken = replace(current, holder=holder, taken_at=self.now(), until=self.now() + ttl)
+         self._held[resource] = taken
+         return taken

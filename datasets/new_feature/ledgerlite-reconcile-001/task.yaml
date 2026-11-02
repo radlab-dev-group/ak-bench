@@ -1,0 +1,40 @@
+# New-feature task: bank reconciliation.
+#
+# ledgerlite is a complete double-entry ledger: a chart of accounts, an
+# append-only journal that refuses unbalanced entries, a rate book, and a
+# period close. reconcile() is declared and specified to the claim in the
+# module docstring; the hidden tests fail on the base commit by design.
+schema_version: "1.0"
+id: ledgerlite-reconcile-001
+version: "1.0.0"
+title: Implement bank reconciliation from its specification
+description: >-
+  reconcile() in src/ledgerlite/reconcile.py is declared, documented and tested,
+  but its body raises NotImplementedError. Implement it from the written
+  contract — the window, the exact-amount rule, the two passes and their
+  ordering, what counts as open — without touching the rest of the package.
+
+task:
+  category: new_feature
+  difficulty: expert
+
+  repository:
+    source: datasets/_sources/ledgerlite
+    ref: HEAD
+    notes: seed fixture directory
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 1800
+  constraints:
+    - do not change the public API of the ledgerlite package
+    - do not modify the repository test suite under tests/
+    - do not change the journal, the chart, the rate book or the period close
+    - do not add third-party dependencies
+    - do not modify the reconciliation spec in the reconcile module docstring
+    - reconciliation is a pure function; nothing is marked or posted
+  notes: >-
+    The base state fails the hidden tests by design: the feature is missing,
+    which is the opposite of the bug-fix convention where hidden tests pass on
+    the base commit.

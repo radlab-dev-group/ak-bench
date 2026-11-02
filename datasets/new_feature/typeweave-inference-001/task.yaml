@@ -1,0 +1,31 @@
+schema_version: "1.0"
+id: typeweave-inference-001
+version: "1.0.0"
+title: Implement sound polymorphic inference, recursive pattern coverage and module interfaces
+description: >-
+  Complete a compiler's type system across unification, expression and SCC
+  inference, data elaboration, typed pattern matrices and portable module
+  interfaces. Preserve soundness with mutable references, nominal data,
+  abstract imported types and independent instantiation of public schemes.
+task:
+  category: new_feature
+  difficulty: expert
+  repository:
+    source: datasets/_sources/typeweave
+    ref: HEAD
+    notes: standard-library-only compiler seed; typing is deliberately missing
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - implement the complete README and SPEC contracts without changing the public API
+    - preserve parser, interpreter, bytecode, project and editor infrastructure semantics
+    - do not modify repository tests, specifications or primitive signatures
+    - do not add third-party dependencies, eval, exec or external compilers
+    - do not approximate pattern coverage with bounded enumeration
+    - keep the conservative value restriction and reject unsafe weak exports
+  notes: >-
+    The seed's infrastructure suite passes, while feature tests fail with
+    NotImplementedError. An external reference implementation proves the
+    complete task solvable and never enters the agent workspace.
