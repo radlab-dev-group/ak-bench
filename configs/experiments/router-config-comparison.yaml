@@ -37,14 +37,31 @@ experiment:
 
   dataset:
     filters:
-      categories: [bug_fix, new_feature]
-      task_ids: [bookshop-stock-002, bookshop-tiers-001, wordcount-001, slugify-001, notes-search-001, notes-sync-001]
+      categories: [ bug_fix, new_feature ]
+      task_ids:
+        - bookshop-stock-002
+        - bookshop-tiers-001
+        - cadence-takeover-001
+        - ledgerlite-rates-001
+        - stockpile-writeoff-001
+        - wordcount-001
+        - walqueue-recovery-001
+        - depweaver-backtracking-001
+        - cadence-catchup-001
+        - freight-shop-001
+        - ledgerlite-reconcile-001
+        - notes-search-001
+        - notes-sync-001
+        - slugify-001
+        - stockpile-fefo-001
+        - streamforge-windows-001
+        - typeweave-inference-001
 
   factors:
     strategy: custom_matrix
     dimensions:
       - id: model
-        values: [qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next, auto_codex]
+        values: [ qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next, auto_codex ]
       - id: knowledge_enabled
     baseline:
       model: qwen/Qwen3.8-27B
@@ -66,7 +83,7 @@ experiment:
     retry_infrastructure_errors: 1
 
   evaluation:
-    evaluators: [pytest_evaluator]
+    evaluators: [ pytest_evaluator ]
 
   metrics:
     - task_success_rate
