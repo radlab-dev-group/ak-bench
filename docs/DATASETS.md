@@ -100,6 +100,8 @@ pass.
 | `slugify-001` | `new_feature` | easy | `textkit` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
 | `notes-search-001` | `new_feature` | hard | `notesapi` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
 | `notes-sync-001` | `new_feature` | expert | `notesapi` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `cadence-catchup-001` | `new_feature` | expert | `cadence` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `cadence-takeover-001` | `bug_fix` | expert | `cadence` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
@@ -121,6 +123,18 @@ and the body raises `NotImplementedError`. `notes-sync-001` is the harder of
 the pair because its contract has to be complete — every branch says who wins
 and which list the id lands in, including the branches a careless spec would
 leave out (an older client write, a conflict, an id only the server has).
+
+The two `cadence` tasks run on a working, stdlib-only job scheduler: cron
+schedules resolved in a time zone, a dependency graph, a write-ahead log, and
+leases with epochs. `cadence-takeover-001` is the harder of the bug-fix pair:
+the defect is a missing epoch check in `LeaseBook.takeover`, so a worker that
+was cut off and comes back can steal the resource from the holder that has it
+now — and every count the repository suite looks at stays intact, because the
+suite only ever takes a resource back by the epoch it still carries.
+`cadence-catchup-001` is the catch-up planner: declared and specified to the
+occurrence in the module docstring (the window, the two dependencies and their
+skip propagation, the per-task cap, the ordering) and not yet written; the
+plan must come back in an order the scheduler could execute top-down.
 
 ### Fixtures and their dependencies
 

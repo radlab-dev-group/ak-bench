@@ -44,7 +44,7 @@ def test_dataset_list_json_shape(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert payload["count"] == 6
+    assert payload["count"] == 8
     assert {task["id"] for task in payload["tasks"]} == {
         "wordcount-001",
         "bookshop-tiers-001",
@@ -52,6 +52,8 @@ def test_dataset_list_json_shape(project: Path) -> None:
         "slugify-001",
         "notes-search-001",
         "notes-sync-001",
+        "cadence-catchup-001",
+        "cadence-takeover-001",
     }
     assert {task["category"] for task in payload["tasks"]} == {"bug_fix", "new_feature"}
     for task in payload["tasks"]:
@@ -60,9 +62,9 @@ def test_dataset_list_json_shape(project: Path) -> None:
 
 def test_dataset_list_category_filter(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--category", "bug_fix", "--json"])
-    assert _payload(result.output)["count"] == 3
+    assert _payload(result.output)["count"] == 4
     result = runner.invoke(app, ["dataset", "list", "--category", "new_feature", "--json"])
-    assert _payload(result.output)["count"] == 3
+    assert _payload(result.output)["count"] == 4
     result = runner.invoke(app, ["dataset", "list", "--category", "nope", "--json"])
     assert _payload(result.output)["count"] == 0
 
@@ -72,7 +74,7 @@ def test_dataset_validate_reports_ok(project: Path) -> None:
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     assert payload["ok"] is True
-    assert payload["tasks"] == 6
+    assert payload["tasks"] == 8
 
 
 def test_dataset_validate_fails_on_broken_task(project: Path) -> None:
@@ -99,10 +101,12 @@ def test_dataset_validate_verifies_mutation(project: Path) -> None:
     assert checks["wordcount-001@1.0.0"]["mutation_verified"] == "verified"
     assert checks["bookshop-tiers-001@1.0.0"]["mutation_verified"] == "verified"
     assert checks["bookshop-stock-002@1.0.0"]["mutation_verified"] == "verified"
+    assert checks["cadence-takeover-001@1.0.0"]["mutation_verified"] == "verified"
     # A new-feature task has no mutation to verify.
     assert checks["slugify-001@1.0.0"]["mutation_verified"] == "no_mutation"
     assert checks["notes-search-001@1.0.0"]["mutation_verified"] == "no_mutation"
     assert checks["notes-sync-001@1.0.0"]["mutation_verified"] == "no_mutation"
+    assert checks["cadence-catchup-001@1.0.0"]["mutation_verified"] == "no_mutation"
 
 
 def test_dataset_show_json_shape(project: Path) -> None:

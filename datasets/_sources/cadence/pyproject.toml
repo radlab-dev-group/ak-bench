@@ -1,0 +1,8 @@
+[project]
+name = "cadence"
+version = "1.0.0"
+description = "Workflow scheduling engine with a durable log, for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

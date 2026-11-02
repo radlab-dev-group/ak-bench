@@ -1,0 +1,41 @@
+# New-feature task: the catch-up planner.
+#
+# cadence is a working scheduler: cron-shaped schedules resolved in a time zone,
+# a dependency graph, a write-ahead log, leases with epochs, retries with
+# exponential backoff. plan_catch_up is declared, specified to the occurrence in
+# the module docstring, and unimplemented; the hidden tests fail on the base
+# commit by design, the opposite of the bug-fix convention.
+schema_version: "1.0"
+id: cadence-catchup-001
+version: "1.0.0"
+title: Implement the catch-up planner from its specification
+description: >-
+  plan_catch_up is declared and specified in src/cadence/catchup.py but raises
+  NotImplementedError. Implement it from the written contract — the window, the
+  two dependencies and their propagation, the cap, the ordering — keeping the
+  scheduler, the log and their tests intact.
+
+task:
+  category: new_feature
+  difficulty: expert
+
+  repository:
+    source: datasets/_sources/cadence
+    ref: HEAD
+    notes: seed fixture directory
+
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 1800
+  constraints:
+    - do not change the public API of the cadence package
+    - do not modify the repository test suite under tests/
+    - do not change the schedule, the log, the lease book or the scheduler
+    - do not add third-party dependencies
+    - do not modify the catch-up spec in the catchup module docstring
+    - do not read the clock; the planner is a pure function of its arguments
+  notes: >-
+    The base state fails the hidden tests by design: the feature is missing,
+    which is the opposite of the bug-fix convention where hidden tests pass on
+    the base commit.
