@@ -1600,26 +1600,15 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
                 ],
             )
         )
-    if report.run.get("artifacts"):
-        body.append("<h2>Artifacts & Downloads</h2>")
+    packages = [
+        artifact for artifact in report.run.get("artifacts") or []
+        if _is_package_artifact(artifact)
+    ]
+    if packages:
+        body.append("<h2>Packages</h2>")
         run_uid = str(run.get("uid") or "")
-        download_links = []
-        for artifact in run.get("artifacts") or []:
-            p = artifact.get("path")
-            fn = artifact.get("filename") or (Path(p).name if p else "")
-            if fn in ("solution.zip", "solution_workspace.zip"):
-                download_links.append(f'<a class="badge ok" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download style="text-decoration:none; padding:4px 8px;">📦 Solution Code ({esc(fn)})</a>')
-            elif fn in ("diff.patch", "solution.patch", "solution_diff.patch"):
-                download_links.append(f'<a class="badge info" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download style="text-decoration:none; padding:4px 8px;">📜 Solution Diff ({esc(fn)})</a>')
-            elif fn in ("agent_traces.zip",):
-                download_links.append(f'<a class="badge muted" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download style="text-decoration:none; padding:4px 8px;">🔍 Agent Traces ({esc(fn)})</a>')
-            elif fn in ("evaluation.zip", "evaluation_results.zip"):
-                download_links.append(f'<a class="badge ok" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download style="text-decoration:none; padding:4px 8px;">📊 Evaluation Archive ({esc(fn)})</a>')
-        if download_links:
-            body.append(f'<p style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">{"".join(download_links)}</p>')
-
-        artifact_rows = []
-        for artifact in run.get("artifacts") or []:
+        package_rows = []
+        for artifact in packages:
             p = str(artifact.get("path") or "")
             fn = artifact.get("filename") or (Path(p).name if p else "")
             kind = artifact.get("kind")
@@ -1627,7 +1616,7 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
             size_val = artifact.get("size_bytes")
             size_formatted = _format_file_size(size_val)
             desc_text = _artifact_description(fn, kind)
-            
+
             download_action = (
                 f'<a class="badge ok" style="text-decoration:none; padding:2px 8px;" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download>download</a>'
                 if fn
@@ -1637,8 +1626,8 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
             file_cell = f'<strong>{esc(fn or p)}</strong>'
             if p and fn and p != fn:
                 file_cell += f'<br><span class="muted" style="font-size:0.85em;">{esc(p)}</span>'
-            
-            artifact_rows.append([
+
+            package_rows.append([
                 file_cell,
                 esc(desc_text),
                 size_formatted,
@@ -1649,12 +1638,57 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
         body.append(
             table(
                 ["file", "description", "size #", "sha256 hash", "download"],
-                artifact_rows,
+                package_rows,
+            )
+        )
+    if report.run.get("artifacts"):
+        body.append("<h2>Artifacts</h2>")
+        body.append(
+            table(
+                ["kind", "path", "checksum"],
+                [
+                    [
+                        esc(artifact.get("kind")),
+                        f'<code>{esc(artifact.get("path"))}</code>',
+                        esc(artifact.get("checksum")),
+                    ]
+                    for artifact in report.run.get("artifacts") or []
+                ],
             )
         )
     body.append("<h2>Not verified</h2>")
     body.append(_notice(report.unverified))
     return page(f"Run {run.get('uid')}", "".join(body), generated_at=generated_at)
+
+
+PACKAGE_NAMES: set[str] = {
+    "solution.zip",
+    "solution_workspace.zip",
+    "diff.patch",
+    "solution.patch",
+    "solution_diff.patch",
+    "agent_traces.zip",
+    "evaluation.zip",
+    "evaluation_results.zip",
+}
+PACKAGE_KINDS: set[str] = {
+    "solution_archive",
+    "solution_diff",
+    "agent_traces",
+    "evaluation_archive",
+    "package",
+    "diff",
+}
+
+
+def _is_package_artifact(artifact: dict[str, Any]) -> bool:
+    """Check if the artifact is a packaged bundle (solution, traces, evaluation, diff)."""
+    p = str(artifact.get("path") or "")
+    fn = str(artifact.get("filename") or (Path(p).name if p else "")).lower()
+    kind = str(artifact.get("kind") or "").lower()
+    if fn in PACKAGE_NAMES or kind in PACKAGE_KINDS:
+        return True
+    return False
 
 
 def _format_file_size(size_bytes: int | None) -> str:

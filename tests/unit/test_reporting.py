@@ -1245,7 +1245,7 @@ def test_runs_with_errors_are_highlighted_in_tables_and_run_detail(
     assert '<span class="fail">1</span>' in run_page
 
 
-def test_artifacts_table_in_run_detail(database_url: str, tmp_path: Path) -> None:
+def test_artifacts_and_packages_tables_in_run_detail(database_url: str, tmp_path: Path) -> None:
     store = _store(database_url)
     store.record_plan(
         experiment_uid="art-exp@1.0.0",
@@ -1264,15 +1264,24 @@ def test_artifacts_table_in_run_detail(database_url: str, tmp_path: Path) -> Non
     )
     art_file = tmp_path / "solution.zip"
     art_file.write_bytes(b"PK\x05\x06" + b"\x00" * 18)
-    store.register_artifacts("run-with-artifacts", [art_file])
+    log_file = tmp_path / "raw_log.txt"
+    log_file.write_text("raw logs", encoding="utf-8")
+    store.register_artifacts("run-with-artifacts", [art_file, log_file])
 
     data = collect_history(store)
     write_report_tree(tmp_path / "reports", data)
     root = tmp_path / "reports"
 
     run_page = (root / "runs" / "run-with-artifacts" / "index.html").read_text(encoding="utf-8")
-    assert "Artifacts &amp; Downloads" in run_page or "Artifacts & Downloads" in run_page
+    # Packages table
+    assert "<h2>Packages</h2>" in run_page
     assert "solution.zip" in run_page
     assert "Clean solution workspace archive" in run_page
     assert "sha256 hash" in run_page
     assert "download" in run_page
+    # Raw log is not in packages table description
+    assert "<h2>Artifacts</h2>" in run_page
+    assert "raw_log.txt" in run_page
+    # Old button badges are removed
+    assert "📦 Solution Code" not in run_page
+    assert "🔍 Agent Traces" not in run_page
