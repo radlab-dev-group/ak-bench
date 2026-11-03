@@ -123,6 +123,10 @@ def store_run(
         store.record_plugin_observations(str(stored["run_uid"]), reports)
 
     paths_to_register = [manifest_path]
+    if artifacts_dir.is_dir():
+        for candidate in sorted(artifacts_dir.iterdir()):
+            if candidate.is_file() and candidate != manifest_path:
+                paths_to_register.append(candidate)
     evaluation = record.get("evaluation")
     if isinstance(evaluation, dict):
         artifacts = evaluation.get("artifacts")

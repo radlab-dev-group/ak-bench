@@ -63,6 +63,7 @@ class PlanTask:
     category: str
     difficulty: str
     digest: str
+    timeout_seconds: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -72,6 +73,7 @@ class PlanTask:
             "category": self.category,
             "difficulty": self.difficulty,
             "digest": self.digest,
+            "timeout_seconds": self.timeout_seconds,
         }
 
 
@@ -220,6 +222,7 @@ class ExperimentPlanner:
         self._check_metrics(descriptor, report)
 
         tasks = self._select_tasks(descriptor, report)
+        self._check_task_timeouts(descriptor, tasks, report)
         variants = self._build_variants(experiment, factors, report)
         self._check_baseline_coverage(descriptor, variants, report)
 
@@ -495,6 +498,28 @@ class ExperimentPlanner:
                     "as unavailable rather than as a zero",
                 )
 
+    def _check_task_timeouts(
+        self,
+        descriptor: ExperimentDescriptor,
+        tasks: list[PlanTask],
+        report: ValidationReport,
+    ) -> None:
+        experiment_timeout = descriptor.experiment.execution_policy.timeout_seconds
+        if experiment_timeout is None:
+            return
+        for task in tasks:
+            if task.timeout_seconds is not None and task.timeout_seconds > experiment_timeout:
+                report.error(
+                    "task_timeout_exceeds_experiment",
+                    f"task {task.uid} declares timeout of {task.timeout_seconds}s, "
+                    f"which exceeds experiment execution policy timeout of {experiment_timeout}s",
+                    context={
+                        "task_uid": task.uid,
+                        "task_timeout_seconds": task.timeout_seconds,
+                        "experiment_timeout_seconds": experiment_timeout,
+                    },
+                )
+
     def _check_limits(
         self, descriptor: ExperimentDescriptor, counts: PlanCounts, report: ValidationReport
     ) -> None:
@@ -594,6 +619,7 @@ class ExperimentPlanner:
                     category=task.category,
                     difficulty=task.difficulty,
                     digest=loaded.digest,
+                    timeout_seconds=task.task.timeout_seconds,
                 )
             )
         if not tasks:

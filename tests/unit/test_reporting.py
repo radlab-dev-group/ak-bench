@@ -45,6 +45,8 @@ def _store(database_url: str) -> HistoryStore:
 
 
 def _task_stub(uid: str = "wordcount-001@1.0.0") -> SimpleNamespace:
+    from datetime import datetime
+
     repository = SimpleNamespace(source="https://example.test/wc.git", ref="abc1234")
     return SimpleNamespace(
         uid=uid,
@@ -55,6 +57,8 @@ def _task_stub(uid: str = "wordcount-001@1.0.0") -> SimpleNamespace:
             category="bug_fix",
             difficulty="easy",
             evaluator="pytest",
+            created_at=datetime(2026, 11, 1, 12, 0, 0),
+            authors=["Alice", "Bob"],
             task=SimpleNamespace(repository=repository),
         ),
     )
@@ -799,6 +803,8 @@ def test_task_page_lists_every_run_of_the_task(database_url: str, tmp_path: Path
     ).read_text(encoding="utf-8")
     assert "run-pass" in page and "run-fail" in page
     assert "bug_fix" in page
+    assert "Alice, Bob" in page
+    assert "2026-11-01" in page
 
 
 def test_tasks_listing_page_includes_success_rate_and_tokens(
@@ -1237,3 +1243,68 @@ def test_runs_with_errors_are_highlighted_in_tables_and_run_detail(
     assert "Connection refused to container" in run_page
     assert 'class="badge fail">INFRASTRUCTURE_ERROR</span>' in run_page
     assert '<span class="fail">1</span>' in run_page
+
+
+def test_artifacts_and_packages_tables_in_run_detail(database_url: str, tmp_path: Path) -> None:
+    store = _store(database_url)
+    store.record_plan(
+        experiment_uid="art-exp@1.0.0",
+        title="art-exp",
+        experiment_type="configuration",
+        descriptor_id="art-exp",
+        descriptor_version="1.0.0",
+        config_hash="sha256:art",
+        variants=[{"uid": "v-1", "index": 0, "values": {}}],
+    )
+    store.record_run(
+        _run("run-with-artifacts"),
+        experiment_uid="art-exp@1.0.0",
+        variant_uid="v-1",
+        task=_task_stub(),
+    )
+    art_file = tmp_path / "solution.zip"
+    art_file.write_bytes(b"PK\x05\x06" + b"\x00" * 18)
+    log_file = tmp_path / "raw_log.txt"
+    log_file.write_text("raw logs", encoding="utf-8")
+    store.register_artifacts("run-with-artifacts", [art_file, log_file])
+
+    data = collect_history(store)
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    run_page = (root / "runs" / "run-with-artifacts" / "index.html").read_text(encoding="utf-8")
+    # Packages table
+    assert "<h2>Packages</h2>" in run_page
+    assert "solution.zip" in run_page
+    assert "Clean solution workspace archive" in run_page
+    assert "sha256 hash" in run_page
+    assert "download" in run_page
+    assert 'href="../../artifacts/run-with-artifacts/run-with-artifacts-solution.zip"' in run_page
+    assert 'download="run-with-artifacts-solution.zip"' in run_page
+
+    # Raw log is in artifacts table with download link and relative path
+    assert "<h2>Artifacts</h2>" in run_page
+    assert "raw_log.txt" in run_page
+    assert 'href="../../artifacts/run-with-artifacts/run-with-artifacts-raw_log.txt"' in run_page
+    assert 'download="run-with-artifacts-raw_log.txt"' in run_page
+
+    # Verify exported artifact files exist on disk with run_uid prefix
+    assert (root / "artifacts" / "run-with-artifacts" / "run-with-artifacts-solution.zip").is_file()
+    assert (root / "artifacts" / "run-with-artifacts" / "run-with-artifacts-raw_log.txt").is_file()
+
+    # Old button badges are removed
+    assert "📦 Solution Code" not in run_page
+    assert "🔍 Agent Traces" not in run_page
+
+
+def test_relative_path_starts_from_artifacts_when_present() -> None:
+    from akbench.reporting.render import _relative_path
+
+    deep_path = "/mnt/data2/dev/develop/ak-bench-data/artifacts/runs/codex-20261103-000803-060662-3f72b0/agent_traces.zip"
+    assert _relative_path(deep_path) == "artifacts/runs/codex-20261103-000803-060662-3f72b0/agent_traces.zip"
+
+    rel_art_path = "artifacts/runs/run-123/solution.zip"
+    assert _relative_path(rel_art_path) == "artifacts/runs/run-123/solution.zip"
+
+    empty_path = ""
+    assert _relative_path(empty_path) == ""

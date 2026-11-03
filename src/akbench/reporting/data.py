@@ -767,6 +767,8 @@ def task_definition(dataset: Any, uid: str) -> dict[str, Any] | None:
         "uid": loaded.uid,
         "title": getattr(task, "title", None),
         "description": getattr(task, "description", None),
+        "created_at": task.created_at.isoformat() if getattr(task, "created_at", None) else None,
+        "authors": getattr(task, "authors", []) or [],
         "description_markdown": description,
         "category": task.category,
         "difficulty": task.difficulty,

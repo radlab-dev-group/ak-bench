@@ -69,3 +69,18 @@ def test_negative_timeout_is_rejected() -> None:
     with pytest.raises(ValidationError):
         TaskDescriptor(id="t", version="1", task=_body(timeout_seconds=0))
 
+
+def test_task_created_at_and_authors() -> None:
+    from datetime import datetime, timezone, timedelta
+
+    task = TaskDescriptor(
+        id="wordcount-001",
+        version="1.0.0",
+        created_at="2026-11-01T19:00:00+01:00",
+        authors=["Alice", "Bob"],
+        task=_body(),
+    )
+    tz = timezone(timedelta(hours=1))
+    assert task.created_at == datetime(2026, 11, 1, 19, 0, 0, tzinfo=tz)
+    assert task.authors == ["Alice", "Bob"]
+

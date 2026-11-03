@@ -8,12 +8,15 @@
 schema_version: "1.0"
 id: notes-sync-001
 version: "1.0.0"
+created_at: "2026-11-01T19:00:00+01:00"
 title: Implement the note synchronisation merge from its specification
 description: >-
   notesapi.merge is declared and specified in src/notesapi/sync.py but raises
   NotImplementedError. Implement it from the written contract, keeping the
   store and its tests intact.
-
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
 task:
   category: new_feature
   difficulty: expert

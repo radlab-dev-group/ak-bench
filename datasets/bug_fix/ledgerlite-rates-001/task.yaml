@@ -9,13 +9,16 @@
 schema_version: "1.0"
 id: ledgerlite-rates-001
 version: "1.0.0"
+created_at: "2026-11-01T19:00:00+01:00"
 title: A conversion answers with the oldest rate in force
 description: >-
   RateBook.rate_for returns the first published rate at or before the moment
   instead of the last, so once a currency's rate has been revised, every
   conversion answers with the superseded rate. Restore the documented rule:
   the rate published most recently at or before the moment is the one in force.
-
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
 task:
   category: bug_fix
   difficulty: expert

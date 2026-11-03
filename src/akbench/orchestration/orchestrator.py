@@ -37,6 +37,7 @@ from akbench.evaluators.registry import EvaluatorRegistry
 from akbench.evaluators.task_evaluation import evaluate_task
 from akbench.orchestration.errors import RunPreparationError
 from akbench.orchestration.lifecycle import RunContext, RunOutcome, RunState
+from akbench.orchestration.packaging import collect_and_package_artifacts
 from akbench.runtime.contract import ExecutionMode
 from akbench.runtime.registry import RuntimeRegistry
 
@@ -156,6 +157,11 @@ class RunOrchestrator:
 
             context.transition(RunState.COLLECTING, "observations collected")
 
+            collect_and_package_artifacts(
+                workspace_dir=workspace,
+                artifacts_dir=config.artifacts_dir,
+            )
+
             terminal = _terminal_state_for_agent(result.status.value)
             if terminal is not RunState.COMPLETED:
                 context.failure_class = (
@@ -165,7 +171,16 @@ class RunOrchestrator:
                 context.finish(terminal, f"agent status {result.status.value}")
                 return RunOutcome(context.run_uid, terminal, ok=False, detail=context.error_message)
 
-            return self._evaluating(config, context, workspace)
+            outcome = self._evaluating(config, context, workspace)
+            eval_target = config.evaluation_dir or (
+                config.artifacts_dir / "evaluation" if config.artifacts_dir else None
+            )
+            collect_and_package_artifacts(
+                workspace_dir=None,
+                artifacts_dir=config.artifacts_dir,
+                evaluation_dir=eval_target,
+            )
+            return outcome
         except AKBenchmarkError as exc:
             return self._fail(config, context, exc, adapter=adapter, session=session)
         except Exception as exc:  # unexpected: record it, never lose the run

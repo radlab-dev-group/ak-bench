@@ -100,7 +100,8 @@ def report_all_cmd(
 ) -> None:
     """Write the whole report tree: dashboard, experiments, tasks, comparisons."""
     context: CliContext = ctx.obj
-    data = collect_history(_store(context))
+    store = _store(context)
+    data = collect_history(store)
     target = _reports_dir(context, output)
     written = write_report_tree(
         target,
@@ -108,6 +109,7 @@ def report_all_cmd(
         generated_at=utc_now().isoformat(),
         dataset=_dataset(context),
         docs_root=_project_root(context),
+        store=store,
     )
 
     if as_json:

@@ -66,6 +66,17 @@ def _load(text_value: str | None) -> Any | None:
         return text_value
 
 
+def _download_filename(run_uid: str, filename: str) -> str:
+    """Format downloaded filename with run UID as prefix and original name as postfix."""
+    if not filename:
+        return ""
+    if not run_uid:
+        return filename
+    if filename.startswith(f"{run_uid}-") or filename.startswith(f"{run_uid}_"):
+        return filename
+    return f"{run_uid}-{filename}"
+
+
 class HistoryStore:
     """Reads and writes the experiment history of one database."""
 
@@ -303,7 +314,13 @@ class HistoryStore:
 
     # ------------------------------------------------------------ artifacts
 
-    def register_artifacts(self, run_uid: str, paths: list[str | Path]) -> list[dict[str, Any]]:
+    def register_artifacts(
+        self,
+        run_uid: str,
+        paths: list[str | Path],
+        *,
+        store_data: bool = True,
+    ) -> list[dict[str, Any]]:
         """Checksum and register the files a run left behind.
 
         A missing file is reported in the result, not an error: a run may
@@ -327,23 +344,97 @@ class HistoryStore:
                     results.append(info)
                     continue
                 data = path.read_bytes()
-                session.add(
-                    Artifact(
-                        run_id=run.id,
-                        kind=info["kind"],
-                        path=str(path),
-                        checksum=_digest_bytes(data),
-                        size_bytes=len(data),
-                        content_type=_content_type(path.name),
-                        created_at=now,
-                        updated_at=now,
+                checksum = _digest_bytes(data)
+                size_bytes = len(data)
+                content_type = _content_type(path.name)
+                existing = session.scalar(
+                    select(Artifact).where(
+                        Artifact.run_id == run.id,
+                        Artifact.path == str(path),
+                        Artifact.kind == info["kind"],
                     )
                 )
-                info["checksum"] = _digest_bytes(data)
-                info["size_bytes"] = len(data)
+                if existing is not None:
+                    existing.checksum = checksum
+                    existing.size_bytes = size_bytes
+                    existing.content_type = content_type
+                    existing.data = data if store_data else None
+                    existing.updated_at = now
+                else:
+                    session.add(
+                        Artifact(
+                            run_id=run.id,
+                            kind=info["kind"],
+                            path=str(path),
+                            checksum=checksum,
+                            size_bytes=size_bytes,
+                            content_type=content_type,
+                            data=data if store_data else None,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                info["checksum"] = checksum
+                info["size_bytes"] = size_bytes
                 results.append(info)
             session.flush()
             return results
+
+    def get_artifact_payload(self, run_uid: str, filename_or_path: str) -> bytes | None:
+        """Read the binary payload of an artifact from the database."""
+        with session_scope(self.engine) as session:
+            run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
+            if run is None:
+                return None
+            target_name = filename_or_path
+            if target_name.startswith(f"{run_uid}-"):
+                target_name = target_name[len(run_uid) + 1 :]
+            elif target_name.startswith(f"{run_uid}_"):
+                target_name = target_name[len(run_uid) + 1 :]
+            artifact = session.scalar(
+                select(Artifact).where(
+                    Artifact.run_id == run.id,
+                    (Artifact.path == filename_or_path)
+                    | (Artifact.path == target_name)
+                    | (Artifact.path.like(f"%/{filename_or_path}"))
+                    | (Artifact.path.like(f"%/{target_name}"))
+                    | (Artifact.kind == filename_or_path)
+                    | (Artifact.kind == target_name),
+                )
+            )
+            return artifact.data if artifact else None
+
+    def export_artifacts(
+        self,
+        run_uid: str,
+        target_dir: Path | str,
+        *,
+        prefix_run_uid: bool = False,
+    ) -> list[Path]:
+        """Export all registered artifacts for a run into target_dir."""
+        target = Path(target_dir)
+        target.mkdir(parents=True, exist_ok=True)
+        exported: list[Path] = []
+        with session_scope(self.engine) as session:
+            run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
+            if run is None:
+                return exported
+            artifacts = session.scalars(select(Artifact).where(Artifact.run_id == run.id)).all()
+            for artifact in artifacts:
+                base_filename = Path(artifact.path).name
+                filename = (
+                    _download_filename(run_uid, base_filename)
+                    if prefix_run_uid
+                    else base_filename
+                )
+                dest = target / filename
+                if artifact.data is not None:
+                    dest.write_bytes(artifact.data)
+                    exported.append(dest)
+                elif Path(artifact.path).is_file():
+                    dest.write_bytes(Path(artifact.path).read_bytes())
+                    exported.append(dest)
+        return exported
 
     def verify_artifacts(self, run_uid: str) -> list[dict[str, Any]]:
         """Re-checksum a run's artifacts against what was registered."""
@@ -543,6 +634,8 @@ class HistoryStore:
                     "repository_uid": row.repository_uid,
                     "base_commit": row.base_commit,
                     "snapshot_digest": row.snapshot_digest,
+                    "created_at": row.task_created_at.isoformat() if row.task_created_at else None,
+                    "authors": _load(row.authors_json) or [],
                     "runs": by_task.get(row.uid, 0),
                 }
                 for row in rows
@@ -719,6 +812,13 @@ class HistoryStore:
             repository_uid = repo_row.uid
 
         task_row = session.scalar(select(Task).where(Task.uid == loaded.uid))
+        task_created_at = getattr(loaded.task, "created_at", None)
+        if isinstance(task_created_at, str):
+            task_created_at = _parse_time(task_created_at)
+
+        authors = getattr(loaded.task, "authors", None)
+        authors_json = _dump(authors) if authors else None
+
         if task_row is None:
             task_row = Task(
                 uid=loaded.uid,
@@ -728,10 +828,17 @@ class HistoryStore:
                 difficulty=str(loaded.task.difficulty),
                 evaluator=str(loaded.task.evaluator),
                 snapshot_digest=str(loaded.digest),
+                task_created_at=task_created_at,
+                authors_json=authors_json,
                 created_at=now,
                 updated_at=now,
             )
             session.add(task_row)
+        else:
+            if task_created_at is not None:
+                task_row.task_created_at = task_created_at
+            if authors_json is not None:
+                task_row.authors_json = authors_json
         task_row.repository_uid = repository_uid
         task_row.base_commit = getattr(loaded.task.task.repository, "ref", None)
         task_row.updated_at = now
@@ -1008,7 +1115,15 @@ class HistoryStore:
             ),
             "plugins": [p.plugin_id for p in plugins],
             "artifacts": [
-                {"kind": artifact.kind, "path": artifact.path, "checksum": artifact.checksum}
+                {
+                    "kind": artifact.kind,
+                    "path": artifact.path,
+                    "filename": Path(artifact.path).name,
+                    "checksum": artifact.checksum,
+                    "size_bytes": artifact.size_bytes,
+                    "content_type": artifact.content_type,
+                    "has_data": artifact.data is not None,
+                }
                 for artifact in artifacts
             ],
         }
@@ -1053,16 +1168,27 @@ _ARTIFACT_KINDS = {
     "evaluation.json": "evaluation",
     "junit.xml": "junit",
     "diff.patch": "diff",
+    "solution.patch": "diff",
+    "solution_diff.patch": "diff",
     "stdout.log": "stdout",
     "stderr.log": "stderr",
     "pytest-report.xml": "junit",
     "pytest-output.txt": "evaluation_output",
+    "solution.zip": "solution_archive",
+    "solution_workspace.zip": "solution_archive",
+    "agent_traces.zip": "agent_traces_archive",
+    "evaluation.zip": "evaluation_archive",
+    "evaluation_results.zip": "evaluation_archive",
 }
 
 
 def _artifact_kind(filename: str) -> str:
     if filename in _ARTIFACT_KINDS:
         return _ARTIFACT_KINDS[filename]
+    if filename.endswith(".zip"):
+        return "archive"
+    if filename.endswith(".patch") or filename.endswith(".diff"):
+        return "diff"
     if filename.endswith(".jsonl"):
         return "trace"
     if filename.endswith(".json"):
@@ -1073,13 +1199,15 @@ def _artifact_kind(filename: str) -> str:
 
 
 def _content_type(filename: str) -> str:
+    if filename.endswith(".zip"):
+        return "application/zip"
     if filename.endswith(".json"):
         return "application/json"
     if filename.endswith(".jsonl"):
         return "application/x-ndjson"
     if filename.endswith(".xml"):
         return "application/xml"
-    if filename.endswith(".patch"):
+    if filename.endswith(".patch") or filename.endswith(".diff"):
         return "text/x-diff"
     if filename.endswith(".log") or filename.endswith(".txt"):
         return "text/plain"

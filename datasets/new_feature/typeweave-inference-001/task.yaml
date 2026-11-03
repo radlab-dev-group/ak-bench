@@ -1,12 +1,15 @@
 schema_version: "1.0"
 id: typeweave-inference-001
 version: "1.0.0"
+created_at: "2026-11-02T14:00:00+01:00"
 title: Implement sound polymorphic inference, recursive pattern coverage and module interfaces
 description: >-
   Complete a compiler's type system across unification, expression and SCC
   inference, data elaboration, typed pattern matrices and portable module
   interfaces. Preserve soundness with mutable references, nominal data,
   abstract imported types and independent instantiation of public schemes.
+authors:
+  - "[codex_cli] Gpt 6.1 SOL"
 task:
   category: new_feature
   difficulty: expert

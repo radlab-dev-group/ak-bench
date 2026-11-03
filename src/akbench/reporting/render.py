@@ -1600,24 +1600,188 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
                 ],
             )
         )
-    if report.run.get("artifacts"):
-        body.append("<h2>Artifacts</h2>")
+    packages = [
+        artifact for artifact in report.run.get("artifacts") or []
+        if _is_package_artifact(artifact)
+    ]
+    run_uid = str(run.get("uid") or "")
+    if packages:
+        body.append("<h2>Packages</h2>")
+        package_rows = []
+        for artifact in packages:
+            p = str(artifact.get("path") or "")
+            rel_p = _relative_path(p)
+            fn = artifact.get("filename") or (Path(p).name if p else "")
+            kind = artifact.get("kind")
+            checksum = str(artifact.get("checksum") or "")
+            size_val = artifact.get("size_bytes")
+            size_formatted = _format_file_size(size_val)
+            desc_text = _artifact_description(fn, kind)
+            download_fn = _download_filename(run_uid, fn)
+
+            download_action = (
+                f'<a class="badge ok" style="text-decoration:none; padding:2px 8px;" href="../../artifacts/{esc(run_uid)}/{esc(download_fn)}" download="{esc(download_fn)}">download</a>'
+                if fn
+                else '<span class="muted">-</span>'
+            )
+            checksum_cell = f'<code>{esc(checksum)}</code>' if checksum else '<span class="muted">-</span>'
+            file_cell = f'<strong>{esc(fn or rel_p)}</strong>'
+            if rel_p and fn and rel_p != fn:
+                file_cell += f'<br><span class="muted" style="font-size:0.85em;">{esc(rel_p)}</span>'
+
+            package_rows.append([
+                file_cell,
+                esc(desc_text),
+                size_formatted,
+                checksum_cell,
+                download_action,
+            ])
+
         body.append(
             table(
-                ["kind", "path", "checksum"],
-                [
-                    [
-                        esc(artifact.get("kind")),
-                        f'<code>{esc(artifact.get("path"))}</code>',
-                        esc(artifact.get("checksum")),
-                    ]
-                    for artifact in run.get("artifacts") or []
-                ],
+                ["file", "description", "size #", "sha256 hash", "download"],
+                package_rows,
+            )
+        )
+    if report.run.get("artifacts"):
+        body.append("<h2>Artifacts</h2>")
+        artifact_rows = []
+        for artifact in report.run.get("artifacts") or []:
+            p = str(artifact.get("path") or "")
+            rel_p = _relative_path(p)
+            fn = artifact.get("filename") or (Path(p).name if p else "")
+            download_fn = _download_filename(run_uid, fn)
+            download_action = (
+                f'<a class="badge ok" style="text-decoration:none; padding:2px 8px;" href="../../artifacts/{esc(run_uid)}/{esc(download_fn)}" download="{esc(download_fn)}">download</a>'
+                if fn
+                else '<span class="muted">-</span>'
+            )
+            artifact_rows.append([
+                esc(artifact.get("kind")),
+                f'<code>{esc(rel_p)}</code>',
+                esc(artifact.get("checksum")),
+                download_action,
+            ])
+
+        body.append(
+            table(
+                ["kind", "path", "checksum", "download"],
+                artifact_rows,
             )
         )
     body.append("<h2>Not verified</h2>")
     body.append(_notice(report.unverified))
     return page(f"Run {run.get('uid')}", "".join(body), generated_at=generated_at)
+
+
+PACKAGE_NAMES: set[str] = {
+    "solution.zip",
+    "solution_workspace.zip",
+    "diff.patch",
+    "solution.patch",
+    "solution_diff.patch",
+    "agent_traces.zip",
+    "evaluation.zip",
+    "evaluation_results.zip",
+}
+PACKAGE_KINDS: set[str] = {
+    "solution_archive",
+    "solution_diff",
+    "agent_traces",
+    "evaluation_archive",
+    "package",
+    "diff",
+}
+
+
+def _download_filename(run_uid: str, filename: str) -> str:
+    """Format downloaded filename with run UID as prefix and original name as postfix.
+
+    Example: run_uid='codex-20261103-001121-442121-9a594', filename='solution.zip'
+    Returns: 'codex-20261103-001121-442121-9a594-solution.zip'
+    """
+    if not filename:
+        return ""
+    if not run_uid:
+        return filename
+    if filename.startswith(f"{run_uid}-") or filename.startswith(f"{run_uid}_"):
+        return filename
+    return f"{run_uid}-{filename}"
+
+
+def _relative_path(path_str: str | Path | None) -> str:
+    """Format path relative to current working directory or starting from artifacts/."""
+    if not path_str:
+        return ""
+    try:
+        p = Path(path_str)
+        parts = p.parts
+        if "artifacts" in parts:
+            idx = parts.index("artifacts")
+            return str(Path(*parts[idx:]))
+        cwd = Path.cwd()
+        if p.is_absolute():
+            try:
+                return str(p.relative_to(cwd))
+            except ValueError:
+                clean_parts = [part for part in parts if part not in ("/", "\\")]
+                return str(Path(*clean_parts)) if clean_parts else p.name
+        return str(p)
+    except Exception:
+        return str(path_str)
+
+
+def _is_package_artifact(artifact: dict[str, Any]) -> bool:
+    """Check if the artifact is a packaged bundle (solution, traces, evaluation, diff)."""
+    p = str(artifact.get("path") or "")
+    fn = str(artifact.get("filename") or (Path(p).name if p else "")).lower()
+    kind = str(artifact.get("kind") or "").lower()
+    if fn in PACKAGE_NAMES or kind in PACKAGE_KINDS:
+        return True
+    return False
+
+
+def _format_file_size(size_bytes: int | None) -> str:
+    """Format bytes into readable size string."""
+    if size_bytes is None:
+        return NOT_MEASURED
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
+def _artifact_description(filename: str, kind: str | None) -> str:
+    """Provide a human-readable description of what the artifact contains."""
+    fn = filename.lower()
+    if fn in ("solution.zip", "solution_workspace.zip"):
+        return "Clean solution workspace archive (code modified/created by agent)"
+    if fn in ("diff.patch", "solution.patch", "solution_diff.patch"):
+        return "Git diff patch of changes made in the workspace"
+    if fn in ("agent_traces.zip",):
+        return "Agent logs, tool execution traces, and stdout/stderr output"
+    if fn in ("evaluation.zip", "evaluation_results.zip"):
+        return "Test execution results, test logs, and evaluation reports"
+    if fn == "manifest.json":
+        return "Run execution manifest and environment metadata"
+    if fn in ("agent_trace.jsonl", "events.jsonl", "tool_calls.jsonl"):
+        return "Detailed event and tool call timeline"
+    if fn in ("stdout.log", "agent_stdout.jsonl"):
+        return "Agent stdout output log"
+    if fn in ("stderr.log", "agent_stderr.log"):
+        return "Agent stderr error log"
+    if fn in ("junit.xml", "pytest-report.xml"):
+        return "JUnit XML structured test results"
+    if fn in ("evaluation.json", "pytest-output.txt"):
+        return "Evaluation test run summary output"
+    if fn.endswith(".zip"):
+        return "ZIP archive of run artifacts"
+    if fn.endswith(".patch") or fn.endswith(".diff"):
+        return "Diff patch file"
+    if kind:
+        return f"{kind.replace('_', ' ').capitalize()} artifact"
+    return "Run artifact file"
 
 
 def _parameters_cell(values: Any) -> str:
@@ -1840,16 +2004,29 @@ PASSED = "passed"
 
 
 def _artifact_rows(runs: list[dict[str, Any]]) -> list[list[str]]:
-    return [
-        [
-            esc(run.get("uid")),
-            esc(artifact.get("kind")),
-            f'<code>{esc(artifact.get("path"))}</code>',
-            esc(artifact.get("checksum")),
-        ]
-        for run in runs
-        for artifact in run.get("artifacts") or []
-    ]
+    rows = []
+    for run in runs:
+        run_uid = str(run.get("uid") or "")
+        for artifact in run.get("artifacts") or []:
+            p = str(artifact.get("path") or "")
+            rel_p = _relative_path(p)
+            fn = artifact.get("filename") or (Path(p).name if p else "")
+            download_fn = _download_filename(run_uid, fn)
+            download_action = (
+                f'<a class="badge ok" style="text-decoration:none; padding:2px 8px;" href="../../artifacts/{esc(run_uid)}/{esc(download_fn)}" download="{esc(download_fn)}">download</a>'
+                if fn
+                else '<span class="muted">-</span>'
+            )
+            rows.append(
+                [
+                    esc(run.get("uid")),
+                    esc(artifact.get("kind")),
+                    f'<code>{esc(rel_p)}</code>',
+                    esc(artifact.get("checksum")),
+                    download_action,
+                ]
+            )
+    return rows
 
 
 def _verdict_summary(verdicts: dict[str, Any]) -> str:
@@ -1985,7 +2162,7 @@ def render_experiment(
         "<h2>All runs</h2>",
         _runs_table(report.runs, report.variants),
         "<h2>Artifacts</h2>",
-        table(["run", "kind", "path", "checksum"], _artifact_rows(report.runs)),
+        table(["run", "kind", "path", "checksum", "download"], _artifact_rows(report.runs)),
         "<h2>Not verified</h2>",
         _notice(report.unverified),
     ]
@@ -2032,6 +2209,18 @@ def _definition_section(report: TaskReport) -> str:
         if definition.get("notes"):
             parts.append(f'<h3>Notes</h3><p class="task-notes">{esc(definition["notes"])}</p>')
 
+    created_at_val = (
+        definition.get("created_at")
+        if definition and definition.get("created_at")
+        else task.get("created_at")
+    )
+    authors_val = (
+        definition.get("authors")
+        if definition and definition.get("authors")
+        else task.get("authors")
+    )
+    authors_str = ", ".join(authors_val) if authors_val else None
+
     parts.append("<h3>Recorded identity</h3>")
     parts.append(
         table(
@@ -2041,6 +2230,8 @@ def _definition_section(report: TaskReport) -> str:
                 ["category", esc(task.get("category"))],
                 ["difficulty", esc(task.get("difficulty"))],
                 ["evaluator", esc(task.get("evaluator"))],
+                ["created at", esc(created_at_val) if created_at_val else NOT_MEASURED],
+                ["authors", esc(authors_str) if authors_str else NOT_MEASURED],
                 ["base commit", esc(task.get("base_commit"))],
                 ["repository", esc(task.get("repository_uid"))],
                 ["snapshot digest", f'<code>{esc(task.get("snapshot_digest"))}</code>'],
@@ -2510,6 +2701,7 @@ def write_report_tree(
     generated_at: str | None = None,
     dataset: Any = None,
     docs_root: Path | str | None = None,
+    store: Any = None,
 ) -> list[Path]:
     """Write the report tree under ``root``; returns every file written.
 
@@ -2629,6 +2821,26 @@ def write_report_tree(
                 f"{RUNS_DIRECTORY}/{uid}/index.html",
                 render_run(report, generated_at=generated_at),
             )
+        artifacts_target = root / "artifacts" / uid
+        if store is not None and hasattr(store, "export_artifacts"):
+            try:
+                exported = store.export_artifacts(uid, artifacts_target, prefix_run_uid=True)
+                written.extend(exported)
+            except Exception:
+                pass
+        else:
+            for artifact in run.get("artifacts") or []:
+                p = artifact.get("path")
+                fn = artifact.get("filename") or (Path(p).name if p else "")
+                if p and fn and Path(p).is_file():
+                    download_fn = _download_filename(uid, fn)
+                    dest = artifacts_target / download_fn
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        dest.write_bytes(Path(p).read_bytes())
+                        written.append(dest)
+                    except Exception:
+                        pass
 
     for stats_key, stats_field, kind, directory in (
         ("by_category", "category", "category", "categories"),

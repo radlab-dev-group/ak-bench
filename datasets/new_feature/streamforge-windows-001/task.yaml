@@ -1,12 +1,15 @@
 schema_version: "1.0"
 id: streamforge-windows-001
 version: "1.0.0"
+created_at: "2026-11-02T14:00:00+01:00"
 title: Implement event-time windows, corrections and durable restart
 description: >-
   Complete a multi-module streaming engine with fixed, sliding and session
   windows, partition watermarks, transitive late session merges, ordered
   retract/upsert output, source deduplication and complete checkpoint recovery.
   The executable contract is documented in the seed README and module docstrings.
+authors:
+  - "[codex_cli] Gpt 6.1 SOL"
 task:
   category: new_feature
   difficulty: expert

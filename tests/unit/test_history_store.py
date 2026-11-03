@@ -25,6 +25,9 @@ def _store(database_url: str) -> HistoryStore:
 
 
 def _task_stub(digest: str = "sha256:task") -> SimpleNamespace:
+    from datetime import datetime, timezone, timedelta
+
+    tz = timezone(timedelta(hours=1))
     repository = SimpleNamespace(source="https://example.test/wc.git", ref="abc1234")
     body = SimpleNamespace(repository=repository)
     descriptor = SimpleNamespace(
@@ -33,6 +36,8 @@ def _task_stub(digest: str = "sha256:task") -> SimpleNamespace:
         category="bug_fix",
         difficulty="easy",
         evaluator="pytest",
+        created_at=datetime(2026, 11, 1, 19, 0, 0, tzinfo=tz),
+        authors=["Alice", "Bob"],
         task=body,
     )
     return SimpleNamespace(uid="wordcount-001@1.0.0", digest=digest, task=descriptor)
@@ -205,8 +210,15 @@ def test_record_run_creates_the_task_and_repository_rows(database_url: str) -> N
         assert task.uid == "wordcount-001@1.0.0"
         assert task.evaluator == "pytest"
         assert task.base_commit == "abc1234"
+        assert task.authors_json == '["Alice", "Bob"]'
+        assert task.task_created_at is not None
         repository = session.scalar(select(Repository))
         assert repository.source == "https://example.test/wc.git"
+
+    tasks = store.tasks()
+    assert len(tasks) == 1
+    assert tasks[0]["authors"] == ["Alice", "Bob"]
+    assert tasks[0]["created_at"] == "2026-11-01T19:00:00"
 
 
 def test_re_recording_a_run_updates_it_in_place(database_url: str) -> None:
@@ -239,6 +251,21 @@ def test_register_artifacts_checksums_files_and_reports_missing_ones(
         assert len(artifacts) == 1
         assert artifacts[0].content_type == "application/json"
         assert artifacts[0].size_bytes == len(kept.read_bytes())
+        assert artifacts[0].data == kept.read_bytes()
+
+    assert store.get_artifact_payload("run-1", "run_record.json") == kept.read_bytes()
+    assert store.get_artifact_payload("run-1", "run-1-run_record.json") == kept.read_bytes()
+    export_dir = tmp_path / "exported"
+    exported = store.export_artifacts("run-1", export_dir)
+    assert len(exported) == 1
+    assert exported[0].name == "run_record.json"
+    assert exported[0].read_bytes() == kept.read_bytes()
+
+    export_dir_prefixed = tmp_path / "exported_prefixed"
+    exported_prefixed = store.export_artifacts("run-1", export_dir_prefixed, prefix_run_uid=True)
+    assert len(exported_prefixed) == 1
+    assert exported_prefixed[0].name == "run-1-run_record.json"
+    assert exported_prefixed[0].read_bytes() == kept.read_bytes()
 
 
 def test_verify_artifacts_detects_tampering_and_deletion(
