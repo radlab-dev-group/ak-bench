@@ -56,6 +56,16 @@ DEFAULT_EXPERIMENT_DIR = "configs/experiments"
 
 SEVERITY_COLORS = {"error": "red", "warning": "yellow"}
 
+STATE_COLORS = {
+    "completed": "green",
+    "failed": "red",
+    "timeout": "yellow",
+    "cancelled": "yellow",
+    "infrastructure_error": "magenta",
+    "invalid_configuration": "magenta",
+    "evaluation_error": "magenta",
+}
+
 
 def _planner(context: CliContext) -> ExperimentPlanner:
     paths = build_app_paths(context.loaded().settings)
@@ -277,6 +287,7 @@ def _run_experiment(
     *,
     store: bool,
     only: int | None = None,
+    silent: bool = False,
 ) -> dict[str, object]:
     """Execute the runs of a plan through the orchestrator, one after another.
 
@@ -331,24 +342,57 @@ def _run_experiment(
 
     results: list[dict[str, object]] = []
     index = 0
+    policy = experiment.descriptor.experiment.execution_policy
     for task in plan.tasks:
         loaded = tasks_by_id[task.uid]
+        if policy.timeout_seconds is not None:
+            task_timeout = loaded.task.task.timeout_seconds
+            if task_timeout is not None and task_timeout > policy.timeout_seconds:
+                raise ExperimentValidationError(
+                    f"task {task.uid} declares timeout of {task_timeout}s, "
+                    f"which exceeds experiment execution policy timeout of {policy.timeout_seconds}s",
+                    details={
+                        "task_uid": task.uid,
+                        "task_timeout_seconds": task_timeout,
+                        "experiment_timeout_seconds": policy.timeout_seconds,
+                    },
+                )
         for variant in plan.variants:
             for repetition in range(plan.counts.repetitions):
                 index += 1
                 if only is not None and index > only:
                     return {"runs": results, "completed": len(results), "planned": plan.counts.runs}
-                console.print(
-                    f"[dim]{index}/{plan.counts.runs}[/dim] {task.uid} · {variant.variant_id} "
-                    f"(repetition {repetition + 1})"
-                )
+
+                task_desc = loaded.task
+                task_title = task_desc.title or task.uid
+                task_details = f"[bold cyan]{task.uid}[/bold cyan] ({task.category}, {task.difficulty})"
+                variant_summary = variant.variant_id
+                if variant.values:
+                    values_str = ", ".join(f"{k}={v}" for k, v in variant.values.items())
+                    variant_summary = f"{variant.variant_id} [{values_str}]"
+
+                rep_info = f"rep {repetition + 1}/{plan.counts.repetitions}"
+                if not silent:
+                    console.print(
+                        f"\n[dim][{index}/{plan.counts.runs}][/dim] Running task: {task_details}"
+                    )
+                    if task_desc.title:
+                        console.print(f"  [dim]title:[/dim]       {task_title}")
+                    console.print(f"  [dim]variant:[/dim]     {variant_summary}")
+                    console.print(
+                        f"  [dim]agent:[/dim]       {variant.agent_id} ({plan.mode}"
+                        f"{', runtime ' + plan.runtime_id if plan.runtime_id else ''})"
+                    )
+                    if variant.agent_config:
+                        console.print(f"  [dim]agent config:[/dim]{variant.agent_config}")
+                    console.print(f"  [dim]progress:[/dim]     {rep_info}")
+
                 # Only the agent's own declared parameters go here: the mode and
                 # the runtime are the orchestrator's, not agent configuration.
                 agent_parameters = dict(variant.agent_config)
                 artifacts_dir = paths.artifacts_dir / "runs" / _run_slug(
                     plan.agent_id, task.uid, variant.variant_id, repetition
                 )
-                policy = experiment.descriptor.experiment.execution_policy
                 config = OrchestrationConfig(
                     task=dataset.materialize(loaded),
                     agent_id=variant.agent_id,
@@ -380,6 +424,15 @@ def _run_experiment(
                         variant_uid=variant.variant_id,
                         repetition=repetition + 1,
                     )
+
+                state_color = STATE_COLORS.get(outcome.state.value, "white")
+                score = (record.get("evaluation") or {}).get("score")
+                score_str = f" score: {score:.2f}" if score is not None else ""
+                if not silent:
+                    console.print(
+                        f"  [dim]outcome:[/dim]      [{state_color}]{outcome.state.value}[/{state_color}]{score_str}"
+                    )
+
                 results.append(
                     {
                         "task_uid": task.uid,
@@ -387,7 +440,7 @@ def _run_experiment(
                         "repetition": repetition + 1,
                         "state": outcome.state.value,
                         "run_uid": record.get("run_uid"),
-                        "score": (record.get("evaluation") or {}).get("score"),
+                        "score": score,
                     }
                 )
     return {"runs": results, "completed": len(results), "planned": plan.counts.runs}
@@ -426,13 +479,14 @@ def experiment_run_cmd(
         raise typer.Exit(1) from exc
 
     counts = plan.counts
-    console.print(
-        f"[cyan]running[/] {experiment.identity}: {counts.tasks} tasks x "
-        f"{counts.variants} variants x {counts.repetitions} repetitions = "
-        f"[bold]{counts.runs} runs[/bold]"
-    )
+    if not as_json:
+        console.print(
+            f"[cyan]running[/] {experiment.identity}: {counts.tasks} tasks x "
+            f"{counts.variants} variants x {counts.repetitions} repetitions = "
+            f"[bold]{counts.runs} runs[/bold]\n"
+        )
 
-    result = _run_experiment(context, experiment, plan, store=store_runs, only=only)
+    result = _run_experiment(context, experiment, plan, store=store_runs, only=only, silent=as_json)
 
     if as_json:
         show_json({"experiment": experiment.identity, **result})
