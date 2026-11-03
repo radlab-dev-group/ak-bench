@@ -129,10 +129,22 @@ What this buys, and what it means:
   command execs `python -m llm_router_api.rest_api`.
 - **Environment is applied, not requested.** `managed.env` is static
   configuration; `factor_env` maps an experiment factor to the variable that
-  carries it. A run whose variant is `knowledge_enabled: false` therefore runs
-  against a router process that was started with
-  `LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED=false`. On the shared instance the same
-  arm could only record that it asked.
+  carries it; and a combination may declare its own launch environment under
+  `runtime_env`, which is applied last. A run whose variant is
+  `knowledge_enabled: false` therefore runs against a router process that was
+  started with `LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED=false`, and an arm that
+  wants no knowledge plugin starts its process without it in
+  `LLM_ROUTER_UTILS_PLUGINS_PIPELINE`. On the shared instance the same arm
+  could only record that it asked. Precedence, from lowest to highest: the
+  ambient environment, `managed.env`, the factor-mapped values, then the
+  variant's `runtime_env`.
+- **The pipeline is a launch decision, not a request.** Which plugins a router
+  process loads is read when it starts; nothing told to a running process
+  changes that. A pipeline in `managed.env` would load its plugins in every
+  run of the runtime, so the shipped descriptor declares none and each arm of
+  `llm-router-selfhost-fast.yaml` names the pipeline of its process. The run
+  record keeps the declared environment as `runtime_environment`, with values
+  whose names mark them as secrets reported by name only.
 - **The log is an artifact of the run.** The launched process's standard output
   is written to `managed.log_file` inside the run's artifacts directory,
   registered like every other artifact, and downloadable from the report.

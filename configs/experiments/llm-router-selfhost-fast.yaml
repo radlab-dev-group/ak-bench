@@ -11,6 +11,13 @@
 # knowledge_enabled is therefore a property of a process this run owned, and
 # the router's own verbose log lands in the run's artifacts as evidence.
 #
+# WHY THE PIPELINE IS A COMBINATION PROPERTY. Loading a plugin is not something
+# a running process can be told to forget: the pipeline is read at start. Each
+# combination therefore carries the environment its instance starts with
+# (runtime_env), and the runtime descriptor ships no pipeline of its own —
+# otherwise every arm would load every plugin, which is what made the baseline
+# of the first version of this experiment run with knowledge loaded.
+#
 # WHAT IS STILL NOT A MEASUREMENT. The router exports no per-plugin counter
 # (docs/ROUTER_INTEGRATION.md section 7), so "knowledge on" means the plugin
 # was enabled in the process and its log is inspectable, not that knowledge was
@@ -59,11 +66,21 @@ experiment:
     baseline:
       model: qwen/Qwen3.8-27B
       knowledge_enabled: false
+    # Each arm names the plugins its router process loads. The pipeline is read
+    # once when the process starts, so this is the difference between "the
+    # knowledge plugin was absent from the process" and "it was loaded and
+    # asked not to act"; the runtime declares no pipeline of its own.
+    # agentic_routing_codex is in both arms, so the knowledge plugin is the
+    # only plugin that differs between them.
     combinations:
       - model: qwen/Qwen3.8-27B
         knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
       - model: auto_codex
         knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
 
   execution_policy:
     repetitions: 1

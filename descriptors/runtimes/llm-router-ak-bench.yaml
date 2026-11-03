@@ -34,7 +34,8 @@ runtime:
 
   configuration_sources:
     - "managed.env LLM_ROUTER_MODELS_CONFIG (JSON, active_models required)"
-    - "managed.env LLM_ROUTER_UTILS_PLUGINS_PIPELINE (ordered plugin ids)"
+    - "experiment combination runtime_env: LLM_ROUTER_UTILS_PLUGINS_PIPELINE, the
+      ordered plugin ids the process loads at start (absent means no plugins)"
     - "managed.factor_env: experiment factor values applied as process env"
 
   capabilities:
@@ -82,7 +83,11 @@ runtime:
       LLM_ROUTER_AUTH_ENABLED: "false"
       LLM_ROUTER_BALANCE_STRATEGY: balanced
       LLM_ROUTER_USE_PROMETHEUS: "0"
-      LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+      # No plugin pipeline here, on purpose. The pipeline is read once when the
+      # process starts, so a pipeline in this static block would load its
+      # plugins in EVERY run of this runtime, including the arm that measures
+      # the router without them. A variant declares its own pipeline under
+      # runtime_env, which is applied last (docs/RUNTIME_MANAGER.md).
       LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_TRIGGER: auto_codex
       LLM_ROUTER_REDIS_HOST: 192.168.100.67
       LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_HOST: 192.168.100.67
@@ -108,7 +113,9 @@ runtime:
       # benchmark was started in, and reach the process unchanged.
 
     # The factor is applied to the process, not to the request: this is the
-    # difference between "knowledge was asked for" and "knowledge was on".
+    # difference between "knowledge was asked for" and "knowledge was on". It
+    # enables a plugin that is present; loading it at all is the pipeline's
+    # decision, and that belongs to the variant (see the note in managed.env).
     factor_env:
       knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
       knowledge_read_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_ENABLED

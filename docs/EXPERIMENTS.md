@@ -66,6 +66,42 @@ agent parameters and the environment requests, and a baseline flag. The plan
 pins the digests of every descriptor it depends on (plan 9), so editing a
 descriptor later cannot reinterpret the plan.
 
+### The launch environment of a combination
+
+A `custom_matrix` combination may carry a reserved key `runtime_env`, a
+mapping of environment variables to scalar values. It is the environment the
+run's **managed** runtime instance is started with: the planner strips the key
+from the factor values, the variant's identity hashes it, the orchestrator
+hands it to the runtime adapter, and the adapter applies it last, so it wins
+over the descriptor's static environment and over the ambient shell.
+
+```yaml
+  factors:
+    strategy: custom_matrix
+    dimensions:
+      - id: model
+      - id: knowledge_enabled
+    combinations:
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+      - model: auto_codex
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+```
+
+This exists because some configuration is fixed when a process starts: the
+plugin pipeline of a router is read at launch, so an arm that wants a plugin
+has to name it in its combination, and the runtime descriptor ships no
+pipeline of its own (a pipeline there would load its plugins in **every** run
+of that runtime, including the arms that measure the router without them).
+Declaring `runtime_env` against a runtime that is not started by the run is a
+plan error (`runtime_environment_needs_managed`): an environment sent nowhere
+is not a configuration. The environment the run declared is recorded in the
+run record as `runtime_environment` and named in the plan and run output.
+
 ## The shipped examples
 
 | File | What it shows |

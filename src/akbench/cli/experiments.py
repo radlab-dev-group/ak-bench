@@ -250,6 +250,11 @@ def experiment_plan_cmd(
             mark = " (baseline)" if variant.is_baseline else ""
             values = ", ".join(f"{key}={value}" for key, value in variant.values.items())
             console.print(f"    {variant.variant_id} {values or '(reference)'}{mark}")
+            if variant.runtime_env:
+                declared = ", ".join(
+                    f"{name}={value}" for name, value in sorted(variant.runtime_env.items())
+                )
+                console.print(f"      runtime starts with {declared}")
     for warning in plan.validation.warnings:
         console.print(f"  [yellow]warning[/yellow] {warning.message}")
 
@@ -331,6 +336,7 @@ def _run_experiment(
                     "values": variant.values,
                     "agent_config": variant.agent_config,
                     "environment_requests": variant.environment_requests,
+                    "runtime_env": dict(variant.runtime_env),
                     "applies": variant.applies,
                     "config_hash": variant.config_hash,
                     "is_baseline": variant.is_baseline,
@@ -385,6 +391,12 @@ def _run_experiment(
                     )
                     if variant.agent_config:
                         console.print(f"  [dim]agent config:[/dim]{variant.agent_config}")
+                    if variant.runtime_env:
+                        declared = ", ".join(
+                            f"{name}={value}"
+                            for name, value in sorted(variant.runtime_env.items())
+                        )
+                        console.print(f"  [dim]runtime env:[/dim]  {declared}")
                     console.print(f"  [dim]progress:[/dim]     {rep_info}")
 
                 # Only the agent's own declared parameters go here: the mode and
@@ -405,6 +417,7 @@ def _run_experiment(
                     # the variant value becomes the state of a process this run
                     # started instead of a hope aimed at a shared router.
                     runtime_environment=dict(variant.environment_requests),
+                    runtime_env=dict(variant.runtime_env),
                     artifacts_dir=artifacts_dir,
                     evaluation_dir=artifacts_dir / "evaluation",
                     agent_timeout=policy.timeout_seconds,
@@ -598,6 +611,7 @@ def _store_plan(
                 "values": variant.values,
                 "agent_config": variant.agent_config,
                 "environment_requests": variant.environment_requests,
+                "runtime_env": dict(variant.runtime_env),
                 "applies": variant.applies,
                 "config_hash": variant.config_hash,
                 "is_baseline": variant.is_baseline,
