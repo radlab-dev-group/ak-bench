@@ -92,3 +92,62 @@ akbench runtime state llm-router
   `managed` instance is required).
 - Per-plugin metrics → the router exposes none, so knowledge metrics are
   `unavailable`, never zero (see `docs/ROUTER_INTEGRATION.md` section 7).
+
+## Self-start (managed) LLM Router
+
+A runtime whose `supported_lifecycles` is `[managed]` and which declares a
+`managed` launch block is **owned by the run**: AK-Bench starts it before the
+agent and stops it when the run ends, and the run keeps the evidence.
+
+The launch block is declared in the descriptor, not in the experiment:
+
+```yaml
+runtime:
+  adapter: llm_router
+  supported_lifecycles: [managed]
+  base_url: http://127.0.0.1:8085
+  managed:
+    command: ["/usr/bin/python3.11", "-m", "llm_router_api.rest_api", "--gunicorn", ...]
+    cwd: /path/to/llm-router
+    env:
+      LLM_ROUTER_MODELS_CONFIG: resources/configs/models-config.json
+      LLM_ROUTER_AUTH_ENABLED: "false"
+    factor_env:
+      knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
+    config_file: /path/to/models-config.json
+    ready_timeout: 180.0
+    stop_grace: 20.0
+    log_file: router.log
+```
+
+What this buys, and what it means:
+
+- **The command is the process itself.** AK-Bench holds the gunicorn master and
+  stops it with SIGTERM, so the router cannot outlive the run. A launcher that
+  daemonizes or supervises the server (`llm-router server start`) would leave a
+  process AK-Bench can neither see nor stop, which is exactly why the managed
+  command execs `python -m llm_router_api.rest_api`.
+- **Environment is applied, not requested.** `managed.env` is static
+  configuration; `factor_env` maps an experiment factor to the variable that
+  carries it. A run whose variant is `knowledge_enabled: false` therefore runs
+  against a router process that was started with
+  `LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED=false`. On the shared instance the same
+  arm could only record that it asked.
+- **The log is an artifact of the run.** The launched process's standard output
+  is written to `managed.log_file` inside the run's artifacts directory,
+  registered like every other artifact, and downloadable from the report.
+- **Restarting is the configuration write.** The router still exposes no
+  configuration write endpoint; a managed instance changes configuration by
+  dying and being started again with different environment. That is why
+  `configuration_write` stays `unsupported` even when `per_run_plugin_control`
+  is `verified`.
+- **The state outlives the process.** Stopping the router does not empty Redis
+  or the vector engine; a separate prefix (declared in `managed.env`) keeps a
+  benchmark from reading the shared instance's collections, but it does not
+  create isolation by itself.
+
+The shipped instance is `descriptors/runtimes/llm-router-ak-bench.yaml`, and
+`configs/experiments/llm-router-selfhost-fast.yaml` is the self-hosted twin of
+`llm-router-external-fast.yaml`: the same tasks and arms, but each run starts
+its own router, so the knowledge arm is a configuration of a process the run
+owned.

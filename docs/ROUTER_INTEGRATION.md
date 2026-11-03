@@ -186,6 +186,12 @@ capabilities an experiment requires.
 | Calling `/v1/responses` and observing the model in the response | unverified |
 | Reading the effective configuration over HTTP | unsupported |
 | Per-plugin metrics | unsupported |
-| Starting/stopping the instance from AK-Bench | unverified (not implemented in Phase 0) |
-| Per-run plugin ENV control | unverified (requires `managed`) |
+| Starting/stopping the instance from AK-Bench | verified (managed instance: `descriptors/runtimes/llm-router-ak-bench.yaml`) |
+| Per-run plugin ENV control | verified for the managed instance (factor values are applied as process env); impossible on the shared instance |
 | KB readiness (indexing finished) | unverified |
+
+The managed instance is launched by AK-Bench itself (a `managed` block in the
+runtime descriptor) and stopped when the run ends; its log is an artifact of
+the run, and its factor values — e.g. the knowledge toggle — are applied as
+process environment, so a variant's plugin configuration is the state of a
+process the run owned rather than a request against a shared router.
