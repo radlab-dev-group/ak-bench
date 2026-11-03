@@ -356,3 +356,68 @@ def test_http_errors_are_reported_not_raised(stub: tuple[str, dict]) -> None:
     assert response.ok is False
     with pytest.raises(HttpError):
         get_json("http://127.0.0.1:1/nope", timeout=1.0)
+
+
+def test_log_dir_override_places_the_descriptor_log_in_the_run(
+    stub: tuple[str, dict], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A descriptor names the log; the run decides the directory it lands in.
+
+    The descriptor keeps a relative name, so without the run's directory the
+    launched process would write into whatever directory the CLI happened to be
+    started from, and the run would keep no evidence.
+    """
+    import yaml
+
+    url, _ = stub
+    monkeypatch.chdir(tmp_path)
+    body = yaml.safe_load(
+        """
+schema_version: "1.0"
+id: logging-router
+version: "1.0.0"
+runtime:
+  adapter: llm_router
+  supported_lifecycles: [managed]
+  base_url: BASEURL
+  managed:
+    command: ["/bin/sh", "-c", "echo written-into-the-run-log"]
+    log_file: router.log
+""".replace("BASEURL", url)
+    )
+    adapter = LlmRouterAdapter(
+        RuntimeDescriptor.model_validate(body), log_dir=tmp_path / "artifacts" / "runs" / "one"
+    )
+    try:
+        adapter.start()
+    finally:
+        adapter.stop()
+
+    written = tmp_path / "artifacts" / "runs" / "one" / "router.log"
+    assert adapter.log_path == written
+    assert "written-into-the-run-log" in written.read_text(encoding="utf-8")
+    assert not (tmp_path / "router.log").exists()
+
+
+def test_a_process_that_dies_says_so_with_its_log(
+    stub: tuple[str, dict], tmp_path: Path
+) -> None:
+    """An instance that exits during startup must report the code and the log.
+
+    Waiting out the readiness timeout and quoting it would describe a wait, not
+    the crash, and leave the user looking for a slow start.
+    """
+    _url, routes = stub
+    routes["/health"] = (503, json.dumps({"body": "unhealthy"}))
+    adapter = LlmRouterAdapter(
+        None,
+        LlmRouterOptions(
+            base_url="http://127.0.0.1:1",
+            lifecycle=Lifecycle.MANAGED,
+            start_command=["/bin/sh", "-c", "echo boom; exit 3"],
+            log_file=tmp_path / "router.log",
+            ready_timeout=30.0,
+        ),
+    )
+    with pytest.raises(Exception, match=r"exited with code 3.*router\.log"):
+        adapter.start()

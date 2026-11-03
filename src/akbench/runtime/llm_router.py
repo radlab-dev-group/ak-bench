@@ -143,6 +143,10 @@ class LlmRouterAdapter:
             log_file=pick(
                 "log_file", Path(launch.log_file) if launch and launch.log_file else None
             ),
+            # The directory is a property of the run, not of the runtime: the
+            # descriptor names the log, and the runner decides where the
+            # evidence of one run lives.
+            log_dir=Path(given.log_dir) if given.log_dir is not None else None,
             ready_timeout=pick("ready_timeout", launch.ready_timeout if launch else None),
             stop_grace=pick("stop_grace", launch.stop_grace if launch else None),
         )
@@ -190,10 +194,18 @@ class LlmRouterAdapter:
         )
         self._started = True
         if not self._wait_until_ready(self.options.ready_timeout):
+            exit_code = self._process.returncode if self._process else None
+            log_note = f" (see {self.log_path})" if self.log_path else ""
+            if self._process is not None and exit_code is not None:
+                self.stop()
+                raise RuntimeLayerError(
+                    f"runtime {self.runtime_id!r} exited with code {exit_code} "
+                    f"before becoming healthy{log_note}"
+                )
             self.stop()
             raise RuntimeLayerError(
                 f"runtime {self.runtime_id!r} did not become healthy within "
-                f"{self.options.ready_timeout}s"
+                f"{self.options.ready_timeout}s{log_note}"
             )
 
     def stop(self) -> None:
