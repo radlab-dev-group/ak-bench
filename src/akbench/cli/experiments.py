@@ -40,7 +40,7 @@ from akbench.experiments import (
 )
 from akbench.experiments.validation import ValidationReport
 from akbench.metrics.catalog import MetricCatalog
-from akbench.orchestration import OrchestrationConfig, RunOrchestrator
+from akbench.orchestration import OrchestrationConfig, RunOrchestrator, RunState
 from akbench.runtime import build_runtime_registry
 from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
@@ -433,10 +433,17 @@ def _run_experiment(
                 state_color = STATE_COLORS.get(outcome.state.value, "white")
                 score = (record.get("evaluation") or {}).get("score")
                 score_str = f" score: {score:.2f}" if score is not None else ""
+                detail = outcome.detail or record.get("error_message")
                 if not silent:
                     console.print(
                         f"  [dim]outcome:[/dim]      [{state_color}]{outcome.state.value}[/{state_color}]{score_str}"
                     )
+                    # A state alone does not say why, and a run that ends
+                    # before the agent starts has no other output to read: the
+                    # reason is printed here rather than left in the record.
+                    if detail and outcome.state is not RunState.COMPLETED:
+                        for line in str(detail).splitlines():
+                            console.print(f"  [dim]detail:[/dim]       {line}")
 
                 results.append(
                     {
@@ -444,6 +451,7 @@ def _run_experiment(
                         "variant": variant.variant_id,
                         "repetition": repetition + 1,
                         "state": outcome.state.value,
+                        "detail": detail,
                         "run_uid": record.get("run_uid"),
                         "score": score,
                     }
