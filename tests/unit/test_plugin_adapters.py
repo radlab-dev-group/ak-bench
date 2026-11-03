@@ -209,3 +209,40 @@ def test_requested_configuration_for_an_unknown_plugin_is_an_error() -> None:
 def test_evidence_for_an_unregistered_plugin_is_an_error() -> None:
     with pytest.raises(PluginAdapterError, match="not registered"):
         build_plugin_registry([], metric_sources={"ghost": {"knowledge_write_count": 1}})
+
+
+def test_an_environment_the_run_applied_is_unverified_not_unsupported() -> None:
+    """A run that started the instance applied the value; only its effect is open.
+
+    This is the distinction the report rests on: ``unsupported`` means no
+    evidence could exist for this run, while ``unverified`` means evidence
+    exists (the process was launched with the value) and what is missing is
+    the plugin's own signal that it acted.
+    """
+    adapter = LlmRouterPluginAdapter()
+    observed = adapter.observe(_descriptor(), environ={TOGGLE: "1"}, environ_applied=True)
+    state = adapter.verify(_descriptor(), observed, environ_applied=True)
+
+    assert state.verification_status is VerificationStatus.UNVERIFIED
+    assert "applied by this run" in (state.note or "")
+    assert "cannot be confirmed against the running instance" in (state.note or "")
+    assert state.enabled is True
+
+
+def test_an_environment_the_run_did_not_apply_stays_unsupported() -> None:
+    """A shared instance the run never started: no evidence could exist here."""
+    adapter = LlmRouterPluginAdapter()
+    state = adapter.verify(_descriptor(), adapter.observe(_descriptor(), environ={TOGGLE: "1"}))
+
+    assert state.verification_status is VerificationStatus.UNSUPPORTED
+    assert "applied by this run" not in (state.note or "")
+
+
+def test_report_threads_the_applied_environment_end_to_end() -> None:
+    report = LlmRouterPluginAdapter().report(
+        _descriptor(), environ={TOGGLE: "1"}, environ_applied=True
+    )
+
+    assert report.state is not None
+    assert report.state.verification_status is VerificationStatus.UNVERIFIED
+    assert report.enabled is True

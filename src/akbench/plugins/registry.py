@@ -57,11 +57,14 @@ class PluginRegistry:
         requested: Mapping[str, Mapping[str, Any]] | None = None,
         environ: Mapping[str, str] | None = None,
         digests: Mapping[str, str] | None = None,
+        environ_applied: bool = False,
     ) -> list[PluginReport]:
         """Build a report per descriptor, keyed requests by plugin id.
 
         An unsupported plugin is reported, not skipped: "no adapter" is a
-        finding, and dropping the row would hide it.
+        finding, and dropping the row would hide it. ``environ_applied`` says
+        whether ``environ`` is the environment a run launched its runtime
+        with, rather than this process's own view of the world.
         """
         wanted = dict(requested or {})
         known = {item.id for item in descriptors}
@@ -96,6 +99,7 @@ class PluginRegistry:
                     digest=digest,
                     requested=wanted.get(descriptor.id),
                     environ=environ,
+                    environ_applied=environ_applied,
                 )
             )
         return reports

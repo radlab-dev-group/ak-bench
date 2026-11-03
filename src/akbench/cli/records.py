@@ -9,6 +9,7 @@ is what makes the two paths agree about what a stored run is.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 from akbench.cli.common import CliContext
@@ -29,12 +30,24 @@ def write_record(path: Path, record: dict[str, object]) -> None:
     path.write_text(payload + "\n", encoding="utf-8")
 
 
-def plugin_reports(settings: Settings) -> list[dict[str, object]]:
+def plugin_reports(
+    settings: Settings,
+    environ: Mapping[str, str] | None = None,
+    environ_applied: bool = False,
+) -> list[dict[str, object]]:
     """Observe the shipped plugin descriptors; never contact the router.
 
     The verification status travels with the report, so a stored
     ``unverified`` stays unverified in the history rather than reading as a
     confirmed configuration.
+
+    ``environ`` is the environment to read instead of this process's own. A
+    run that started its own runtime must report the environment **that
+    process** was launched with (``record["runtime_environment"]``); reading
+    the CLI's environment instead would describe a process that is not the
+    one under test. ``environ_applied`` carries that distinction to the
+    adapter, which then reports ``unverified`` (applied, effect not yet
+    confirmed) rather than ``unsupported``.
     """
     try:
         paths = build_app_paths(settings)
@@ -47,8 +60,26 @@ def plugin_reports(settings: Settings) -> list[dict[str, object]]:
         return []
     return [
         report.as_dict()
-        for report in build_plugin_registry(descriptors).reports(descriptors, digests=digests)
+        for report in build_plugin_registry(descriptors).reports(
+            descriptors,
+            digests=digests,
+            environ=environ,
+            environ_applied=environ_applied,
+        )
     ]
+
+
+def _launched_environment(record: dict[str, object]) -> dict[str, str] | None:
+    """The environment this run started its runtime with, as strings."""
+    declared = record.get("runtime_environment")
+    if not isinstance(declared, dict) or not declared:
+        return None
+    environment = {
+        str(name): str(value)
+        for name, value in declared.items()
+        if isinstance(value, (str, int, float, bool))
+    }
+    return environment or None
 
 
 def store_run(
@@ -65,8 +96,10 @@ def store_run(
 ) -> dict[str, object]:
     """Record the run, its artifacts and the plugin state in the history.
 
-    The plugin state is observed from the environment of this process, which
-    is all a benchmark on an external router can honestly say about it.
+    The plugin state is observed from the environment the run's runtime was
+    launched with when the run started one; for an external router, where no
+    launch happened, this process's environment is all that can honestly be
+    said about it, and the report says so.
     """
     settings = context.loaded().settings
     url = resolve_database_url(settings)
@@ -84,7 +117,11 @@ def store_run(
     else:
         store.record_plan(experiment_uid=uid, title=f"adhoc runs of {agent_id}")
 
-    reports = plugin_reports(settings)
+    # A run that launched its own runtime knows that process's environment;
+    # observing this CLI process instead would report the toggles of a process
+    # that never served the run (the bug this line fixes).
+    launched = _launched_environment(record)
+    reports = plugin_reports(settings, environ=launched, environ_applied=launched is not None)
     plugin_versions = {
         str(report["plugin_id"]): str(report.get("plugin_version", "")) for report in reports
     }
