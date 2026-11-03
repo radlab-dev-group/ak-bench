@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from akbench.descriptors.runtime import RuntimeDescriptor
+from akbench.descriptors.runtime import Lifecycle, RuntimeDescriptor
 from akbench.runtime import LlmRouterAdapter, LlmRouterOptions
 from akbench.runtime.contract import VerificationStatus
 from akbench.runtime.errors import CapabilityNotSupported
@@ -94,7 +94,6 @@ runtime:
 
 
 def make_adapter(stub_url: str, **overrides: object) -> LlmRouterAdapter:
-    from akbench.descriptors.runtime import Lifecycle
 
     if "lifecycle" in overrides and isinstance(overrides["lifecycle"], str):
         overrides["lifecycle"] = Lifecycle(overrides["lifecycle"])  # type: ignore[assignment]
@@ -232,6 +231,120 @@ def test_managed_runtime_start_and_stop(tmp_path: Path) -> None:
         adapter.start()
     # the process must have been reaped even when readiness never arrived
     assert log.is_file()
+
+
+def test_descriptor_launch_block_fills_the_adapter_options(stub: tuple[str, dict]) -> None:
+    """A ``managed`` block in the descriptor is what makes a runtime startable."""
+    import yaml
+
+    url, _ = stub
+    body = yaml.safe_load(
+        """
+schema_version: "1.0"
+id: managed-router
+version: "1.0.0"
+runtime:
+  adapter: llm_router
+  execution_modes: [router, runtime, direct]
+  supported_lifecycles: [managed]
+  base_url: BASEURL
+  managed:
+    command: ["/bin/sh", "-c", "true"]
+    cwd: /srv/router
+    env:
+      LLM_ROUTER_AUTH_ENABLED: "false"
+    factor_env:
+      knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
+    config_file: resources/configs/models-config.json
+    ready_timeout: 42.0
+    stop_grace: 21.0
+    log_file: router.log
+""".replace("BASEURL", url)
+    )
+    descriptor = RuntimeDescriptor.model_validate(body)
+    adapter = LlmRouterAdapter(descriptor)
+
+    assert adapter.lifecycle is Lifecycle.MANAGED
+    assert adapter.options.start_command == ["/bin/sh", "-c", "true"]
+    assert adapter.options.cwd == Path("/srv/router")
+    assert adapter.options.env == {"LLM_ROUTER_AUTH_ENABLED": "false"}
+    assert adapter.options.factor_env == {
+        "knowledge_enabled": "LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED"
+    }
+    assert adapter.options.config_file == Path("resources/configs/models-config.json")
+    assert adapter.options.ready_timeout == 42.0
+    assert adapter.options.stop_grace == 21.0
+    assert adapter.options.log_file == Path("router.log")
+
+
+def test_runtime_accepting_both_lifecycles_stays_external(stub: tuple[str, dict]) -> None:
+    """A descriptor that also accepts ``external`` is never started unasked."""
+    import yaml
+
+    url, _ = stub
+    body = yaml.safe_load(
+        """
+schema_version: "1.0"
+id: shared-router
+version: "1.0.0"
+runtime:
+  adapter: llm_router
+  supported_lifecycles: [managed, external]
+  base_url: BASEURL
+  managed:
+    command: ["/bin/sh", "-c", "true"]
+""".replace("BASEURL", url)
+    )
+    adapter = LlmRouterAdapter(RuntimeDescriptor.model_validate(body))
+    assert adapter.lifecycle is Lifecycle.EXTERNAL
+    with pytest.raises(CapabilityNotSupported, match="lifecycle=external"):
+        adapter.start()
+
+
+def test_launch_environment_carries_descriptor_env_and_run_factors(
+    stub: tuple[str, dict], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url, _ = stub
+    monkeypatch.setenv("LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED", "stale-shell-value")
+    adapter = make_adapter(
+        url,
+        lifecycle="managed",
+        start_command=["/bin/sh", "-c", "true"],
+        env={"LLM_ROUTER_AUTH_ENABLED": "false"},
+        factor_env={"knowledge_enabled": "LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED"},
+        factor_values={"knowledge_enabled": False},
+    )
+    environment = adapter.process_environment()
+    # the variant value beats both the descriptor's env and the ambient shell
+    assert environment["LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED"] == "false"
+    assert environment["LLM_ROUTER_AUTH_ENABLED"] == "false"
+    assert "SOME_ROUTER_KEY" in environment  # the ambient environment survives
+
+
+def test_managed_instance_logs_to_the_configured_file(
+    stub: tuple[str, dict], tmp_path: Path
+) -> None:
+    """The launched process's output is the run's router.log, not /dev/null."""
+    url, _ = stub
+    log_file = tmp_path / "artifacts" / "router.log"
+    command = ["/bin/sh", "-c", "echo router-said-hello"]
+    adapter = LlmRouterAdapter(
+        None,
+        LlmRouterOptions(
+            base_url=url,
+            lifecycle=Lifecycle.MANAGED,
+            start_command=command,
+            ready_timeout=15.0,
+            log_file=log_file,
+        ),
+    )
+    try:
+        adapter.start()
+        assert adapter.healthcheck() is True
+    finally:
+        adapter.stop()
+    assert adapter.log_path == log_file
+    assert "router-said-hello" in log_file.read_text(encoding="utf-8")
 
 
 def test_http_errors_are_reported_not_raised(stub: tuple[str, dict]) -> None:

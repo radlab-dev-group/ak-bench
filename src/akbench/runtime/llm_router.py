@@ -24,6 +24,7 @@ import os
 import shlex
 import subprocess
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -64,6 +65,21 @@ class LlmRouterOptions:
     config_file: Path | None = None
     #: Command that starts a managed instance, e.g. a ``docker run ...`` argv.
     start_command: list[str] = field(default_factory=list)
+    #: Working directory of the launched process (the router resolves its
+    #: models config and prompts directory against it).
+    cwd: Path | None = None
+    #: Environment applied to the launched process on top of the ambient one.
+    env: dict[str, str] = field(default_factory=dict)
+    #: Factor id -> environment variable, so a variant value becomes a real
+    #: process configuration instead of a recorded request.
+    factor_env: dict[str, str] = field(default_factory=dict)
+    #: Factor values of the run being started, mapped through ``factor_env``.
+    factor_values: dict[str, Any] = field(default_factory=dict)
+    #: Where the launched process writes its log; ``None`` discards it.
+    log_file: Path | None = None
+    #: Directory the log name is resolved against, so the runner decides where
+    #: a run's evidence lives and the descriptor only decides what it is called.
+    log_dir: Path | None = None
     #: Seconds to wait for a managed instance to become healthy.
     ready_timeout: float = 120.0
     stop_grace: float = 15.0
@@ -85,22 +101,51 @@ class LlmRouterAdapter:
         self.descriptor = descriptor
         base = dict(options.__dict__) if options is not None else {}
         base.update({k: v for k, v in overrides.items() if v is not None})
-        resolved = LlmRouterOptions(**base)
-        if descriptor is not None:
-            body = descriptor.runtime
-            resolved = LlmRouterOptions(
-                base_url=resolved.base_url or (body.base_url or ""),
-                healthcheck_path=resolved.healthcheck_path or (body.healthcheck_path or "/health"),
-                metrics_path=resolved.metrics_path or (body.metrics_path or "/metrics"),
-                api_key_env=resolved.api_key_env
-                or (body.required_env[0] if body.required_env else None),
-                timeout=resolved.timeout,
-                lifecycle=resolved.lifecycle,
-                config_file=resolved.config_file,
-                start_command=list(resolved.start_command),
-                ready_timeout=resolved.ready_timeout,
-                stop_grace=resolved.stop_grace,
-            )
+        given = LlmRouterOptions(**base)
+        defaults = LlmRouterOptions()
+        body = descriptor.runtime if descriptor is not None else None
+        launch = body.managed if body is not None else None
+
+        def pick(name: str, declared: Any) -> Any:
+            """An explicitly passed option wins over the descriptor.
+
+            Only non-``None`` options count as passed, because the registry
+            factory passes every option it knows and an unset one must not
+            erase what the descriptor declares.
+            """
+            if name in base:
+                return getattr(given, name)
+            if declared is not None:
+                return declared
+            return getattr(defaults, name)
+
+        resolved = LlmRouterOptions(
+            base_url=pick("base_url", body.base_url if body else None),
+            healthcheck_path=pick("healthcheck_path", body.healthcheck_path if body else None),
+            metrics_path=pick("metrics_path", body.metrics_path if body else None),
+            api_key_env=pick(
+                "api_key_env", body.required_env[0] if body and body.required_env else None
+            ),
+            timeout=pick("timeout", None),
+            lifecycle=pick("lifecycle", _declared_lifecycle(body)),
+            config_file=pick(
+                "config_file", Path(launch.config_file) if launch and launch.config_file else None
+            ),
+            start_command=pick(
+                "start_command", list(launch.command) if launch and launch.command else None
+            ),
+            cwd=pick("cwd", Path(launch.cwd) if launch and launch.cwd else None),
+            env={**(launch.env if launch else {}), **given.env},
+            factor_env=pick(
+                "factor_env", dict(launch.factor_env) if launch and launch.factor_env else None
+            ),
+            factor_values=given.factor_values,
+            log_file=pick(
+                "log_file", Path(launch.log_file) if launch and launch.log_file else None
+            ),
+            ready_timeout=pick("ready_timeout", launch.ready_timeout if launch else None),
+            stop_grace=pick("stop_grace", launch.stop_grace if launch else None),
+        )
         if not resolved.base_url:
             raise RuntimeConfigError(
                 "llm_router needs a base_url (from the descriptor or the options)"
@@ -111,6 +156,8 @@ class LlmRouterAdapter:
         self.lifecycle = resolved.lifecycle
         self._process: subprocess.Popen | None = None
         self._started = False
+        self.log_path: Path | None = None
+        self.log_handle = None
 
     # ------------------------------------------------------------- lifecycle
 
@@ -132,10 +179,13 @@ class LlmRouterAdapter:
         argv = list(self.options.start_command)
         if len(argv) == 1:
             argv = shlex.split(argv[0])
+        self._open_log(self.options.log_file)
         self._process = subprocess.Popen(
             argv,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            cwd=str(self.options.cwd) if self.options.cwd else None,
+            env=self.process_environment(),
+            stdout=(self.log_handle or subprocess.DEVNULL),
+            stderr=(self.log_handle or subprocess.DEVNULL),
             start_new_session=True,
         )
         self._started = True
@@ -150,17 +200,18 @@ class LlmRouterAdapter:
         """Stop the managed instance this adapter started; ignore external ones."""
         process = self._process
         self._started = False
-        if process is None:
-            return
-        if process.poll() is None:
-            process.terminate()
-            deadline = time.time() + self.options.stop_grace
-            while process.poll() is None and time.time() < deadline:
-                time.sleep(0.1)
-            if process.poll() is None:
-                process.kill()
-            process.wait(timeout=5)
-        self._process = None
+        try:
+            if process is not None and process.poll() is None:
+                process.terminate()
+                deadline = time.time() + self.options.stop_grace
+                while process.poll() is None and time.time() < deadline:
+                    time.sleep(0.1)
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=5)
+        finally:
+            self._process = None
+            self._close_log()
 
     def healthcheck(self) -> bool:
         """True when the router answers its health endpoint as healthy."""
@@ -272,6 +323,47 @@ class LlmRouterAdapter:
             notes=notes,
         )
 
+    # ---------------------------------------------------- launched process
+
+    def process_environment(self) -> dict[str, str]:
+        """Ambient environment, the descriptor's env, then this run's factors.
+
+        Factor values come last on purpose: they are what the experiment varied,
+        and a variant that could be overridden by a stray shell variable would
+        silently stop being the variant it claims to be.
+        """
+        environment = dict(os.environ)
+        environment.update(self.options.env)
+        for factor, name in self.options.factor_env.items():
+            if factor not in self.options.factor_values:
+                continue
+            environment[name] = _as_environment_value(self.options.factor_values[factor])
+        return environment
+
+    def _open_log(self, log_file: Path | None):
+        """Open the instance log so the run keeps the router's own account.
+
+        The name comes from the descriptor and lands in the directory the runner
+        supplied, which is what makes the log of a managed instance an artifact
+        of the run that started it rather than a file somebody has to go find.
+        """
+        if log_file is None:
+            return None
+        path = Path(log_file)
+        if not path.is_absolute() and self.options.log_dir is not None:
+            path = Path(self.options.log_dir) / path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.log_path = path
+        self.log_handle = path.open("ab")
+        return self.log_handle
+
+    def _close_log(self) -> None:
+        handle = self.log_handle
+        self.log_handle = None
+        if handle is not None:
+            with suppress(OSError):
+                handle.close()
+
     # ------------------------------------------------------------ observation
 
     def collect_runtime_state(self) -> RuntimeState:
@@ -349,6 +441,34 @@ class LlmRouterAdapter:
                 return False
             time.sleep(0.5)
         return False
+
+
+def _declared_lifecycle(body: Any) -> Lifecycle | None:
+    """The lifecycle of a descriptor that owns its process, else ``None``.
+
+    A descriptor that declares a ``managed`` launch block and no other
+    lifecycle is AK-Bench's own instance, so it is managed by default. One that
+    also accepts ``external`` stays external: only a managed instance may be
+    started or stopped (plan section 13), and an unasked-for start is worse
+    than a refused one.
+    """
+    if body is None or body.managed is None:
+        return None
+    declared = body.supported_lifecycles
+    if Lifecycle.EXTERNAL in declared:
+        return None
+    return Lifecycle.MANAGED if Lifecycle.MANAGED in declared else None
+
+
+def _as_environment_value(value: Any) -> str:
+    """Render a factor value the way the router's own parsing expects.
+
+    The router reads booleans as ``true``/``false`` (and ``1``/``0``); Python's
+    ``str(True)`` would hand it ``True``, which most parsers read as a string.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def _looks_healthy(response: HttpResponse | None) -> bool:
