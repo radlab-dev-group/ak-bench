@@ -38,6 +38,23 @@ def project(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     return root
 
 
+def _shipped_experiment_ids() -> set[str]:
+    """The ids of every experiment file shipped in ``configs/experiments``.
+
+    Derived from the directory rather than hardcoded: these tests guard that
+    the CLI lists and validates the shipped examples, and a hand-maintained
+    count would only make every new experiment look like a regression.
+    """
+    import yaml
+
+    ids = set()
+    for path in sorted(EXPERIMENTS.glob("*.yaml")):
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if isinstance(document, dict) and document.get("id"):
+            ids.add(str(document["id"]))
+    return ids
+
+
 def _payload(output: str) -> dict | list:
     """Parse the JSON document a command printed, ignoring any log prefix."""
     decoder = json.JSONDecoder()
@@ -69,21 +86,15 @@ def test_list_json_is_machine_readable(project: Path) -> None:
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     assert isinstance(payload, list)
-    assert {item["id"] for item in payload} == {
-        "full-matrix",
-        "knowledge-on-off",
-        "knowledge-replay",
-        "model-comparison",
-        "router-config-comparison",
-        "wordcount-direct-sanity",
-    }
+    listed = {item["id"] for item in payload}
+    assert listed == _shipped_experiment_ids()
 
 
 def test_validate_accepts_the_shipped_experiments(project: Path) -> None:
     result = runner.invoke(app, ["experiment", "validate"])
 
     assert result.exit_code == 0, result.output
-    assert result.output.count("ok ") >= 6
+    assert result.output.count("ok ") >= len(_shipped_experiment_ids())
     assert "invalid" not in result.output
 
 
@@ -92,7 +103,7 @@ def test_validate_json_carries_the_findings(project: Path) -> None:
 
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert len(payload) == 6
+    assert len(payload) == len(_shipped_experiment_ids())
     for item in payload:
         assert item["validation"]["ok"] is True
 
