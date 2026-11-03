@@ -1295,3 +1295,16 @@ def test_artifacts_and_packages_tables_in_run_detail(database_url: str, tmp_path
     # Old button badges are removed
     assert "📦 Solution Code" not in run_page
     assert "🔍 Agent Traces" not in run_page
+
+
+def test_relative_path_starts_from_artifacts_when_present() -> None:
+    from akbench.reporting.render import _relative_path
+
+    deep_path = "/mnt/data2/dev/develop/ak-bench-data/artifacts/runs/codex-20261103-000803-060662-3f72b0/agent_traces.zip"
+    assert _relative_path(deep_path) == "artifacts/runs/codex-20261103-000803-060662-3f72b0/agent_traces.zip"
+
+    rel_art_path = "artifacts/runs/run-123/solution.zip"
+    assert _relative_path(rel_art_path) == "artifacts/runs/run-123/solution.zip"
+
+    empty_path = ""
+    assert _relative_path(empty_path) == ""

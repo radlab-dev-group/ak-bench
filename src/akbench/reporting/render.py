@@ -1710,20 +1710,22 @@ def _download_filename(run_uid: str, filename: str) -> str:
 
 
 def _relative_path(path_str: str | Path | None) -> str:
-    """Format path relative to current working directory, avoiding absolute root path display."""
+    """Format path relative to current working directory or starting from artifacts/."""
     if not path_str:
         return ""
     try:
         p = Path(path_str)
+        parts = p.parts
+        if "artifacts" in parts:
+            idx = parts.index("artifacts")
+            return str(Path(*parts[idx:]))
         cwd = Path.cwd()
         if p.is_absolute():
             try:
                 return str(p.relative_to(cwd))
             except ValueError:
-                parts = p.parts
-                if len(parts) > 1:
-                    return str(Path(*parts[1:]))
-                return p.name
+                clean_parts = [part for part in parts if part not in ("/", "\\")]
+                return str(Path(*clean_parts)) if clean_parts else p.name
         return str(p)
     except Exception:
         return str(path_str)
