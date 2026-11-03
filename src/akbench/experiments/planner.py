@@ -37,6 +37,7 @@ from akbench.descriptors import (
 from akbench.descriptors.registry import compute_digest
 from akbench.descriptors.runtime import Lifecycle
 from akbench.experiments.descriptor import (
+    RUNTIME_ENV_KEY,
     ExperimentDescriptor,
     ExperimentType,
     MatrixStrategy,
@@ -95,6 +96,11 @@ class PlanVariant:
     config_hash: str
     is_baseline: bool
     applies: dict[str, str] = field(default_factory=dict)
+    #: Environment this variant's managed runtime is launched with, declared by
+    #: the combination under ``runtime_env``. Which plugins a process loads is
+    #: decided when it starts, so a variant that asks for a plugin has to say so
+    #: here; a value sent in a request would not be a configuration.
+    runtime_env: dict[str, str] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -104,6 +110,7 @@ class PlanVariant:
             "agent_id": self.agent_id,
             "agent_config": dict(self.agent_config),
             "environment_requests": dict(self.environment_requests),
+            "runtime_env": dict(self.runtime_env),
             "config_hash": self.config_hash,
             "is_baseline": self.is_baseline,
             "applies": dict(self.applies),
@@ -421,6 +428,9 @@ class ExperimentPlanner:
             return
         runtime = entry.descriptor
         if isinstance(runtime, RuntimeDescriptor):
+            self._check_launch_environment(
+                runtime, selection, body.factors.combinations, report
+            )
             if not runtime.supports_mode(mode):
                 report.error(
                     "runtime_mode_unsupported",
@@ -436,6 +446,31 @@ class ExperimentPlanner:
                 )
             if plugin_factors and not runtime.runtime.capabilities.per_run_plugin_control.usable:
                 self._check_plugin_control(runtime, selection, plugin_factors, report)
+
+    def _check_launch_environment(
+        self,
+        runtime: RuntimeDescriptor,
+        selection: RuntimeSelection,
+        combinations: list[dict[str, object]],
+        report: ValidationReport,
+    ) -> None:
+        """A combination's launch environment needs a process this run starts.
+
+        ``runtime_env`` is applied to the environment of the instance a run
+        launches. Against a shared (external) instance there is no such process,
+        and an environment sent nowhere is not a configuration, so the plan is
+        refused rather than pretending an arm chose its plugins.
+        """
+        if not any(item.get(RUNTIME_ENV_KEY) for item in combinations):
+            return
+        if selection.lifecycle != Lifecycle.MANAGED.value or runtime.runtime.managed is None:
+            report.error(
+                "runtime_environment_needs_managed",
+                f"a combination declares {RUNTIME_ENV_KEY}, which is applied to the "
+                f"instance a run starts; runtime {runtime.id} with lifecycle "
+                f"{selection.lifecycle or 'default'} has no managed launch block, so "
+                "there is no process to set it on",
+            )
 
     def _check_plugin_control(
         self,
@@ -648,7 +683,7 @@ class ExperimentPlanner:
         body = descriptor.experiment
         factors_block = body.factors
         try:
-            assignments = self._expand(factors_block, factors)
+            assignments, launch_environments = self._expand(factors_block, factors)
         except StrategyError as exc:
             report.error(exc.code, str(exc))
             return []
@@ -659,6 +694,12 @@ class ExperimentPlanner:
             agent_id, agent_config, environment, applies = self._requested_config(
                 descriptor, factors, assignment
             )
+            runtime_env = {
+                str(name): _as_environment_value(value)
+                for name, value in launch_environments[index].items()
+            }
+            if runtime_env:
+                applies[RUNTIME_ENV_KEY] = "process environment of the runtime instance"
             config_hash = _config_hash(
                 source_digest=descriptor_digest,
                 agent_id=agent_id,
@@ -666,6 +707,7 @@ class ExperimentPlanner:
                 runtime_id=body.execution.runtime.id if body.execution.runtime else None,
                 agent_config=agent_config,
                 environment=environment,
+                runtime_env=runtime_env,
             )
             variant_id = "v-" + hashlib.sha256(
                 json.dumps(
@@ -684,6 +726,7 @@ class ExperimentPlanner:
                     config_hash=config_hash,
                     is_baseline=_matches_baseline(assignment, baseline),
                     applies=applies,
+                    runtime_env=runtime_env,
                 )
             )
         return variants
@@ -775,15 +818,28 @@ class ExperimentPlanner:
                 snapshots[entry.identity] = entry.snapshot.digest
         return snapshots
 
-    def _expand(self, factors_block: Any, factors: list[Factor]) -> list[Assignment]:
-        """Call the strategy, passing combinations only to the one that takes them."""
+    def _expand(
+        self, factors_block: Any, factors: list[Factor]
+    ) -> tuple[list[Assignment], list[dict[str, Any]]]:
+        """Call the strategy, passing combinations only to the one that takes them.
+
+        A combination may also carry the environment its runtime starts with.
+        That is not a factor value, so it is taken out before the matrix is
+        expanded and handed back next to the variant it belongs to. Only
+        ``custom_matrix`` keeps the declared order and the one-variant-per-row
+        shape the block needs; any other strategy returns one empty environment
+        per variant instead of guessing a pairing.
+        """
         strategy = strategy_for(factors_block.strategy.value)
         baseline = dict(factors_block.baseline)
         selected = [str(item) for item in factors_block.selected]
         if factors_block.strategy is MatrixStrategy.CUSTOM_MATRIX:
-            combinations = [dict(item) for item in factors_block.combinations]
-            return strategy(factors, baseline, selected, combinations=combinations)
-        return strategy(factors, baseline, selected)
+            declared = [dict(item) for item in factors_block.combinations]
+            environments = [item.pop(RUNTIME_ENV_KEY, None) or {} for item in declared]
+            assignments = strategy(factors, baseline, selected, combinations=declared)
+            return assignments, [dict(item) for item in environments]
+        assignments = strategy(factors, baseline, selected)
+        return assignments, [{} for _ in assignments]
 
 
 def _agent_parameter(factor: Factor) -> str | None:
@@ -823,17 +879,35 @@ def _config_hash(
     runtime_id: str | None,
     agent_config: dict[str, Any],
     environment: dict[str, Any],
+    runtime_env: dict[str, str] | None = None,
 ) -> str:
-    """A hash of what the variant asks for, pinned to the experiment it came from."""
+    """A hash of what the variant asks for, pinned to the experiment it came from.
+
+    The runtime's launch environment is part of the identity: two variants that
+    differ only in the plugins their router process loads are two different
+    configurations and must not share a variant id.
+    """
     payload = {
         "agent_id": agent_id,
         "mode": mode,
         "runtime_id": runtime_id,
         "agent_config": agent_config,
         "environment": environment,
+        "runtime_env": dict(runtime_env or {}),
         "source_digest": source_digest,
     }
     return compute_digest(payload)
+
+
+def _as_environment_value(value: Any) -> str:
+    """Render a value the way a process environment holds it.
+
+    ``True`` would reach the process as ``"True"`` from ``str``, which the
+    router's parsers do not read as a boolean.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def _estimate(counts: PlanCounts, timeout_seconds: int | None) -> PlanEstimate:

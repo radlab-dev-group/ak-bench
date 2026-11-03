@@ -20,6 +20,13 @@ from akbench.knowledge.modes import ScenarioSpec
 
 RESERVED_FACTOR_IDS = frozenset({"repetition"})
 
+#: Reserved key of a ``custom_matrix`` combination: the environment the runtime
+#: of that variant starts with. A combination is otherwise a set of factor
+#: values, so the binding between a configuration and the process that
+#: implements it is declared where the configuration is declared, and the
+#: planner takes this key out before the matrix is expanded.
+RUNTIME_ENV_KEY = "runtime_env"
+
 
 class ExperimentType(StrEnum):
     """What the experiment varies (plan 12 and 25).
@@ -102,6 +109,16 @@ class FactorReference(_StrictModel):
             raise ValueError("factor values must not be an empty list")
         return value
 
+    @field_validator("id")
+    @classmethod
+    def _id_not_reserved(cls, value: str) -> str:
+        if value == RUNTIME_ENV_KEY:
+            raise ValueError(
+                f"{RUNTIME_ENV_KEY} is not a factor: it is the reserved key under which "
+                "a combination declares the environment its runtime starts with"
+            )
+        return value
+
 
 class Factors(_StrictModel):
     strategy: MatrixStrategy = MatrixStrategy.FULL_FACTORIAL
@@ -147,7 +164,37 @@ class Factors(_StrictModel):
                 raise ValueError(
                     f"factors.baseline names {key!r}, which is not a declared factor"
                 )
+        for position, combination in enumerate(self.combinations):
+            _check_combination_environment(position, combination)
         return self
+
+
+def _check_combination_environment(position: int, combination: dict[str, object]) -> None:
+    """Validate the reserved ``runtime_env`` block of a combination.
+
+    The block is a process environment, so it is a mapping of variable names to
+    scalar values and nothing else: a nested structure would silently reach the
+    process as its Python repr.
+    """
+    if RUNTIME_ENV_KEY not in combination:
+        return
+    block = combination[RUNTIME_ENV_KEY]
+    if not isinstance(block, dict):
+        raise ValueError(
+            f"combination {position}: {RUNTIME_ENV_KEY} must be a mapping of environment "
+            "variable names to values"
+        )
+    for name, value in block.items():
+        if not isinstance(name, str) or not name or not name.replace("_", "").isalnum():
+            raise ValueError(
+                f"combination {position}: {RUNTIME_ENV_KEY} names {name!r}, which is not "
+                "an environment variable name"
+            )
+        if isinstance(value, bool) or not isinstance(value, str | int | float):
+            raise ValueError(
+                f"combination {position}: {RUNTIME_ENV_KEY}[{name!r}] must be a scalar "
+                f"value, got {type(value).__name__}"
+            )
 
 
 class ExecutionPolicy(_StrictModel):

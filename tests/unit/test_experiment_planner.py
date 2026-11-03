@@ -357,3 +357,100 @@ def test_task_timeout_within_experiment_timeout_is_accepted(planner: ExperimentP
     report = planner.validate(experiment(payload))
 
     assert "task_timeout_exceeds_experiment" not in codes(report)
+
+
+# ------------------------------------------------------- runtime_env binding
+
+
+def test_a_combination_env_reaches_its_variant(planner: ExperimentPlanner) -> None:
+    """The arm that wants a plugin names it where the arm is declared."""
+    from akbench.experiments import load_experiment_file
+
+    loaded = load_experiment_file(EXPERIMENTS / "llm-router-selfhost-fast.yaml")
+    plan = planner.plan(loaded)
+
+    by_values = {
+        (v.values.get("model"), v.values.get("knowledge_enabled")): v for v in plan.variants
+    }
+    baseline = by_values[("qwen/Qwen3.8-27B", False)]
+    knowledge = by_values[("auto_codex", True)]
+    pipeline = "LLM_ROUTER_UTILS_PLUGINS_PIPELINE"
+    assert baseline.runtime_env == {pipeline: "agentic_routing_codex"}
+    assert knowledge.runtime_env == {
+        pipeline: "agentic_routing_codex,agentic_knowledge"
+    }
+
+
+def test_the_shipped_selfhost_experiment_declares_its_pipeline(
+    planner: ExperimentPlanner,
+) -> None:
+    """A pipeline in the runtime descriptor would load its plugins in every arm.
+
+    The regression this guards: the first version of the self-hosted run loaded
+    the knowledge plugin in the arm that measured the router without it, because
+    the pipeline sat in the runtime's static environment.
+    """
+    from akbench.descriptors import DescriptorKind, load_registry
+
+    registry = load_registry(REPO_ROOT / "descriptors")
+    entry = registry.get(DescriptorKind.RUNTIME, "llm-router-ak-bench")
+    assert entry is not None
+    assert "LLM_ROUTER_UTILS_PLUGINS_PIPELINE" not in entry.descriptor.runtime.managed.env
+
+    from akbench.experiments import load_experiment_file
+
+    loaded = load_experiment_file(EXPERIMENTS / "llm-router-selfhost-fast.yaml")
+    plan = planner.plan(loaded)
+    for variant in plan.variants:
+        assert "LLM_ROUTER_UTILS_PLUGINS_PIPELINE" in variant.runtime_env, (
+            "every arm declares the plugins its process loads"
+        )
+    assert not any(
+        "agentic_knowledge" in v.runtime_env["LLM_ROUTER_UTILS_PLUGINS_PIPELINE"]
+        for v in plan.variants
+        if v.values.get("knowledge_enabled") is False
+    )
+
+
+def test_a_variant_env_is_part_of_the_variant_identity(planner: ExperimentPlanner) -> None:
+    """Two arms that differ only in their runtime env are two configurations."""
+    payload = document("knowledge-on-off")
+    payload["experiment"]["execution"] = {
+        "mode": "router",
+        "runtime": {"id": "llm-router-ak-bench", "lifecycle": "managed"},
+    }
+    payload["experiment"]["factors"] = {
+        "strategy": "custom_matrix",
+        "dimensions": [{"id": "knowledge_enabled"}],
+        "baseline": {"knowledge_enabled": False},
+        "combinations": [
+            {"knowledge_enabled": False, "runtime_env": {"PIPE": "routing"}},
+            {"knowledge_enabled": True, "runtime_env": {"PIPE": "routing,knowledge"}},
+        ],
+    }
+
+    plan = planner.plan(experiment(payload))
+
+    ids = [variant.variant_id for variant in plan.variants]
+    assert len(ids) == 2 and len(set(ids)) == 2
+    envs = {v.values["knowledge_enabled"]: v.runtime_env for v in plan.variants}
+    assert envs[False] == {"PIPE": "routing"}
+    assert envs[True] == {"PIPE": "routing,knowledge"}
+
+
+def test_a_combination_env_against_an_external_runtime_is_refused(
+    planner: ExperimentPlanner,
+) -> None:
+    payload = document("knowledge-on-off")
+    payload["experiment"]["execution"] = {"mode": "router", "runtime": {"id": "llm-router"}}
+    payload["experiment"]["factors"] = {
+        "strategy": "custom_matrix",
+        "dimensions": [{"id": "knowledge_enabled"}],
+        "combinations": [
+            {"knowledge_enabled": True, "runtime_env": {"PIPE": "routing,knowledge"}}
+        ],
+    }
+
+    report = planner.validate(experiment(payload))
+
+    assert "runtime_environment_needs_managed" in codes(report)
