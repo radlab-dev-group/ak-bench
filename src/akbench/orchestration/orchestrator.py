@@ -199,6 +199,7 @@ class RunOrchestrator:
         except Exception as exc:  # unexpected: record it, never lose the run
             return self._fail(config, context, exc, adapter=adapter, session=session)
         finally:
+            self._recording_model_evidence(runtime, context)
             self._stopping_runtime(runtime, context)
             self._cleanup(config, context)
 
@@ -303,6 +304,7 @@ class RunOrchestrator:
                 if context.runtime_environment and name in context.runtime_environment:
                     notes.append(f"{name}={context.runtime_environment[name]}")
             context.history.record(context.state, ", ".join(notes))
+            self._recording_served_models(manager, context)
             return manager, None
 
         try:
@@ -316,7 +318,44 @@ class RunOrchestrator:
                 context,
                 RunPreparationError(f"runtime {config.runtime_id} is not healthy"),
             )
+        self._recording_served_models(manager, context)
         return manager, None
+
+    def _recording_served_models(self, manager: object, context: RunContext) -> None:
+        """Ask the instance which models it serves, and record what it answers.
+
+        Inventory is the weakest model evidence there is — it says what the
+        instance can serve, not what served this run — so a failure to read it
+        is a note, never a run-ending error.
+        """
+        list_models = getattr(manager, "list_models", None)
+        if not callable(list_models):
+            return
+        try:
+            models = list_models()
+        except AKBenchmarkError as exc:
+            context.history.record(context.state, f"model inventory unreadable: {exc}")
+            return
+        context.served_models = list(models) if models is not None else None
+        if models is None:
+            context.history.record(context.state, "model inventory unreadable")
+
+    def _recording_model_evidence(self, manager: object, context: RunContext) -> None:
+        """Read the instance's own account of the models it handled.
+
+        This must happen while the run still owns the process and its log, so
+        it is collected before the runtime is stopped.
+        """
+        evidence = getattr(manager, "model_request_evidence", None)
+        if not callable(evidence):
+            return
+        try:
+            recorded = evidence()
+        except AKBenchmarkError as exc:
+            context.history.record(context.state, f"model evidence failed: {exc}")
+            return
+        if isinstance(recorded, dict):
+            context.model_evidence = recorded
 
     def _stopping_runtime(self, manager: object, context: RunContext) -> None:
         """Stop the managed instance this run started; losing it is a bug."""

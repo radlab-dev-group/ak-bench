@@ -294,6 +294,14 @@ class _RecordingRuntimeManager:
         self.started: list[dict] = []
         self.stopped = False
         self.log_path = None
+        self.models: list[str] | None = ["model-a", "model-b"]
+        self.evidence: dict = {
+            "available": True,
+            "log": "router.log",
+            "served_models": ["model-a"],
+            "routing_decisions": ["model-a"],
+            "received_models": ["model-a"],
+        }
 
     def start(self) -> None:
         self.started.append(dict(self.overrides))
@@ -312,6 +320,12 @@ class _RecordingRuntimeManager:
 
     def healthcheck(self) -> bool:
         return True
+
+    def list_models(self) -> list[str] | None:
+        return list(self.models) if self.models is not None else None
+
+    def model_request_evidence(self) -> dict:
+        return dict(self.evidence)
 
 
 def test_a_managed_runtime_is_started_and_stopped_around_the_run(
@@ -424,3 +438,64 @@ def test_a_managed_runtime_gets_the_environment_the_variant_declared(
     assert record["runtime_environment"] == {
         "LLM_ROUTER_UTILS_PLUGINS_PIPELINE": "agentic_routing_codex,agentic_knowledge"
     }
+
+
+def test_a_run_records_the_model_evidence_its_instance_gave(harness: dict) -> None:
+    """Where the model claim comes from is a fact of the run, not a report-time guess.
+
+    The inventory says what an instance can serve; the evidence is the
+    instance's own account of what it served. The run stores both, so a report
+    can say which claim rests on which kind of evidence.
+    """
+    use_stub(harness, copy_stub(harness, "codex-fixer", FIXER_STUB))
+
+    instances: list[_RecordingRuntimeManager] = []
+    registry = RuntimeRegistry()
+    registry.register(
+        managed_runtime_descriptor(),
+        lambda spec, **overrides: _recorded(instances, spec, **overrides),
+    )
+    orchestrator = RunOrchestrator(
+        agents=harness["agent_registry"],
+        runtimes=registry,
+        workspaces=harness["workspaces"],
+        evaluators=default_registry(),
+    )
+    outcome = orchestrator.run(
+        config(harness, mode="router", runtime_id="llm-router-ak-bench")
+    )
+
+    assert outcome.state is RunState.COMPLETED
+    record = outcome.record or {}
+    assert record["served_models"] == ["model-a", "model-b"]
+    assert record["model_evidence"]["served_models"] == ["model-a"]
+
+
+def test_a_silent_instance_is_recorded_as_silent(harness: dict) -> None:
+    """No inventory and no evidence are recorded as absent, never invented."""
+    use_stub(harness, copy_stub(harness, "codex-fixer", FIXER_STUB))
+
+    instances: list[_RecordingRuntimeManager] = []
+    registry = RuntimeRegistry()
+
+    def silent(spec, **overrides):  # an instance that answers nothing
+        manager = _recorded(instances, spec, **overrides)
+        manager.models = None
+        manager.evidence = {"available": False, "note": "the inventory did not answer"}
+        return manager
+
+    registry.register(managed_runtime_descriptor(), silent)
+    orchestrator = RunOrchestrator(
+        agents=harness["agent_registry"],
+        runtimes=registry,
+        workspaces=harness["workspaces"],
+        evaluators=default_registry(),
+    )
+    outcome = orchestrator.run(
+        config(harness, mode="router", runtime_id="llm-router-ak-bench")
+    )
+
+    record = outcome.record or {}
+    assert record["served_models"] is None
+    assert record["model_evidence"]["available"] is False
+    assert record["model_evidence"]["note"] == "the inventory did not answer"

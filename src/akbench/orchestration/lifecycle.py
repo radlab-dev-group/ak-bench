@@ -130,6 +130,13 @@ class RunContext:
     #: the run declared it: the plugin pipeline of a process is decided at its
     #: start, so a run that does not record it cannot say what it measured.
     runtime_environment: dict[str, Any] | None = None
+    #: Model inventory read from the instance this run used. It says what the
+    #: instance can serve, which is not the same as what served the run — the
+    #: per-request evidence is ``model_evidence``.
+    served_models: list[str] | None = None
+    #: The runtime instance's own account of the models it handled, read from
+    #: the log of the process this run started (managed lifecycle only).
+    model_evidence: dict[str, Any] | None = None
     requested_model: str | None = None
     agent_parameters: dict[str, Any] | None = None
     workspace_path: str | None = None
@@ -173,6 +180,8 @@ class RunContext:
             "mode": self.mode,
             "runtime_id": self.runtime_id,
             "runtime_environment": self.runtime_environment,
+            "served_models": self.served_models,
+            "model_evidence": self.model_evidence,
             "requested_model": self.requested_model,
             "agent_parameters": dict(self.agent_parameters) if self.agent_parameters else None,
             "workspace_path": self.workspace_path,

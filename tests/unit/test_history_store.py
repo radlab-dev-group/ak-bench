@@ -368,3 +368,116 @@ def test_reads_of_unknown_ids_are_empty_not_errors(database_url: str) -> None:
     assert store.runs("nope") == []
     assert store.metrics("nope") == []
     assert store.events("nope") == []
+
+
+LOG_EVIDENCE = {
+    "available": True,
+    "log": "router.log",
+    "served_models": ["qwen/Qwen3.8-27B"],
+    "routing_decisions": ["qwen/Qwen3.8-27B"],
+    "received_models": ["auto_codex"],
+}
+
+
+def _store_model_run(store: HistoryStore, **record_overrides: object) -> dict[str, object]:
+    store.record_run(_run_record(**record_overrides), task=_task_stub())
+    return store.model_observations()[0]
+
+
+def test_a_model_the_instance_logged_serving_is_verified(database_url: str) -> None:
+    """The instance's own log attributes requests to a model: that verifies."""
+    store = _store(database_url)
+    row = _store_model_run(
+        store,
+        requested_model="qwen/Qwen3.8-27B",
+        model_evidence=LOG_EVIDENCE,
+        observations={
+            "session_id": "sess-1",
+            "token_usage": {},
+            "tool_names": {},
+            "observed_model": "qwen/Qwen3.8-27B",
+        },
+    )
+
+    assert row["verification_status"] == "verified"
+    assert row["value_source"] == "log"
+    assert row["observed_model"] == "qwen/Qwen3.8-27B"
+
+
+def test_an_alias_the_instance_received_is_verified_as_an_alias(database_url: str) -> None:
+    """The alias never appears in the inventory; the log says routing resolved it."""
+    store = _store(database_url)
+    row = _store_model_run(
+        store, requested_model="auto_codex", model_evidence=LOG_EVIDENCE
+    )
+
+    assert row["verification_status"] == "verified"
+    assert row["value_source"] == "log"
+    assert row["observed_model"] == "qwen/Qwen3.8-27B"
+    assert "alias auto_codex" in row["note"]
+
+
+def test_a_model_the_instance_never_logged_is_a_mismatch(database_url: str) -> None:
+    store = _store(database_url)
+    row = _store_model_run(
+        store, requested_model="gpt-6.1-sol", model_evidence=LOG_EVIDENCE
+    )
+
+    assert row["verification_status"] == "mismatch"
+    assert "never names gpt-6.1-sol" in row["note"]
+    assert "qwen/Qwen3.8-27B" in row["note"]
+
+
+def test_an_agent_report_the_instance_log_contradicts_is_recorded(
+    database_url: str
+) -> None:
+    store = _store(database_url)
+    row = _store_model_run(
+        store,
+        requested_model="qwen/Qwen3.8-27B",
+        model_evidence=LOG_EVIDENCE,
+        observations={
+            "session_id": "sess-1",
+            "token_usage": {},
+            "tool_names": {},
+            "observed_model": "gpt-6.1-sol",
+        },
+    )
+
+    assert row["verification_status"] == "verified"
+    assert "the agent reported gpt-6.1-sol" in row["note"]
+
+
+def test_an_inventory_alone_never_verifies_the_pairing(database_url: str) -> None:
+    """What an instance can serve is not what served the run; status stays honest."""
+    store = _store(database_url)
+    row = _store_model_run(
+        store, requested_model="qwen/Qwen3.8-27B", served_models=["qwen/Qwen3.8-27B", "other"]
+    )
+
+    assert row["verification_status"] == "unverified"
+    assert "what is available, not which model served this run" in row["note"]
+
+
+def test_an_absence_from_the_inventory_is_not_evidence_against_a_run(
+    database_url: str
+) -> None:
+    store = _store(database_url)
+    row = _store_model_run(store, requested_model="auto_codex", served_models=["qwen/Qwen3.8-27B"])
+
+    assert row["verification_status"] == "unverified"
+    assert "aliases are absent" in row["note"]
+
+
+def test_unattributable_evidence_explains_why_the_model_stays_unverified(
+    database_url: str
+) -> None:
+    store = _store(database_url)
+    row = _store_model_run(
+        store,
+        requested_model="qwen/Qwen3.8-27B",
+        model_evidence={"available": False, "note": "no log of a process this run started"},
+    )
+
+    assert row["verification_status"] == "unverified"
+    assert row["note"] == "no log of a process this run started"

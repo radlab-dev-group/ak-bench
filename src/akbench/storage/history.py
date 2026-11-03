@@ -988,17 +988,41 @@ class HistoryStore:
 
     @staticmethod
     def _model_payload(record: dict[str, Any]) -> dict[str, Any]:
+        """What the run says about the model it was served by, and its trust.
+
+        Three kinds of evidence, in descending strength:
+
+        1. the log of the instance this run started, which names the model each
+           request was forwarded to — the only evidence that attributes a
+           request to a run, so the only one that can verify the pairing;
+        2. the inventory the instance serves, which says what it *can* serve
+           and never which model served this run;
+        3. what the agent reported, which repeats the request rather than
+           confirming it.
+
+        The status says which of these the row rests on; nothing here upgrades
+        a weaker kind of evidence into the claim of a stronger one.
+        """
         observations = record.get("observations")
         observed = (
             observations.get("observed_model") if isinstance(observations, dict) else None
         )
-        return {
-            "requested_model": record.get("requested_model"),
+        requested = record.get("requested_model")
+        payload = {
+            "requested_model": requested,
             "observed_model": observed,
             "value_source": "agent_reported" if observed else None,
             "verification_status": "unverified",
             "note": None,
         }
+        evidence = record.get("model_evidence")
+        if isinstance(evidence, dict) and evidence.get("available"):
+            return _verified_by_log(payload, requested, evidence)
+        if record.get("served_models") is not None:
+            payload["note"] = _inventory_note(requested, record.get("served_models"))
+        elif isinstance(evidence, dict) and evidence.get("note"):
+            payload["note"] = str(evidence["note"])
+        return payload
 
     def _record_model_observation(
         self, session: Session, run: TaskRun, payload: dict[str, Any]
@@ -1212,3 +1236,92 @@ def _content_type(filename: str) -> str:
     if filename.endswith(".log") or filename.endswith(".txt"):
         return "text/plain"
     return "application/octet-stream"
+
+
+def _verified_by_log(
+    payload: dict[str, Any], requested: Any, evidence: dict[str, Any]
+) -> dict[str, Any]:
+    """Judge the requested model against the instance's own log.
+
+    An alias is not a lie: the run asked for the alias, the instance received
+    it, and the log names what routing made of it. That is recorded as a
+    verified alias resolution with the resolved model in ``observed_model``,
+    because the claim being verified is "this run went through that alias on
+    this instance", not "that name is a real deployment".
+    """
+    served = [str(name) for name in evidence.get("served_models") or []]
+    received = [str(name) for name in evidence.get("received_models") or []]
+    decisions = [str(name) for name in evidence.get("routing_decisions") or []]
+    log = str(evidence.get("log") or "the instance log")
+    result = dict(payload, value_source="log")
+
+    if requested is None:
+        # A run that asked for no model cannot mismatch the instance's log; the
+        # log still says what was served, and that is worth keeping.
+        result.update(
+            observed_model=", ".join(served) or None,
+            verification_status="unverified",
+            note=f"{log} served {', '.join(served) or 'no model'}, but the run requested none",
+        )
+        return result
+
+    if str(requested) in served:
+        result.update(
+            observed_model=requested,
+            verification_status="verified",
+            note=(
+                f"verified from {log}: this instance logged forwarding this run's "
+                f"requests to {requested}" + _agent_disagreement(payload, served)
+            ),
+        )
+        return result
+
+    if str(requested) in received:
+        resolved_names = served or decisions
+        result.update(
+            observed_model=", ".join(str(name) for name in resolved_names) or None,
+            verification_status="verified",
+            note=(
+                f"verified from {log}: this instance received the alias {requested} and "
+                f"routing served {', '.join(str(name) for name in resolved_names) or 'no model'}"
+                + _agent_disagreement(payload, received + served)
+            ),
+        )
+        return result
+
+    result.update(
+        observed_model=", ".join(served) or result.get("observed_model"),
+        verification_status="mismatch",
+        note=(
+            f"{log} never names {requested}: this instance served "
+            f"{', '.join(served) or 'no model'} and received "
+            f"{', '.join(received) or 'no model'}"
+        ),
+    )
+    return result
+
+
+def _agent_disagreement(payload: dict[str, Any], evidence_names: list[str]) -> str:
+    """A note when the agent's own report does not match the instance's log."""
+    reported = payload.get("observed_model")
+    if reported is None or str(reported) in evidence_names:
+        return ""
+    return f"; the agent reported {reported}, the instance log is the stronger evidence"
+
+
+def _inventory_note(requested: Any, served_models: Any) -> str:
+    """What an inventory alone can honestly say about the requested model."""
+    names = [str(name) for name in served_models or []]
+    if requested is None:
+        return "the instance reported an inventory, but the run requested no model"
+    if str(requested) in names:
+        return (
+            f"the instance lists {requested} among the models it serves; an inventory says "
+            "what is available, not which model served this run, so the pairing stays "
+            "unverified"
+        )
+    return (
+        f"the instance does not list {requested} among "
+        f"{', '.join(names) or 'the models it serves'}; aliases are absent from "
+        "GET /v1/models, so its absence is not evidence against the run"
+    )
