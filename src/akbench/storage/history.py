@@ -66,6 +66,17 @@ def _load(text_value: str | None) -> Any | None:
         return text_value
 
 
+def _download_filename(run_uid: str, filename: str) -> str:
+    """Format downloaded filename with run UID as prefix and original name as postfix."""
+    if not filename:
+        return ""
+    if not run_uid:
+        return filename
+    if filename.startswith(f"{run_uid}-") or filename.startswith(f"{run_uid}_"):
+        return filename
+    return f"{run_uid}-{filename}"
+
+
 class HistoryStore:
     """Reads and writes the experiment history of one database."""
 
@@ -375,17 +386,31 @@ class HistoryStore:
             run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
             if run is None:
                 return None
+            target_name = filename_or_path
+            if target_name.startswith(f"{run_uid}-"):
+                target_name = target_name[len(run_uid) + 1 :]
+            elif target_name.startswith(f"{run_uid}_"):
+                target_name = target_name[len(run_uid) + 1 :]
             artifact = session.scalar(
                 select(Artifact).where(
                     Artifact.run_id == run.id,
                     (Artifact.path == filename_or_path)
+                    | (Artifact.path == target_name)
                     | (Artifact.path.like(f"%/{filename_or_path}"))
-                    | (Artifact.kind == filename_or_path),
+                    | (Artifact.path.like(f"%/{target_name}"))
+                    | (Artifact.kind == filename_or_path)
+                    | (Artifact.kind == target_name),
                 )
             )
             return artifact.data if artifact else None
 
-    def export_artifacts(self, run_uid: str, target_dir: Path | str) -> list[Path]:
+    def export_artifacts(
+        self,
+        run_uid: str,
+        target_dir: Path | str,
+        *,
+        prefix_run_uid: bool = False,
+    ) -> list[Path]:
         """Export all registered artifacts for a run into target_dir."""
         target = Path(target_dir)
         target.mkdir(parents=True, exist_ok=True)
@@ -396,7 +421,12 @@ class HistoryStore:
                 return exported
             artifacts = session.scalars(select(Artifact).where(Artifact.run_id == run.id)).all()
             for artifact in artifacts:
-                filename = Path(artifact.path).name
+                base_filename = Path(artifact.path).name
+                filename = (
+                    _download_filename(run_uid, base_filename)
+                    if prefix_run_uid
+                    else base_filename
+                )
                 dest = target / filename
                 if artifact.data is not None:
                     dest.write_bytes(artifact.data)

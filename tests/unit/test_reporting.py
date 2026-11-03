@@ -1279,9 +1279,19 @@ def test_artifacts_and_packages_tables_in_run_detail(database_url: str, tmp_path
     assert "Clean solution workspace archive" in run_page
     assert "sha256 hash" in run_page
     assert "download" in run_page
-    # Raw log is not in packages table description
+    assert 'href="../../artifacts/run-with-artifacts/run-with-artifacts-solution.zip"' in run_page
+    assert 'download="run-with-artifacts-solution.zip"' in run_page
+
+    # Raw log is in artifacts table with download link and relative path
     assert "<h2>Artifacts</h2>" in run_page
     assert "raw_log.txt" in run_page
+    assert 'href="../../artifacts/run-with-artifacts/run-with-artifacts-raw_log.txt"' in run_page
+    assert 'download="run-with-artifacts-raw_log.txt"' in run_page
+
+    # Verify exported artifact files exist on disk with run_uid prefix
+    assert (root / "artifacts" / "run-with-artifacts" / "run-with-artifacts-solution.zip").is_file()
+    assert (root / "artifacts" / "run-with-artifacts" / "run-with-artifacts-raw_log.txt").is_file()
+
     # Old button badges are removed
     assert "📦 Solution Code" not in run_page
     assert "🔍 Agent Traces" not in run_page

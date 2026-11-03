@@ -1604,28 +1604,30 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
         artifact for artifact in report.run.get("artifacts") or []
         if _is_package_artifact(artifact)
     ]
+    run_uid = str(run.get("uid") or "")
     if packages:
         body.append("<h2>Packages</h2>")
-        run_uid = str(run.get("uid") or "")
         package_rows = []
         for artifact in packages:
             p = str(artifact.get("path") or "")
+            rel_p = _relative_path(p)
             fn = artifact.get("filename") or (Path(p).name if p else "")
             kind = artifact.get("kind")
             checksum = str(artifact.get("checksum") or "")
             size_val = artifact.get("size_bytes")
             size_formatted = _format_file_size(size_val)
             desc_text = _artifact_description(fn, kind)
+            download_fn = _download_filename(run_uid, fn)
 
             download_action = (
-                f'<a class="badge ok" style="text-decoration:none; padding:2px 8px;" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download>download</a>'
+                f'<a class="badge ok" style="text-decoration:none; padding:2px 8px;" href="../../artifacts/{esc(run_uid)}/{esc(download_fn)}" download="{esc(download_fn)}">download</a>'
                 if fn
                 else '<span class="muted">-</span>'
             )
             checksum_cell = f'<code>{esc(checksum)}</code>' if checksum else '<span class="muted">-</span>'
-            file_cell = f'<strong>{esc(fn or p)}</strong>'
-            if p and fn and p != fn:
-                file_cell += f'<br><span class="muted" style="font-size:0.85em;">{esc(p)}</span>'
+            file_cell = f'<strong>{esc(fn or rel_p)}</strong>'
+            if rel_p and fn and rel_p != fn:
+                file_cell += f'<br><span class="muted" style="font-size:0.85em;">{esc(rel_p)}</span>'
 
             package_rows.append([
                 file_cell,
@@ -1643,17 +1645,28 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
         )
     if report.run.get("artifacts"):
         body.append("<h2>Artifacts</h2>")
+        artifact_rows = []
+        for artifact in report.run.get("artifacts") or []:
+            p = str(artifact.get("path") or "")
+            rel_p = _relative_path(p)
+            fn = artifact.get("filename") or (Path(p).name if p else "")
+            download_fn = _download_filename(run_uid, fn)
+            download_action = (
+                f'<a class="badge ok" style="text-decoration:none; padding:2px 8px;" href="../../artifacts/{esc(run_uid)}/{esc(download_fn)}" download="{esc(download_fn)}">download</a>'
+                if fn
+                else '<span class="muted">-</span>'
+            )
+            artifact_rows.append([
+                esc(artifact.get("kind")),
+                f'<code>{esc(rel_p)}</code>',
+                esc(artifact.get("checksum")),
+                download_action,
+            ])
+
         body.append(
             table(
-                ["kind", "path", "checksum"],
-                [
-                    [
-                        esc(artifact.get("kind")),
-                        f'<code>{esc(artifact.get("path"))}</code>',
-                        esc(artifact.get("checksum")),
-                    ]
-                    for artifact in report.run.get("artifacts") or []
-                ],
+                ["kind", "path", "checksum", "download"],
+                artifact_rows,
             )
         )
     body.append("<h2>Not verified</h2>")
@@ -1679,6 +1692,41 @@ PACKAGE_KINDS: set[str] = {
     "package",
     "diff",
 }
+
+
+def _download_filename(run_uid: str, filename: str) -> str:
+    """Format downloaded filename with run UID as prefix and original name as postfix.
+
+    Example: run_uid='codex-20261103-001121-442121-9a594', filename='solution.zip'
+    Returns: 'codex-20261103-001121-442121-9a594-solution.zip'
+    """
+    if not filename:
+        return ""
+    if not run_uid:
+        return filename
+    if filename.startswith(f"{run_uid}-") or filename.startswith(f"{run_uid}_"):
+        return filename
+    return f"{run_uid}-{filename}"
+
+
+def _relative_path(path_str: str | Path | None) -> str:
+    """Format path relative to current working directory, avoiding absolute root path display."""
+    if not path_str:
+        return ""
+    try:
+        p = Path(path_str)
+        cwd = Path.cwd()
+        if p.is_absolute():
+            try:
+                return str(p.relative_to(cwd))
+            except ValueError:
+                parts = p.parts
+                if len(parts) > 1:
+                    return str(Path(*parts[1:]))
+                return p.name
+        return str(p)
+    except Exception:
+        return str(path_str)
 
 
 def _is_package_artifact(artifact: dict[str, Any]) -> bool:
@@ -1954,16 +2002,29 @@ PASSED = "passed"
 
 
 def _artifact_rows(runs: list[dict[str, Any]]) -> list[list[str]]:
-    return [
-        [
-            esc(run.get("uid")),
-            esc(artifact.get("kind")),
-            f'<code>{esc(artifact.get("path"))}</code>',
-            esc(artifact.get("checksum")),
-        ]
-        for run in runs
-        for artifact in run.get("artifacts") or []
-    ]
+    rows = []
+    for run in runs:
+        run_uid = str(run.get("uid") or "")
+        for artifact in run.get("artifacts") or []:
+            p = str(artifact.get("path") or "")
+            rel_p = _relative_path(p)
+            fn = artifact.get("filename") or (Path(p).name if p else "")
+            download_fn = _download_filename(run_uid, fn)
+            download_action = (
+                f'<a class="badge ok" style="text-decoration:none; padding:2px 8px;" href="../../artifacts/{esc(run_uid)}/{esc(download_fn)}" download="{esc(download_fn)}">download</a>'
+                if fn
+                else '<span class="muted">-</span>'
+            )
+            rows.append(
+                [
+                    esc(run.get("uid")),
+                    esc(artifact.get("kind")),
+                    f'<code>{esc(rel_p)}</code>',
+                    esc(artifact.get("checksum")),
+                    download_action,
+                ]
+            )
+    return rows
 
 
 def _verdict_summary(verdicts: dict[str, Any]) -> str:
@@ -2099,7 +2160,7 @@ def render_experiment(
         "<h2>All runs</h2>",
         _runs_table(report.runs, report.variants),
         "<h2>Artifacts</h2>",
-        table(["run", "kind", "path", "checksum"], _artifact_rows(report.runs)),
+        table(["run", "kind", "path", "checksum", "download"], _artifact_rows(report.runs)),
         "<h2>Not verified</h2>",
         _notice(report.unverified),
     ]
@@ -2761,7 +2822,7 @@ def write_report_tree(
         artifacts_target = root / "artifacts" / uid
         if store is not None and hasattr(store, "export_artifacts"):
             try:
-                exported = store.export_artifacts(uid, artifacts_target)
+                exported = store.export_artifacts(uid, artifacts_target, prefix_run_uid=True)
                 written.extend(exported)
             except Exception:
                 pass
@@ -2770,7 +2831,8 @@ def write_report_tree(
                 p = artifact.get("path")
                 fn = artifact.get("filename") or (Path(p).name if p else "")
                 if p and fn and Path(p).is_file():
-                    dest = artifacts_target / fn
+                    download_fn = _download_filename(uid, fn)
+                    dest = artifacts_target / download_fn
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     try:
                         dest.write_bytes(Path(p).read_bytes())
