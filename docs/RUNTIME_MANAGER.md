@@ -169,3 +169,27 @@ The shipped instance is `descriptors/runtimes/llm-router-ak-bench.yaml`, and
 `llm-router-external-fast.yaml`: the same tasks and arms, but each run starts
 its own router, so the knowledge arm is a configuration of a process the run
 owned.
+
+### What a run records from the instance it owned
+
+A run that started its own instance keeps, in its record, the evidence that
+instance gave it, and the report's plugin and model verification rests on
+those fields:
+
+- `runtime_environment` — the environment the process was launched with
+  (descriptor `env`, factor-mapped values and the combination's `runtime_env`).
+  A plugin toggle observed from this environment was **applied by the run**:
+  the report says `unverified` with that note rather than `unsupported`,
+  because the value is known and only the plugin's own confirmation is
+  missing. A run against a shared instance has no such environment, and there
+  `unsupported` stays the honest state.
+- `served_models` — the inventory the instance answered with on
+  `GET /v1/models`. It says what the instance *can* serve and never which
+  model served the run, so it can never verify the pairing by itself.
+- `model_evidence` — the instance's log, read after the run, naming what it
+  handled: the models it received, the routing decision and the model each
+  request was forwarded to. This is the only per-request evidence the router
+  gives, so a requested model the log names is `verified` (an alias is
+  verified as an alias, with the resolved model recorded), a model the log
+  never names is a `mismatch`, and an instance that gave no log or no
+  inventory is recorded as having given none.

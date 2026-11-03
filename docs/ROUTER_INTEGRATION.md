@@ -175,6 +175,30 @@ file). The shared router is fine for integration and smoke tests, but its
 results must be marked `valid_with_warnings` or `invalid` depending on the
 capabilities an experiment requires.
 
+### 9.1 What a managed run can verify, and how the report says it
+
+A run that starts its own instance holds two kinds of evidence a shared router
+cannot give, and the stored report distinguishes them:
+
+- **the launch environment.** The instance is a process the run started with a
+  known environment (the combination's `runtime_env` plus the descriptor's
+  `env`), so a plugin toggle is *applied* — recorded in the run as
+  `runtime_environment`. The report therefore says `unverified` with a note
+  that the environment was applied by this run, rather than `unsupported`:
+  the value is known, the plugin's own confirmation is what is still missing.
+  On a shared instance the environment of the serving process is unknown to
+  AK-Bench, and there `unsupported` is the honest state.
+- **the instance's own log.** The launched router's log is an artifact of the
+  run, and it names, per request, which model it received
+  (`Overriding trigger model: <alias>`), which one routing chose
+  (`Codex routing: ... model=<model>`) and which one it forwarded
+  (`Request model <model> with config id: ...`). That is the only evidence
+  that attributes a request to a model, so a run whose requested model the log
+  names is `verified` (an alias is verified as an alias, with the resolved
+  model recorded); the model inventory from `GET /v1/models` says only what
+  the instance *can* serve and never verifies a pairing; and a model the log
+  never names is a `mismatch`, not an assumption.
+
 ## 10. Integration status
 
 | Capability | Status |
@@ -188,10 +212,16 @@ capabilities an experiment requires.
 | Per-plugin metrics | unsupported |
 | Starting/stopping the instance from AK-Bench | verified (managed instance: `descriptors/runtimes/llm-router-ak-bench.yaml`) |
 | Per-run plugin ENV control | verified for the managed instance (factor values are applied as process env); impossible on the shared instance |
+| Per-request model attribution | verified for the managed instance (its log names the model each request was forwarded to); impossible on the shared instance |
 | KB readiness (indexing finished) | unverified |
 
 The managed instance is launched by AK-Bench itself (a `managed` block in the
 runtime descriptor) and stopped when the run ends; its log is an artifact of
 the run, and its factor values — e.g. the knowledge toggle — are applied as
 process environment, so a variant's plugin configuration is the state of a
-process the run owned rather than a request against a shared router.
+process the run owned rather than a request against a shared router. A stored
+run therefore records the environment it applied (`runtime_environment`), the
+models the instance serves (`served_models`) and what the instance's log says
+the models it handled were (`model_evidence`), and the report's plugin and
+model verification rests on those fields rather than on the environment of
+whatever process happens to run the benchmark.
