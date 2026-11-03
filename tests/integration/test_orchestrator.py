@@ -18,9 +18,11 @@ from akbench.agents.catalog import build_agent_registry
 from akbench.agents.codex import CodexAdapter, CodexOptions
 from akbench.datasets import Dataset, RepositoryManager, WorkspaceManager
 from akbench.descriptors import DescriptorKind, load_descriptor_file
+from akbench.descriptors.runtime import Lifecycle, RuntimeDescriptor
 from akbench.evaluators.registry import default_registry
 from akbench.orchestration import OrchestrationConfig, RunOrchestrator, RunState
 from akbench.orchestration.lifecycle import FORWARD_CHAIN, TERMINAL_STATES, transition_allowed
+from akbench.runtime.registry import RuntimeRegistry
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CODEX_STUB = REPO_ROOT / "tests" / "contract" / "stubs" / "codex_stub.py"
@@ -273,3 +275,95 @@ def test_lifecycle_table_is_explicit() -> None:
         assert any(transition_allowed(current, target) for target in RunState)
     for terminal in TERMINAL_STATES:
         assert not any(transition_allowed(terminal, other) for other in RunState)
+
+
+def _recorded(instances, spec, **overrides):
+    manager = _RecordingRuntimeManager(spec, **overrides)
+    instances.append(manager)
+    return manager
+
+
+class _RecordingRuntimeManager:
+
+    """A runtime manager stub that records start/stop, never touches a port."""
+
+    def __init__(self, descriptor, **overrides):
+        self.descriptor = descriptor
+        self.overrides = overrides
+        self.lifecycle = Lifecycle.MANAGED
+        self.started: list[dict] = []
+        self.stopped = False
+        self.log_path = None
+
+    def start(self) -> None:
+        self.started.append(dict(self.overrides))
+
+    def stop(self) -> None:
+        self.stopped = True
+
+    def healthcheck(self) -> bool:
+        return True
+
+
+def test_a_managed_runtime_is_started_and_stopped_around_the_run(
+    harness: dict,
+) -> None:
+    """The router the run starts is owned by the run: started before the agent,
+    stopped when the run ends, and it received this run's factor values."""
+    use_stub(harness, copy_stub(harness, "codex-fixer", FIXER_STUB))
+
+    instances: list[_RecordingRuntimeManager] = []
+    descriptor = managed_runtime_descriptor()
+    registry = RuntimeRegistry()
+    registry.register(
+        descriptor,
+        lambda spec, **overrides: _recorded(instances, spec, **overrides),
+    )
+
+    orchestrator = RunOrchestrator(
+        agents=harness["agent_registry"],
+        runtimes=registry,
+        workspaces=harness["workspaces"],
+        evaluators=default_registry(),
+    )
+    outcome = orchestrator.run(
+        config(
+            harness,
+            mode="router",
+            runtime_id="llm-router-ak-bench",
+            runtime_environment={"knowledge_enabled": False},
+        )
+    )
+
+    assert outcome.state is RunState.COMPLETED
+    assert len(instances) == 1
+    manager = instances[0]
+    # the run's factor values reach the process, mapped by the descriptor
+    assert manager.overrides.get("factor_values") == {"knowledge_enabled": False}
+    # and the log is placed in the run's artifacts
+    assert manager.overrides.get("log_dir") == harness["tmp"] / "artifacts"
+    assert manager.started, "a managed instance is started before the agent runs"
+    assert manager.stopped, "the run stops the instance it started"
+
+
+def managed_runtime_descriptor():
+    import yaml
+
+    return RuntimeDescriptor.model_validate(
+        yaml.safe_load(
+            """
+schema_version: "1.0"
+id: llm-router-ak-bench
+version: "1.0.0"
+runtime:
+  adapter: llm_router
+  execution_modes: [router, runtime, direct]
+  supported_lifecycles: [managed]
+  base_url: http://127.0.0.1:8085
+  managed:
+    command: ["/bin/sh", "-c", "true"]
+    factor_env:
+      knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
+"""
+        )
+    )

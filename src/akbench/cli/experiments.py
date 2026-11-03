@@ -400,6 +400,11 @@ def _run_experiment(
                     mode=plan.mode,
                     runtime_id=plan.runtime_id,
                     agent_parameters=agent_parameters,
+                    # Plugin factors are the runtime's own configuration: a
+                    # managed instance applies them as process environment, so
+                    # the variant value becomes the state of a process this run
+                    # started instead of a hope aimed at a shared router.
+                    runtime_environment=dict(variant.environment_requests),
                     artifacts_dir=artifacts_dir,
                     evaluation_dir=artifacts_dir / "evaluation",
                     agent_timeout=policy.timeout_seconds,
