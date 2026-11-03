@@ -21,7 +21,7 @@ explicit. A wrong combination is rejected with the reason: an experiment that
 believes it is routed but is not would produce unusable results.
 
 ```bash
-akbench agent run codex --task wordcount-001 --mode router --runtime llm-router
+akbench agent run codex --task wordcount-001 --mode router --runtime llm-router-external
 akbench agent run codex --task wordcount-001 --mode direct
 ```
 
@@ -78,11 +78,11 @@ claim is from `docs/ROUTER_INTEGRATION.md`:
 
 ```bash
 akbench runtime list
-akbench runtime health llm-router
-akbench runtime models llm-router
-akbench runtime config llm-router            # reports the trust level
-akbench runtime config llm-router --config-file /path/to/models-config.json
-akbench runtime state llm-router
+akbench runtime health llm-router-external
+akbench runtime models llm-router-external
+akbench runtime config llm-router-external            # reports the trust level
+akbench runtime config llm-router-external --config-file /path/to/models-config.json
+akbench runtime state llm-router-external
 ```
 
 ## What is intentionally not faked

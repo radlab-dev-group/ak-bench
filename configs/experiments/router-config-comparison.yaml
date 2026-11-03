@@ -32,7 +32,7 @@ experiment:
   execution:
     mode: router
     runtime:
-      id: llm-router
+      id: llm-router-external
       lifecycle: managed
 
   dataset:

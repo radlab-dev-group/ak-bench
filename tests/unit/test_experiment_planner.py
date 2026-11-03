@@ -117,7 +117,7 @@ def test_the_plan_pins_the_descriptors_it_used(planner: ExperimentPlanner) -> No
 
     snapshots = plan.descriptor_snapshots
     assert any(key.startswith("agent:codex@") for key in snapshots)
-    assert any(key.startswith("runtime:llm-router@") for key in snapshots)
+    assert any(key.startswith("runtime:llm-router-external@") for key in snapshots)
     assert any(key.startswith("dimension:knowledge_enabled@") for key in snapshots)
     assert all(value.startswith("sha256:") for value in snapshots.values())
 
@@ -173,7 +173,10 @@ def test_a_plugin_factor_needs_a_runtime(planner: ExperimentPlanner) -> None:
 
 def test_an_external_router_cannot_control_a_plugin_per_run(planner: ExperimentPlanner) -> None:
     payload = document()
-    payload["experiment"]["execution"]["runtime"] = {"id": "llm-router", "lifecycle": "external"}
+    payload["experiment"]["execution"]["runtime"] = {
+        "id": "llm-router-external",
+        "lifecycle": "external",
+    }
 
     report = planner.validate(experiment(payload))
 
@@ -442,7 +445,10 @@ def test_a_combination_env_against_an_external_runtime_is_refused(
     planner: ExperimentPlanner,
 ) -> None:
     payload = document("knowledge-on-off")
-    payload["experiment"]["execution"] = {"mode": "router", "runtime": {"id": "llm-router"}}
+    payload["experiment"]["execution"] = {
+        "mode": "router",
+        "runtime": {"id": "llm-router-external"},
+    }
     payload["experiment"]["factors"] = {
         "strategy": "custom_matrix",
         "dimensions": [{"id": "knowledge_enabled"}],

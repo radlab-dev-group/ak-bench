@@ -172,7 +172,7 @@ def test_shipped_descriptors_all_load_and_validate() -> None:
     """The descriptors shipped in this repository must always be loadable."""
     registry = load_registry(SHIPPED_DESCRIPTORS)
     assert registry.get(DescriptorKind.AGENT, "codex") is not None
-    assert registry.get(DescriptorKind.RUNTIME, "llm-router") is not None
+    assert registry.get(DescriptorKind.RUNTIME, "llm-router-external") is not None
     assert registry.get(DescriptorKind.PLUGIN, "agentic_knowledge") is not None
     assert len(registry) >= 20
 

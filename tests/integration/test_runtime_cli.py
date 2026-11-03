@@ -65,14 +65,14 @@ def stub_server() -> Iterator[str]:
 def project(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stub_server: str
 ) -> tuple[Path, str]:
-    """A project whose llm-router descriptor points at the local stub."""
+    """A project whose llm-router-external descriptor points at the local stub."""
     root = tmp_path / "proj"
     root.mkdir()
     (root / "pyproject.toml").write_text('[project]\nname = "ak-bench"\n', encoding="utf-8")
     shutil.copytree(REPO_ROOT / "descriptors", root / "descriptors")
     url = stub_server
 
-    descriptor = root / "descriptors" / "runtimes" / "llm-router.yaml"
+    descriptor = root / "descriptors" / "runtimes" / "llm-router-external.yaml"
     text = descriptor.read_text(encoding="utf-8")
     descriptor.write_text(
         text.replace("http://192.168.100.65:8081", url),
@@ -95,26 +95,26 @@ def test_runtime_list_shows_the_router(project: tuple[Path, str]) -> None:
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     by_id = {item["id"]: item for item in payload["runtimes"]}
-    assert set(by_id) == {"llm-router", "llm-router-ak-bench"}
+    assert set(by_id) == {"llm-router-external", "llm-router-ak-bench"}
     # the shared instance is the one the fixture re-pointed at the stub
-    assert by_id["llm-router"]["base_url"] == project[1]
+    assert by_id["llm-router-external"]["base_url"] == project[1]
     assert by_id["llm-router-ak-bench"]["base_url"] == "http://127.0.0.1:8085"
 
 
 def test_runtime_health_reports_healthy(project: tuple[Path, str]) -> None:
-    result = runner.invoke(app, ["runtime", "health", "llm-router", "--json"])
+    result = runner.invoke(app, ["runtime", "health", "llm-router-external", "--json"])
     assert result.exit_code == 0, result.output
     assert _payload(result.output)["healthy"] is True
 
 
 def test_runtime_models_lists_served_models(project: tuple[Path, str]) -> None:
-    result = runner.invoke(app, ["runtime", "models", "llm-router", "--json"])
+    result = runner.invoke(app, ["runtime", "models", "llm-router-external", "--json"])
     assert result.exit_code == 0, result.output
     assert _payload(result.output)["models"] == ["model-a"]
 
 
 def test_runtime_config_reports_unsupported_with_a_reason(project: tuple[Path, str]) -> None:
-    result = runner.invoke(app, ["runtime", "config", "llm-router", "--json"])
+    result = runner.invoke(app, ["runtime", "config", "llm-router-external", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     assert payload["verification_status"] == "unsupported"
@@ -123,7 +123,7 @@ def test_runtime_config_reports_unsupported_with_a_reason(project: tuple[Path, s
 
 
 def test_runtime_state_snapshots_health_models_metrics(project: tuple[Path, str]) -> None:
-    result = runner.invoke(app, ["runtime", "state", "llm-router", "--json"])
+    result = runner.invoke(app, ["runtime", "state", "llm-router-external", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     assert payload["healthy"] is True
@@ -166,7 +166,7 @@ def test_agent_run_reports_the_execution_plan(
             "--workspace",
             str(workspace),
             "--runtime",
-            "llm-router",
+            "llm-router-external",
             "--mode",
             "router",
             "--json",
@@ -176,7 +176,7 @@ def test_agent_run_reports_the_execution_plan(
     payload = _payload(result.output)
     assert payload["status"] == "completed"
     assert payload["execution"]["mode"] == "router"
-    assert payload["execution"]["runtime"] == "llm-router@1.0.0"
+    assert payload["execution"]["runtime"] == "llm-router-external@1.0.0"
     assert payload["execution"]["mode_declared"] is True
 
 

@@ -2,9 +2,9 @@
 # Capability statuses come from docs/ROUTER_INTEGRATION.md; several are
 # unsupported because the HTTP surface refuses them, not because we did not look.
 schema_version: "1.0"
-id: llm-router
+id: llm-router-external
 version: "1.0.0"
-title: LLM Router
+title: LLM Router (shared instance)
 description: >-
   Open-source gateway in front of local and cloud providers, with a utils plugin
   pipeline (agentic routing, agentic knowledge).
@@ -38,4 +38,5 @@ runtime:
     The shared instance reachable at the address above is lifecycle=external:
     AK-Bench can neither read its effective configuration nor pin plugin state
     per run, so Knowledge and Auto Codex experiments must run against a managed
-    instance to be recorded as valid.
+    instance to be recorded as valid. The managed self-starting instance with
+    the same software and model inventory is llm-router-ak-bench.

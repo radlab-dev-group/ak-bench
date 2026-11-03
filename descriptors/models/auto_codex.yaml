@@ -9,7 +9,7 @@ description: Declared as a builtin provider in the router model config; rewritte
 
 model:
   provider: builtin
-  runtime_id: llm-router
+  runtime_id: llm-router-external
   selection: router_alias
   observable: partial
   tool_calling: true

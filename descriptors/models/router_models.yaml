@@ -7,7 +7,7 @@ version: "1.0.0"
 title: Qwen3.8 Flash Next
 model:
   provider: openai-compatible
-  runtime_id: llm-router
+  runtime_id: llm-router-external
   selection: explicit
   observable: supported
 ---
@@ -17,7 +17,7 @@ version: "1.0.0"
 title: Qwen3.8 27B
 model:
   provider: openai-compatible
-  runtime_id: llm-router
+  runtime_id: llm-router-external
   selection: explicit
   observable: supported
 ---
@@ -27,6 +27,6 @@ version: "1.0.0"
 title: Gemma 4 12B IT (playground)
 model:
   provider: openai-compatible
-  runtime_id: llm-router
+  runtime_id: llm-router-external
   selection: explicit
   observable: supported
