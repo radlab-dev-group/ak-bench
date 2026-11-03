@@ -1601,15 +1601,33 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
             )
         )
     if report.run.get("artifacts"):
-        body.append("<h2>Artifacts</h2>")
+        body.append("<h2>Artifacts & Downloads</h2>")
+        run_uid = str(run.get("uid") or "")
+        download_links = []
+        for artifact in run.get("artifacts") or []:
+            p = artifact.get("path")
+            fn = artifact.get("filename") or (Path(p).name if p else "")
+            if fn in ("solution.zip", "solution_workspace.zip"):
+                download_links.append(f'<a class="badge ok" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download style="text-decoration:none; padding:4px 8px;">📦 Solution Code ({esc(fn)})</a>')
+            elif fn in ("diff.patch", "solution.patch", "solution_diff.patch"):
+                download_links.append(f'<a class="badge info" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download style="text-decoration:none; padding:4px 8px;">📜 Solution Diff ({esc(fn)})</a>')
+            elif fn in ("agent_traces.zip",):
+                download_links.append(f'<a class="badge muted" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download style="text-decoration:none; padding:4px 8px;">🔍 Agent Traces ({esc(fn)})</a>')
+            elif fn in ("evaluation.zip", "evaluation_results.zip"):
+                download_links.append(f'<a class="badge ok" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download style="text-decoration:none; padding:4px 8px;">📊 Evaluation Archive ({esc(fn)})</a>')
+        if download_links:
+            body.append(f'<p style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">{"".join(download_links)}</p>')
+
         body.append(
             table(
-                ["kind", "path", "checksum"],
+                ["kind", "path", "checksum", "download"],
                 [
                     [
                         esc(artifact.get("kind")),
                         f'<code>{esc(artifact.get("path"))}</code>',
                         esc(artifact.get("checksum")),
+                        f'<a href="../../artifacts/{esc(run_uid)}/{esc(artifact.get("filename") or Path(str(artifact.get("path"))).name)}" download>download</a>'
+                        if artifact.get("path") else '<span class="muted">-</span>',
                     ]
                     for artifact in run.get("artifacts") or []
                 ],
@@ -2524,6 +2542,7 @@ def write_report_tree(
     generated_at: str | None = None,
     dataset: Any = None,
     docs_root: Path | str | None = None,
+    store: Any = None,
 ) -> list[Path]:
     """Write the report tree under ``root``; returns every file written.
 
@@ -2643,6 +2662,25 @@ def write_report_tree(
                 f"{RUNS_DIRECTORY}/{uid}/index.html",
                 render_run(report, generated_at=generated_at),
             )
+        artifacts_target = root / "artifacts" / uid
+        if store is not None and hasattr(store, "export_artifacts"):
+            try:
+                exported = store.export_artifacts(uid, artifacts_target)
+                written.extend(exported)
+            except Exception:
+                pass
+        else:
+            for artifact in run.get("artifacts") or []:
+                p = artifact.get("path")
+                fn = artifact.get("filename") or (Path(p).name if p else "")
+                if p and fn and Path(p).is_file():
+                    dest = artifacts_target / fn
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        dest.write_bytes(Path(p).read_bytes())
+                        written.append(dest)
+                    except Exception:
+                        pass
 
     for stats_key, stats_field, kind, directory in (
         ("by_category", "category", "category", "categories"),
