@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -334,6 +334,7 @@ class Artifact(Base, TimestampMixin):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     content_type: Mapped[str | None] = mapped_column(String(128))
     notes: Mapped[str | None] = mapped_column(Text)
+    data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
 
 class PluginObservation(Base, TimestampMixin):
