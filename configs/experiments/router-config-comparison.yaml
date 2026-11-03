@@ -66,7 +66,7 @@ experiment:
   execution_policy:
     repetitions: 3
     concurrency: 1
-    timeout_seconds: 900
+    timeout_seconds: 10800
     retry_infrastructure_errors: 1
 
   evaluation:
