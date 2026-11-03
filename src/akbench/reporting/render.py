@@ -1771,6 +1771,8 @@ def _artifact_description(filename: str, kind: str | None) -> str:
         return "Agent stdout output log"
     if fn in ("stderr.log", "agent_stderr.log"):
         return "Agent stderr error log"
+    if fn == "router.log":
+        return "Router instance log for this run (requests, routing and plugin decisions)"
     if fn in ("junit.xml", "pytest-report.xml"):
         return "JUnit XML structured test results"
     if fn in ("evaluation.json", "pytest-output.txt"):

@@ -34,6 +34,9 @@ EXCLUDED_FILE_PATTERNS: tuple[str, ...] = (
 TRACE_FILENAMES: tuple[str, ...] = (
     "agent_stdout.jsonl",
     "agent_stderr.log",
+    # The log of a runtime AK-Bench started for this run: the router's own
+    # account of the requests, the routing decision and the plugin behaviour.
+    "router.log",
     "last_message.txt",
     "agent_trace.jsonl",
     "tool_calls.jsonl",
