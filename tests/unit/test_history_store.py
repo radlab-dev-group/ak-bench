@@ -251,6 +251,14 @@ def test_register_artifacts_checksums_files_and_reports_missing_ones(
         assert len(artifacts) == 1
         assert artifacts[0].content_type == "application/json"
         assert artifacts[0].size_bytes == len(kept.read_bytes())
+        assert artifacts[0].data == kept.read_bytes()
+
+    assert store.get_artifact_payload("run-1", "run_record.json") == kept.read_bytes()
+    export_dir = tmp_path / "exported"
+    exported = store.export_artifacts("run-1", export_dir)
+    assert len(exported) == 1
+    assert exported[0].name == "run_record.json"
+    assert exported[0].read_bytes() == kept.read_bytes()
 
 
 def test_verify_artifacts_detects_tampering_and_deletion(

@@ -126,3 +126,30 @@ experiment:
 
     assert result.exit_code == 1
     assert "not runnable" in result.output
+
+
+def test_an_experiment_with_insufficient_timeout_is_refused(project: Path, tmp_path: Path) -> None:
+    broken = tmp_path / "low_timeout.yaml"
+    broken.write_text(
+        """
+schema_version: "1.0"
+id: low-timeout
+version: "1.0.0"
+title: An experiment with timeout smaller than task
+experiment:
+  type: configuration
+  agent: {id: codex, version: "1.0.0"}
+  execution: {mode: direct}
+  dataset: {filters: {task_ids: [wordcount-001]}}
+  factors: {strategy: full_factorial}
+  execution_policy: {repetitions: 1, timeout_seconds: 10}
+  evaluation: {evaluators: [pytest_evaluator]}
+  metrics: [task_success_rate]
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["experiment", "run", str(broken)])
+
+    assert result.exit_code == 1
+    assert "not runnable" in result.output or "task_timeout_exceeds_experiment" in result.output

@@ -84,6 +84,8 @@ def test_report_all_writes_the_full_tree(project: Path) -> None:
     ):
         assert (target / relative).is_file(), relative
     assert (target / "experiments" / str(stored["experiment_uid"]) / "index.html").is_file()
+    assert (target / "runs" / str(stored["run_uid"]) / "index.html").is_file()
+    assert (target / "artifacts" / str(stored["run_uid"])).is_dir()
 
     index = (target / "index.html").read_text(encoding="utf-8")
     assert str(stored["experiment_uid"]) in index

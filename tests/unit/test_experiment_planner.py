@@ -336,3 +336,24 @@ def test_dimension_registry_rejects_an_unknown_id(planner: ExperimentPlanner) ->
 
     with pytest.raises(DimensionResolutionError, match="unknown dimension"):
         planner.dimensions.factor("no_such_dimension")
+
+
+def test_task_timeout_exceeding_experiment_timeout_is_refused(planner: ExperimentPlanner) -> None:
+    payload = document()
+    payload["experiment"]["execution_policy"]["timeout_seconds"] = 10
+
+    report = planner.validate(experiment(payload))
+
+    assert "task_timeout_exceeds_experiment" in codes(report)
+    with pytest.raises(ExperimentValidationError) as excinfo:
+        planner.plan(experiment(payload))
+    assert "task_timeout_exceeds_experiment" in str(excinfo.value)
+
+
+def test_task_timeout_within_experiment_timeout_is_accepted(planner: ExperimentPlanner) -> None:
+    payload = document()
+    payload["experiment"]["execution_policy"]["timeout_seconds"] = 3600
+
+    report = planner.validate(experiment(payload))
+
+    assert "task_timeout_exceeds_experiment" not in codes(report)
