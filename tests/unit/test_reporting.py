@@ -1243,3 +1243,36 @@ def test_runs_with_errors_are_highlighted_in_tables_and_run_detail(
     assert "Connection refused to container" in run_page
     assert 'class="badge fail">INFRASTRUCTURE_ERROR</span>' in run_page
     assert '<span class="fail">1</span>' in run_page
+
+
+def test_artifacts_table_in_run_detail(database_url: str, tmp_path: Path) -> None:
+    store = _store(database_url)
+    store.record_plan(
+        experiment_uid="art-exp@1.0.0",
+        title="art-exp",
+        experiment_type="configuration",
+        descriptor_id="art-exp",
+        descriptor_version="1.0.0",
+        config_hash="sha256:art",
+        variants=[{"uid": "v-1", "index": 0, "values": {}}],
+    )
+    store.record_run(
+        _run("run-with-artifacts"),
+        experiment_uid="art-exp@1.0.0",
+        variant_uid="v-1",
+        task=_task_stub(),
+    )
+    art_file = tmp_path / "solution.zip"
+    art_file.write_bytes(b"PK\x05\x06" + b"\x00" * 18)
+    store.register_artifacts("run-with-artifacts", [art_file])
+
+    data = collect_history(store)
+    write_report_tree(tmp_path / "reports", data)
+    root = tmp_path / "reports"
+
+    run_page = (root / "runs" / "run-with-artifacts" / "index.html").read_text(encoding="utf-8")
+    assert "Artifacts &amp; Downloads" in run_page or "Artifacts & Downloads" in run_page
+    assert "solution.zip" in run_page
+    assert "Clean solution workspace archive" in run_page
+    assert "sha256 hash" in run_page
+    assert "download" in run_page

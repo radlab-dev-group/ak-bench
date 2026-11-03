@@ -1618,24 +1618,86 @@ def render_run(report: RunReport, *, generated_at: str | None = None) -> str:
         if download_links:
             body.append(f'<p style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap;">{"".join(download_links)}</p>')
 
+        artifact_rows = []
+        for artifact in run.get("artifacts") or []:
+            p = str(artifact.get("path") or "")
+            fn = artifact.get("filename") or (Path(p).name if p else "")
+            kind = artifact.get("kind")
+            checksum = str(artifact.get("checksum") or "")
+            size_val = artifact.get("size_bytes")
+            size_formatted = _format_file_size(size_val)
+            desc_text = _artifact_description(fn, kind)
+            
+            download_action = (
+                f'<a class="badge ok" style="text-decoration:none; padding:2px 8px;" href="../../artifacts/{esc(run_uid)}/{esc(fn)}" download>download</a>'
+                if fn
+                else '<span class="muted">-</span>'
+            )
+            checksum_cell = f'<code>{esc(checksum)}</code>' if checksum else '<span class="muted">-</span>'
+            file_cell = f'<strong>{esc(fn or p)}</strong>'
+            if p and fn and p != fn:
+                file_cell += f'<br><span class="muted" style="font-size:0.85em;">{esc(p)}</span>'
+            
+            artifact_rows.append([
+                file_cell,
+                esc(desc_text),
+                size_formatted,
+                checksum_cell,
+                download_action,
+            ])
+
         body.append(
             table(
-                ["kind", "path", "checksum", "download"],
-                [
-                    [
-                        esc(artifact.get("kind")),
-                        f'<code>{esc(artifact.get("path"))}</code>',
-                        esc(artifact.get("checksum")),
-                        f'<a href="../../artifacts/{esc(run_uid)}/{esc(artifact.get("filename") or Path(str(artifact.get("path"))).name)}" download>download</a>'
-                        if artifact.get("path") else '<span class="muted">-</span>',
-                    ]
-                    for artifact in run.get("artifacts") or []
-                ],
+                ["file", "description", "size #", "sha256 hash", "download"],
+                artifact_rows,
             )
         )
     body.append("<h2>Not verified</h2>")
     body.append(_notice(report.unverified))
     return page(f"Run {run.get('uid')}", "".join(body), generated_at=generated_at)
+
+
+def _format_file_size(size_bytes: int | None) -> str:
+    """Format bytes into readable size string."""
+    if size_bytes is None:
+        return NOT_MEASURED
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
+def _artifact_description(filename: str, kind: str | None) -> str:
+    """Provide a human-readable description of what the artifact contains."""
+    fn = filename.lower()
+    if fn in ("solution.zip", "solution_workspace.zip"):
+        return "Clean solution workspace archive (code modified/created by agent)"
+    if fn in ("diff.patch", "solution.patch", "solution_diff.patch"):
+        return "Git diff patch of changes made in the workspace"
+    if fn in ("agent_traces.zip",):
+        return "Agent logs, tool execution traces, and stdout/stderr output"
+    if fn in ("evaluation.zip", "evaluation_results.zip"):
+        return "Test execution results, test logs, and evaluation reports"
+    if fn == "manifest.json":
+        return "Run execution manifest and environment metadata"
+    if fn in ("agent_trace.jsonl", "events.jsonl", "tool_calls.jsonl"):
+        return "Detailed event and tool call timeline"
+    if fn in ("stdout.log", "agent_stdout.jsonl"):
+        return "Agent stdout output log"
+    if fn in ("stderr.log", "agent_stderr.log"):
+        return "Agent stderr error log"
+    if fn in ("junit.xml", "pytest-report.xml"):
+        return "JUnit XML structured test results"
+    if fn in ("evaluation.json", "pytest-output.txt"):
+        return "Evaluation test run summary output"
+    if fn.endswith(".zip"):
+        return "ZIP archive of run artifacts"
+    if fn.endswith(".patch") or fn.endswith(".diff"):
+        return "Diff patch file"
+    if kind:
+        return f"{kind.replace('_', ' ').capitalize()} artifact"
+    return "Run artifact file"
 
 
 def _parameters_cell(values: Any) -> str:
