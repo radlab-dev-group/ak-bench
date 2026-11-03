@@ -48,7 +48,8 @@ def test_descriptor_validate_reports_each_file(project: Path) -> None:
     assert payload["ok"] == payload["files"]
     assert payload["files"] >= 10
     by_file = {item["file"]: item for item in payload["results"]}
-    assert by_file["models/router_models.yaml"]["count"] == 6
+    # router_models.yaml is a snapshot of the shared instance's inventory
+    assert by_file["models/router_models.yaml"]["count"] == 3
     assert all(item["status"] == "ok" for item in payload["results"])
 
 

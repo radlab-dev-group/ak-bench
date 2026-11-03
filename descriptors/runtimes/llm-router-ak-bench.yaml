@@ -1,0 +1,125 @@
+# AK-Bench's own LLM Router instance: the same software and the same model
+# inventory as the shared instance, but this one is started and stopped by
+# AK-Bench for the duration of a run (lifecycle=managed).
+#
+# WHY A SECOND RUNTIME DESCRIPTOR. `llm-router.yaml` describes the shared
+# instance, and its capability statuses are what they are because that instance
+# refuses configuration reads and writes over HTTP. Nothing about that is true
+# here: this process is launched by AK-Bench with an environment AK-Bench chose,
+# and it dies with the run, so plugin toggles are applied rather than requested
+# and the instance log is an artifact of the run (docs/RUNTIME_MANAGER.md).
+#
+# LAUNCHING THE SERVER ITSELF, NOT `llm-router server start`. The CLI start
+# command daemonizes or supervises: AK-Bench would hold a launcher process whose
+# death leaves the actual server bound to the port, and `stop()` would stop
+# lying rather than stopping the router. `python -m llm_router_api.rest_api` is
+# the same entry point the CLI execs, and it is the gunicorn master itself, so
+# SIGTERM reaches the server and its workers go with it.
+schema_version: "1.0"
+id: llm-router-ak-bench
+version: "1.0.0"
+title: LLM Router (AK-Bench managed instance)
+description: >-
+  A router instance owned by one run: launched with the run's factor values in
+  its environment, health-checked before the agent starts, stopped when the run
+  ends, and logging verbosely into the run's artifacts.
+
+runtime:
+  adapter: llm_router
+  execution_modes: [router, runtime, direct]
+  supported_lifecycles: [managed]
+  base_url: http://127.0.0.1:8085
+  healthcheck_path: /health
+  metrics_path: /metrics
+
+  configuration_sources:
+    - "managed.env LLM_ROUTER_MODELS_CONFIG (JSON, active_models required)"
+    - "managed.env LLM_ROUTER_UTILS_PLUGINS_PIPELINE (ordered plugin ids)"
+    - "managed.factor_env: experiment factor values applied as process env"
+
+  capabilities:
+    healthcheck: verified                     # GET /health -> 200 healthy
+    model_inventory: verified                 # GET /v1/models, aliases still omitted
+    effective_configuration_read: verified    # managed.config_file is readable here
+    configuration_write: unsupported          # still no write endpoint; restart instead
+    per_run_plugin_control: verified          # the process environment is this run's
+    plugin_activity_signals: unsupported      # /metrics still has no per-plugin counter
+    model_identification: partial             # chat/completions reports model
+    logs: verified                            # the launched process writes into artifacts
+
+  # The key is never checked (auth is off) but the agent adapter still names it,
+  # so keeping it avoids a second code path in the agent for an insecure local
+  # endpoint.
+  required_env: [LLM_ROUTER_API_KEY]
+
+  managed:
+    # The router checkout, whose relative paths (models config, prompts) are
+    # resolved against the launch directory. Override with AKBENCH values when
+    # the checkout lives elsewhere.
+    command:
+      - /usr/bin/python3.11
+      - "-m"
+      - "llm_router_api.rest_api"
+      - "--gunicorn"
+      - "--host"
+      - "127.0.0.1"
+      - "--port"
+      - "8085"
+      - "--workers"
+      - "1"
+      - "--threads"
+      - "8"
+    cwd: /mnt/data2/dev/develop/llm-router
+    config_file: /mnt/data2/dev/develop/llm-router/resources/configs/models-config-full-with-llamaindex-mapping-pkedzia.json
+
+    # One worker on purpose: with several gunicorn workers every plugin keeps
+    # its own in-memory state, and a run whose routing decision depended on
+    # which worker answered it is not reproducible.
+    env:
+      LLM_ROUTER_MODELS_CONFIG: resources/configs/models-config-full-with-llamaindex-mapping-pkedzia.json
+      LLM_ROUTER_PROMPTS_DIR: resources/prompts
+      LLM_ROUTER_AUTH_ENABLED: "false"
+      LLM_ROUTER_BALANCE_STRATEGY: balanced
+      LLM_ROUTER_USE_PROMETHEUS: "0"
+      LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+      LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_TRIGGER: auto_codex
+      LLM_ROUTER_REDIS_HOST: 192.168.100.67
+      LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_HOST: 192.168.100.67
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_HOST: http://192.168.100.70:8271
+      # A namespace of its own, so a benchmark run never reads or overwrites
+      # the collections the shared instance works with.
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX: akbench_bench
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_KEY_PREFIX: akbench-bench
+      # Chatty by design: DEBUG plus verbose keeps every request, the routing
+      # decision and the knowledge injection in the run's router.log. Verbose
+      # logs unmasked payloads, which is why this runtime is a local instance
+      # and its log is treated as run evidence, not as something to publish.
+      LLM_ROUTER_IN_DEBUG: "1"
+      LLM_ROUTER_VERBOSE: "1"
+      LLM_ROUTER_LOG_LEVEL: DEBUG
+      LLM_ROUTER_MINIMUM: "0"
+      # The application's own log goes to the console, which AK-Bench captures;
+      # a second copy under ~/.llm-router would only drift from the run.
+      LLM_ROUTER_LOG_TO_FILE: "0"
+      # SSE credentials are not stored here: they come from the environment the
+      # benchmark was started in, and reach the process unchanged.
+
+    # The factor is applied to the process, not to the request: this is the
+    # difference between "knowledge was asked for" and "knowledge was on".
+    factor_env:
+      knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
+      knowledge_read_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_ENABLED
+      knowledge_write_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_WRITE_ENABLED
+
+    # Verbose mode waits a few seconds after warning about unmasked logging,
+    # and the plugin pipeline loads its embedding model at startup.
+    ready_timeout: 180.0
+    stop_grace: 20.0
+    log_file: router.log
+
+  notes: >-
+    Managed instance for experiments that must control the router: AK-Bench
+    starts it per run with the run's factor values, verifies the model
+    configuration from the file the process loads, and stops it when the run
+    ends. Knowledge state in Redis and in the vector engine outlives the
+    process: stopping the router does not empty either one.

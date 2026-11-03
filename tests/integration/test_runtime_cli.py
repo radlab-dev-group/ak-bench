@@ -94,9 +94,11 @@ def test_runtime_list_shows_the_router(project: tuple[Path, str]) -> None:
     result = runner.invoke(app, ["runtime", "list", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert payload["count"] == 1
-    assert payload["runtimes"][0]["id"] == "llm-router"
-    assert payload["runtimes"][0]["base_url"] == project[1]
+    by_id = {item["id"]: item for item in payload["runtimes"]}
+    assert set(by_id) == {"llm-router", "llm-router-ak-bench"}
+    # the shared instance is the one the fixture re-pointed at the stub
+    assert by_id["llm-router"]["base_url"] == project[1]
+    assert by_id["llm-router-ak-bench"]["base_url"] == "http://127.0.0.1:8085"
 
 
 def test_runtime_health_reports_healthy(project: tuple[Path, str]) -> None:
