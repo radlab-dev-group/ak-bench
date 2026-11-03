@@ -145,6 +145,12 @@ What this buys, and what it means:
   or the vector engine; a separate prefix (declared in `managed.env`) keeps a
   benchmark from reading the shared instance's collections, but it does not
   create isolation by itself.
+- **No credential is needed.** The managed instance runs with
+  `LLM_ROUTER_AUTH_ENABLED=false` (declared in `managed.env`), so the
+  descriptor declares no `required_env` and the agent binding carries no
+  `env_key`: codex sends no Authorization header and the router never checks
+  one. A run therefore does not depend on an exported key — including a
+  dummy that would only be a lie.
 
 The shipped instance is `descriptors/runtimes/llm-router-ak-bench.yaml`, and
 `configs/experiments/llm-router-selfhost-fast.yaml` is the self-hosted twin of

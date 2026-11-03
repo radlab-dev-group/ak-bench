@@ -214,3 +214,17 @@ def test_agent_run_direct_mode_names_no_runtime(
     payload = _payload(result.output)
     assert payload["execution"]["mode"] == "direct"
     assert payload["execution"]["runtime"] is None
+
+
+def test_the_managed_router_needs_no_credential(project: tuple[Path, str]) -> None:
+    """Auth is off in the managed instance, so the run must not export a key.
+
+    A declared credential would turn every self-hosted run into
+    ``invalid_configuration`` until somebody exports a dummy the router never
+    checks.
+    """
+    result = runner.invoke(app, ["runtime", "list", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = _payload(result.output)
+    by_id = {item["id"]: item for item in payload["runtimes"]}
+    assert by_id["llm-router-ak-bench"]["required_env"] == []

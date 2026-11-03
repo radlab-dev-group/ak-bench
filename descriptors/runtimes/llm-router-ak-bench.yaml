@@ -47,10 +47,11 @@ runtime:
     model_identification: partial             # chat/completions reports model
     logs: verified                            # the launched process writes into artifacts
 
-  # The key is never checked (auth is off) but the agent adapter still names it,
-  # so keeping it avoids a second code path in the agent for an insecure local
-  # endpoint.
-  required_env: [LLM_ROUTER_API_KEY]
+  # No credential: LLM_ROUTER_AUTH_ENABLED is false in this process, so a key
+  # here would only be a gate the operator has to satisfy with a lie (an
+  # exported dummy). With no required env the agent binding carries no
+  # `env_key`, and codex sends no Authorization header at all.
+  required_env: []
 
   managed:
     # The router checkout, whose relative paths (models config, prompts) are
@@ -97,7 +98,9 @@ runtime:
       LLM_ROUTER_IN_DEBUG: "1"
       LLM_ROUTER_VERBOSE: "1"
       LLM_ROUTER_LOG_LEVEL: DEBUG
-      LLM_ROUTER_MINIMUM: "0"
+      # Mandatory: the router refuses to start without it ("only supports
+      # service-as-proxy mode"), so this is a precondition rather than a toggle.
+      LLM_ROUTER_MINIMUM: "1"
       # The application's own log goes to the console, which AK-Bench captures;
       # a second copy under ~/.llm-router would only drift from the run.
       LLM_ROUTER_LOG_TO_FILE: "0"
