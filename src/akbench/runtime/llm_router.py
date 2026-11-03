@@ -75,6 +75,12 @@ class LlmRouterOptions:
     factor_env: dict[str, str] = field(default_factory=dict)
     #: Factor values of the run being started, mapped through ``factor_env``.
     factor_values: dict[str, Any] = field(default_factory=dict)
+    #: Environment the run declares verbatim for the process (the variant's
+    #: ``runtime_env``). It is applied last because it is the most specific
+    #: statement of what this variant's instance is: the plugin pipeline a
+    #: process loads is decided when it starts, so a variant that wants a
+    #: plugin has to name it here.
+    runtime_env: dict[str, str] = field(default_factory=dict)
     #: Where the launched process writes its log; ``None`` discards it.
     log_file: Path | None = None
     #: Directory the log name is resolved against, so the runner decides where
@@ -140,6 +146,7 @@ class LlmRouterAdapter:
                 "factor_env", dict(launch.factor_env) if launch and launch.factor_env else None
             ),
             factor_values=given.factor_values,
+            runtime_env=dict(given.runtime_env),
             log_file=pick(
                 "log_file", Path(launch.log_file) if launch and launch.log_file else None
             ),
@@ -338,19 +345,37 @@ class LlmRouterAdapter:
     # ---------------------------------------------------- launched process
 
     def process_environment(self) -> dict[str, str]:
-        """Ambient environment, the descriptor's env, then this run's factors.
+        """Ambient environment, the descriptor's env, the factors, then the run.
 
-        Factor values come last on purpose: they are what the experiment varied,
-        and a variant that could be overridden by a stray shell variable would
-        silently stop being the variant it claims to be.
+        The variant's own ``runtime_env`` is applied last: it is what this arm
+        of the experiment declared about the process it is about to start, and
+        a variant that could be overridden by a default in the descriptor or a
+        stray shell variable would silently stop being the variant it claims
+        to be.
         """
         environment = dict(os.environ)
         environment.update(self.options.env)
+        environment.update(self.declared_environment())
+        return environment
+
+    def declared_environment(self) -> dict[str, str]:
+        """What this run declared about the process, without the ambient environment.
+
+        The record keeps this rather than the full environment: it holds the
+        configuration under test, while the ambient part is the operator's
+        shell and its credentials. Values whose name marks them as secrets are
+        reported by name only.
+        """
+        declared = dict(self.options.env)
         for factor, name in self.options.factor_env.items():
             if factor not in self.options.factor_values:
                 continue
-            environment[name] = _as_environment_value(self.options.factor_values[factor])
-        return environment
+            declared[name] = _as_environment_value(self.options.factor_values[factor])
+        declared.update(self.options.runtime_env)
+        return {
+            name: (_MASK if _is_secret_name(name) else value)
+            for name, value in declared.items()
+        }
 
     def _open_log(self, log_file: Path | None):
         """Open the instance log so the run keeps the router's own account.
@@ -470,6 +495,17 @@ def _declared_lifecycle(body: Any) -> Lifecycle | None:
     if Lifecycle.EXTERNAL in declared:
         return None
     return Lifecycle.MANAGED if Lifecycle.MANAGED in declared else None
+
+
+#: What a value whose name marks it as a secret is reported as.
+_MASK = "***"
+_SECRET_NAME_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+
+
+def _is_secret_name(name: str) -> bool:
+    """True when an environment variable name marks its value as secret."""
+    upper = name.upper()
+    return any(part in upper for part in _SECRET_NAME_PARTS)
 
 
 def _as_environment_value(value: Any) -> str:

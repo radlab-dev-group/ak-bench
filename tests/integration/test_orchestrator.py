@@ -297,6 +297,15 @@ class _RecordingRuntimeManager:
 
     def start(self) -> None:
         self.started.append(dict(self.overrides))
+        # The orchestrator asks for the environment it recorded; the real
+        # adapter answers from its options, the stub from what it was handed.
+        self.declared = {
+            str(name): str(value)
+            for name, value in self.overrides.get("runtime_env", {}).items()
+        }
+
+    def declared_environment(self) -> dict:
+        return dict(self.declared)
 
     def stop(self) -> None:
         self.stopped = True
@@ -367,3 +376,51 @@ runtime:
 """
         )
     )
+
+
+def test_a_managed_runtime_gets_the_environment_the_variant_declared(
+    harness: dict,
+) -> None:
+    """The variant's launch environment reaches the process it starts.
+
+    The pipeline of a process is fixed at its start, so the environment has to
+    be in the launch, and the run records what it declared: a run that cannot
+    say which plugins its router had cannot say what it measured.
+    """
+    use_stub(harness, copy_stub(harness, "codex-fixer", FIXER_STUB))
+
+    instances: list[_RecordingRuntimeManager] = []
+    registry = RuntimeRegistry()
+    registry.register(
+        managed_runtime_descriptor(),
+        lambda spec, **overrides: _recorded(instances, spec, **overrides),
+    )
+    orchestrator = RunOrchestrator(
+        agents=harness["agent_registry"],
+        runtimes=registry,
+        workspaces=harness["workspaces"],
+        evaluators=default_registry(),
+    )
+    outcome = orchestrator.run(
+        config(
+            harness,
+            mode="router",
+            runtime_id="llm-router-ak-bench",
+            runtime_environment={"knowledge_enabled": True},
+            runtime_env={
+                "LLM_ROUTER_UTILS_PLUGINS_PIPELINE": (
+                    "agentic_routing_codex,agentic_knowledge"
+                )
+            },
+        )
+    )
+
+    assert outcome.state is RunState.COMPLETED
+    manager = instances[0]
+    assert manager.overrides.get("runtime_env") == {
+        "LLM_ROUTER_UTILS_PLUGINS_PIPELINE": "agentic_routing_codex,agentic_knowledge"
+    }
+    record = outcome.record or {}
+    assert record["runtime_environment"] == {
+        "LLM_ROUTER_UTILS_PLUGINS_PIPELINE": "agentic_routing_codex,agentic_knowledge"
+    }

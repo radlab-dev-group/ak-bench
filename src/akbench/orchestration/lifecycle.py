@@ -126,6 +126,10 @@ class RunContext:
     state: RunState = RunState.PENDING
     mode: str = "direct"
     runtime_id: str | None = None
+    #: Environment the runtime instance of this run was started with, as far as
+    #: the run declared it: the plugin pipeline of a process is decided at its
+    #: start, so a run that does not record it cannot say what it measured.
+    runtime_environment: dict[str, Any] | None = None
     requested_model: str | None = None
     agent_parameters: dict[str, Any] | None = None
     workspace_path: str | None = None
@@ -168,6 +172,7 @@ class RunContext:
             "agent_id": self.agent_id,
             "mode": self.mode,
             "runtime_id": self.runtime_id,
+            "runtime_environment": self.runtime_environment,
             "requested_model": self.requested_model,
             "agent_parameters": dict(self.agent_parameters) if self.agent_parameters else None,
             "workspace_path": self.workspace_path,

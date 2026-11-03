@@ -61,6 +61,10 @@ class OrchestrationConfig:
     #: not agent parameters: a managed instance reads them as its own process
     #: configuration, which is what turns a requested value into an applied one.
     runtime_environment: dict[str, Any] = field(default_factory=dict)
+    #: Environment the variant declares for the runtime process verbatim, from
+    #: the combination's ``runtime_env``. Which plugins a process loads is
+    #: fixed when it starts, so this is how a variant says which plugins it has.
+    runtime_env: dict[str, str] = field(default_factory=dict)
     workspace_id: str | None = None
     artifacts_dir: Path | None = None
     evaluation_dir: Path | None = None
@@ -70,6 +74,11 @@ class OrchestrationConfig:
     apply_mutation: bool = True
     cleanup_workspace: bool = False
     task_text: str | None = None
+
+
+#: Environment variables whose value is worth a line in the run's history: they
+#: say what the runtime instance of this run actually was.
+NOTABLE_RUNTIME_ENVIRONMENT = ("LLM_ROUTER_UTILS_PLUGINS_PIPELINE",)
 
 
 class RunOrchestrator:
@@ -269,6 +278,7 @@ class RunOrchestrator:
             entry = self.runtimes.resolve(config.runtime_id)
             manager = entry.manager(
                 factor_values=dict(config.runtime_environment),
+                runtime_env=dict(config.runtime_env),
                 log_dir=config.artifacts_dir,
             )
         except AKBenchmarkError as exc:
@@ -284,11 +294,15 @@ class RunOrchestrator:
                 manager.stop()
                 return None, self._infrastructure(context, exc)
             log_path = getattr(manager, "log_path", None)
-            context.history.record(
-                context.state,
-                f"managed runtime {config.runtime_id} started"
-                + (f", log {Path(log_path).name}" if log_path else ""),
-            )
+            declared = getattr(manager, "declared_environment", None)
+            context.runtime_environment = dict(declared()) if callable(declared) else None
+            notes = [f"managed runtime {config.runtime_id} started"]
+            if log_path:
+                notes.append(f"log {Path(log_path).name}")
+            for name in NOTABLE_RUNTIME_ENVIRONMENT:
+                if context.runtime_environment and name in context.runtime_environment:
+                    notes.append(f"{name}={context.runtime_environment[name]}")
+            context.history.record(context.state, ", ".join(notes))
             return manager, None
 
         try:

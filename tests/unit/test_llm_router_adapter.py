@@ -421,3 +421,68 @@ def test_a_process_that_dies_says_so_with_its_log(
     )
     with pytest.raises(Exception, match=r"exited with code 3.*router\.log"):
         adapter.start()
+
+
+def test_the_run_environment_beats_the_descriptor_defaults(
+    stub: tuple[str, dict], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A variant's runtime_env is the last word on the process environment.
+
+    A pipeline that sits in the descriptor's static environment would load its
+    plugins in every run of that runtime; the variant that wants a different
+    pipeline has to be able to win over it.
+    """
+    url, _ = stub
+    monkeypatch.setenv("STALE_PIPELINE", "from-the-shell")
+    adapter = LlmRouterAdapter(
+        None,
+        LlmRouterOptions(
+            base_url=url,
+            lifecycle=Lifecycle.MANAGED,
+            start_command=["/bin/sh", "-c", "true"],
+            env={"STALE_PIPELINE": "from-the-descriptor", "KEPT": "yes"},
+            factor_env={"a": "FACTOR_VAR"},
+            factor_values={"a": True},
+            runtime_env={"STALE_PIPELINE": "from-the-variant", "RUN_ONLY": "1"},
+        ),
+    )
+    environment = adapter.process_environment()
+
+    assert environment["STALE_PIPELINE"] == "from-the-variant"
+    assert environment["FACTOR_VAR"] == "true"
+    assert environment["RUN_ONLY"] == "1"
+    assert environment["KEPT"] == "yes"
+    # the ambient environment is still there, under everything the run declared
+    assert "SOME_ROUTER_KEY" in environment
+
+
+def test_declared_environment_reports_what_the_run_set_and_masks_secrets(
+    stub: tuple[str, dict], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The record keeps the run's declared environment, never the operator's.
+
+    The ambient environment carries the operator's credentials and must not
+    reach the run record; a declared value whose name marks it as a secret is
+    reported by name only.
+    """
+    url, _ = stub
+    monkeypatch.setenv("AMBIENT_TOKEN", "should-not-be-recorded")
+    adapter = LlmRouterAdapter(
+        None,
+        LlmRouterOptions(
+            base_url=url,
+            lifecycle=Lifecycle.MANAGED,
+            start_command=["/bin/sh", "-c", "true"],
+            env={"SSE_API_PASSWORD": "hunter2", "PIPELINE": "routing,knowledge"},
+            factor_env={"a": "FACTOR_VAR"},
+            factor_values={"a": True},
+            runtime_env={"PIPELINE": "routing"},
+        ),
+    )
+
+    declared = adapter.declared_environment()
+
+    assert "AMBIENT_TOKEN" not in declared
+    assert declared["SSE_API_PASSWORD"] == "***"
+    assert declared["PIPELINE"] == "routing"
+    assert declared["FACTOR_VAR"] == "true"
