@@ -486,3 +486,77 @@ def test_declared_environment_reports_what_the_run_set_and_masks_secrets(
     assert declared["SSE_API_PASSWORD"] == "***"
     assert declared["PIPELINE"] == "routing"
     assert declared["FACTOR_VAR"] == "true"
+
+
+# ------------------------------------------------------- per-request evidence
+
+ROUTER_LOG = "\n".join(
+    [
+        "2026-11-03 17:33:51,347 INFO llm_router_api.endpoints.endpoint_i: "
+        "Overriding trigger model: auto_codex",
+        "2026-11-03 17:34:23,469 INFO llm_router_api.endpoints.endpoint_i: "
+        "Codex routing: mode=test source=heuristic model=qwen/Qwen3.8-27B similarity=0.917",
+        "2026-11-03 17:34:23,503 DEBUG llm_router_api.endpoints.endpoint_i: "
+        "Request model qwen/Qwen3.8-27B with config id: qwen3.8:27b-66:7000",
+        "2026-11-03 17:34:44,410 DEBUG llm_router_api.endpoints.endpoint_i: "
+        "Request model qwen/Qwen3.8-Flash-Next with config id: flash-66:7000",
+    ]
+)
+
+
+def _managed_adapter_with_log(tmp_path: Path, url: str) -> LlmRouterAdapter:
+    log_file = tmp_path / "router.log"
+    log_file.write_text(ROUTER_LOG, encoding="utf-8")
+    adapter = make_adapter(url, lifecycle="managed")
+    adapter.log_path = log_file
+    return adapter
+
+
+def test_model_evidence_names_the_models_the_instance_served(
+    stub: tuple[str, dict], tmp_path: Path
+) -> None:
+    """The log of a process this run started says which model served requests."""
+    url, _ = stub
+    evidence = _managed_adapter_with_log(tmp_path, url).model_request_evidence()
+
+    assert evidence["available"] is True
+    assert evidence["log"] == "router.log"
+    assert evidence["served_models"] == ["qwen/Qwen3.8-27B", "qwen/Qwen3.8-Flash-Next"]
+    assert evidence["routing_decisions"] == ["qwen/Qwen3.8-27B"]
+    assert evidence["received_models"] == ["auto_codex"]
+
+
+def test_model_evidence_is_not_attributable_to_an_external_instance(
+    stub: tuple[str, dict], tmp_path: Path
+) -> None:
+    """A shared router's log is not this run's evidence, so there is none."""
+    url, _ = stub
+    adapter = make_adapter(url)  # lifecycle=external
+    adapter.log_path = tmp_path / "router.log"
+
+    evidence = adapter.model_request_evidence()
+    assert evidence["available"] is False
+    assert "cannot be attributed" in evidence["note"]
+
+
+def test_model_evidence_without_a_log_is_honest_about_being_absent(
+    stub: tuple[str, dict], tmp_path: Path
+) -> None:
+    url, _ = stub
+    adapter = make_adapter(url, lifecycle="managed")
+    adapter.log_path = tmp_path / "never-written.log"
+
+    evidence = adapter.model_request_evidence()
+    assert evidence["available"] is False
+    assert "log" in evidence["note"]
+
+
+def test_model_evidence_of_a_run_with_no_requests_is_empty(tmp_path: Path) -> None:
+    """An empty log is evidence that nothing was served, not a missing reading."""
+    url = "http://127.0.0.1:1"
+    adapter = _managed_adapter_with_log(tmp_path, url)
+    adapter.log_path.write_text("booting\n", encoding="utf-8")
+
+    evidence = adapter.model_request_evidence()
+    assert evidence["available"] is True
+    assert evidence["served_models"] == []

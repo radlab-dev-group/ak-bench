@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -44,6 +45,20 @@ from akbench.runtime.http import HttpError, HttpResponse, get_json
 
 ADAPTER_ID = "llm_router"
 MODELS_PATH = "/v1/models"
+
+#: How much of the instance log is read for per-request evidence. The tail is
+#: the part the run just wrote; a runaway verbose log must not be paid for in
+#: full, and an evidence reader that truncates says so rather than guessing.
+LOG_EVIDENCE_TAIL_BYTES = 8 * 1024 * 1024
+
+#: The router's own account of the models a process handled, as observed in the
+#: log of a launched instance (docs/ROUTER_INTEGRATION.md section 9). Each
+#: pattern is one distinct claim, so a report can say which of them it has:
+#: which model the request asked for, which one routing chose, and which one a
+#: request was actually forwarded to.
+SERVED_MODEL_LINE = re.compile(r"Request model (?P<model>\S+) with config id")
+ROUTING_DECISION_LINE = re.compile(r"Codex routing: .*?\bmodel=(?P<model>\S+)")
+RECEIVED_MODEL_LINE = re.compile(r"Overriding trigger model: (?P<model>\S+)")
 
 
 @dataclass(frozen=True)
@@ -441,6 +456,41 @@ class LlmRouterAdapter:
             {str(item["id"]) for item in data if isinstance(item, dict) and item.get("id")}
         )
 
+    def model_request_evidence(self, tail_bytes: int = LOG_EVIDENCE_TAIL_BYTES) -> dict[str, Any]:
+        """What the launched instance logged about the models it handled.
+
+        Only a process this run started can be attributed to the run, so an
+        external instance reports no evidence at all. The lines are the
+        router's own account of each request: which model it received, which
+        one its routing chose, and which one it forwarded to. That is the
+        difference between "this configuration was asked for" and "this
+        configuration served the run".
+        """
+        path = self.log_path
+        if self.lifecycle is not Lifecycle.MANAGED or path is None or not Path(path).is_file():
+            return {
+                "available": False,
+                "note": (
+                    "no log of a process this run started: the model a run was "
+                    "served by cannot be attributed to a shared instance"
+                ),
+            }
+        try:
+            text = _read_tail(Path(path), tail_bytes)
+        except OSError as exc:
+            return {
+                "available": False,
+                "log": Path(path).name,
+                "note": f"the instance log could not be read: {exc}",
+            }
+        return {
+            "available": True,
+            "log": Path(path).name,
+            "served_models": sorted(set(SERVED_MODEL_LINE.findall(text))),
+            "routing_decisions": sorted(set(ROUTING_DECISION_LINE.findall(text))),
+            "received_models": sorted(set(RECEIVED_MODEL_LINE.findall(text))),
+        }
+
     # ---------------------------------------------------------------- private
 
     def _token(self) -> str | None:
@@ -506,6 +556,15 @@ def _is_secret_name(name: str) -> bool:
     """True when an environment variable name marks its value as secret."""
     upper = name.upper()
     return any(part in upper for part in _SECRET_NAME_PARTS)
+
+
+def _read_tail(path: Path, tail_bytes: int) -> str:
+    """Read the last ``tail_bytes`` of a file, decoding what may be partial."""
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        if size > tail_bytes:
+            handle.seek(size - tail_bytes)
+        return handle.read().decode("utf-8", errors="replace")
 
 
 def _as_environment_value(value: Any) -> str:
