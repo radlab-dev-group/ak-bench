@@ -321,30 +321,49 @@ def test_launch_environment_carries_descriptor_env_and_run_factors(
     assert "SOME_ROUTER_KEY" in environment  # the ambient environment survives
 
 
-def test_managed_instance_logs_to_the_configured_file(
-    stub: tuple[str, dict], tmp_path: Path
+def test_a_managed_instance_refuses_a_port_a_foreign_process_already_serves(
+    stub: tuple[str, dict],
 ) -> None:
-    """The launched process's output is the run's router.log, not /dev/null."""
+    """A readiness answer from a process the run did not start is a refusal.
+
+    A leftover router on the configured port would answer /health for a run
+    that never bound it, so the run would measure an instance it does not own
+    and keep a log that proves nothing. The start must fail instead of the
+    task being allowed to begin.
+    """
     url, _ = stub
-    log_file = tmp_path / "artifacts" / "router.log"
-    command = ["/bin/sh", "-c", "echo router-said-hello"]
     adapter = LlmRouterAdapter(
         None,
         LlmRouterOptions(
             base_url=url,
             lifecycle=Lifecycle.MANAGED,
-            start_command=command,
-            ready_timeout=15.0,
+            start_command=["/bin/sh", "-c", "true"],
+        ),
+    )
+    with pytest.raises(Exception, match="already answered by a process this run did not start"):
+        adapter.start()
+    # and nothing was started, so there is nothing to stop
+    adapter.stop()
+
+
+def test_a_managed_instance_reports_a_child_that_dies_before_readiness(
+    stub: tuple[str, dict], tmp_path: Path
+) -> None:
+    """A child that cannot bind its port must fail the run, not hide behind it."""
+    log_file = tmp_path / "router.log"
+    adapter = LlmRouterAdapter(
+        None,
+        LlmRouterOptions(
+            base_url="http://127.0.0.1:1",
+            lifecycle=Lifecycle.MANAGED,
+            start_command=["/bin/sh", "-c", "exit 7"],
+            ready_timeout=5.0,
             log_file=log_file,
         ),
     )
-    try:
+    with pytest.raises(Exception, match="exited with code 7 before becoming healthy"):
         adapter.start()
-        assert adapter.healthcheck() is True
-    finally:
-        adapter.stop()
     assert adapter.log_path == log_file
-    assert "router-said-hello" in log_file.read_text(encoding="utf-8")
 
 
 def test_http_errors_are_reported_not_raised(stub: tuple[str, dict]) -> None:
@@ -369,7 +388,6 @@ def test_log_dir_override_places_the_descriptor_log_in_the_run(
     """
     import yaml
 
-    url, _ = stub
     monkeypatch.chdir(tmp_path)
     body = yaml.safe_load(
         """
@@ -383,15 +401,13 @@ runtime:
   managed:
     command: ["/bin/sh", "-c", "echo written-into-the-run-log"]
     log_file: router.log
-""".replace("BASEURL", url)
+""".replace("BASEURL", "http://127.0.0.1:1")
     )
     adapter = LlmRouterAdapter(
         RuntimeDescriptor.model_validate(body), log_dir=tmp_path / "artifacts" / "runs" / "one"
     )
-    try:
+    with pytest.raises(Exception, match="before becoming healthy"):
         adapter.start()
-    finally:
-        adapter.stop()
 
     written = tmp_path / "artifacts" / "runs" / "one" / "router.log"
     assert adapter.log_path == written

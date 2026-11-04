@@ -23,12 +23,14 @@ import json
 import os
 import re
 import shlex
+import socket
 import subprocess
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from akbench.descriptors.runtime import Lifecycle, RuntimeDescriptor
 from akbench.runtime.contract import (
@@ -202,18 +204,36 @@ class LlmRouterAdapter:
         if self._process is not None:
             raise RuntimeLayerError(f"runtime {self.runtime_id!r} is already started")
 
+        # A managed run must own its endpoint. If something already answers the
+        # base URL, a readiness probe would pass on that foreign process and the
+        # run would silently measure an instance it did not start — so the start
+        # is refused instead of the task allowed to begin.
+        if self._endpoint_already_serving():
+            raise RuntimeLayerError(
+                f"runtime {self.runtime_id!r} cannot start: {self.base_url} is already "
+                "answered by a process this run did not start; stop that process or "
+                "point the runtime at a free port"
+            )
+
         argv = list(self.options.start_command)
         if len(argv) == 1:
             argv = shlex.split(argv[0])
         self._open_log(self.options.log_file)
-        self._process = subprocess.Popen(
-            argv,
-            cwd=str(self.options.cwd) if self.options.cwd else None,
-            env=self.process_environment(),
-            stdout=(self.log_handle or subprocess.DEVNULL),
-            stderr=(self.log_handle or subprocess.DEVNULL),
-            start_new_session=True,
-        )
+        try:
+            self._process = subprocess.Popen(
+                argv,
+                cwd=str(self.options.cwd) if self.options.cwd else None,
+                env=self.process_environment(),
+                stdout=(self.log_handle or subprocess.DEVNULL),
+                stderr=(self.log_handle or subprocess.DEVNULL),
+                start_new_session=True,
+            )
+        except OSError as exc:
+            self._close_log()
+            self._process = None
+            raise RuntimeLayerError(
+                f"runtime {self.runtime_id!r} could not be launched: {exc}"
+            ) from exc
         self._started = True
         if not self._wait_until_ready(self.options.ready_timeout):
             exit_code = self._process.returncode if self._process else None
@@ -519,13 +539,29 @@ class LlmRouterAdapter:
                 return True
         return False
 
+    def _endpoint_already_serving(self) -> bool:
+        """True when something answers the base URL before this run launched."""
+        parts = urlsplit(self.base_url)
+        host = parts.hostname
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        if not host:
+            return False
+        try:
+            with socket.create_connection((host, port), timeout=1.0):
+                return True
+        except OSError:
+            return False
+
     def _wait_until_ready(self, timeout: float) -> bool:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self.healthcheck():
-                return True
+            # The child is asked first. Readiness is a claim about the process
+            # this run launched, so an answer on the port must never be allowed
+            # to outlive the death of the process that owed it.
             if self._process is not None and self._process.poll() is not None:
                 return False
+            if self.healthcheck():
+                return True
             time.sleep(0.5)
         return False
 
