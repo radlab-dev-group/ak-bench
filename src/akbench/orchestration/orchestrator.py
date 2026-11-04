@@ -18,6 +18,7 @@ Two rules from the plan are enforced structurally, not by convention:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -74,6 +75,10 @@ class OrchestrationConfig:
     apply_mutation: bool = True
     cleanup_workspace: bool = False
     task_text: str | None = None
+    #: Called with the state value on every transition of this run. The CLI
+    #: shows the phase behind its elapsed-time counter; it observes the run and
+    #: changes nothing about it, and it is not recorded.
+    on_transition: Callable[[str], None] | None = None
 
 
 #: Environment variables whose value is worth a line in the run's history: they
@@ -112,6 +117,7 @@ class RunOrchestrator:
             runtime_id=config.runtime_id,
             requested_model=_requested_model(config.agent_parameters),
             started_at=utc_now(),
+            on_transition=config.on_transition,
         )
         return self._run_with_retries(config, context)
 
