@@ -15,7 +15,7 @@ from pathlib import Path
 from akbench.cli.common import CliContext
 from akbench.config.loader import build_app_paths, resolve_database_url
 from akbench.config.models import Settings
-from akbench.descriptors import DescriptorKind, load_registry
+from akbench.descriptors import DescriptorKind, PluginDescriptor, load_registry
 from akbench.plugins import build_plugin_registry
 from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
@@ -58,15 +58,49 @@ def plugin_reports(
     digests = registry.digest_map(DescriptorKind.PLUGIN)
     if not descriptors:
         return []
+    # A row is a statement about a plugin the run configured. A run that named
+    # no pipeline and set no toggle said nothing about a plugin, so there is
+    # nothing to verify and no row is recorded: an ``unverified`` line for a
+    # plugin the process never loaded reads as a defect that does not exist.
+    relevant = _plugins_the_run_configured(descriptors, environ)
     return [
         report.as_dict()
-        for report in build_plugin_registry(descriptors).reports(
-            descriptors,
+        for report in build_plugin_registry(relevant).reports(
+            relevant,
             digests=digests,
             environ=environ,
             environ_applied=environ_applied,
         )
     ]
+
+
+#: The variable that names the plugin pipeline a router process loads at start.
+PIPELINE_ENV = "LLM_ROUTER_UTILS_PLUGINS_PIPELINE"
+
+
+def _plugins_the_run_configured(
+    descriptors: list[PluginDescriptor], environ: Mapping[str, str] | None
+) -> list[PluginDescriptor]:
+    """The descriptors this run engaged, read from the environment it observed.
+
+    A plugin belongs to a run only when the run says so: its id is named in the
+    pipeline the process loads (``LLM_ROUTER_UTILS_PLUGINS_PIPELINE``), or its
+    own ``benchmark.enabled_when`` toggle is set in that environment. A plugin
+    that ships with the installation and was named by neither is not part of
+    the run, and a row about it would only be noise.
+    """
+    environment = dict(environ or {})
+    pipeline = {
+        part.strip()
+        for part in environment.get(PIPELINE_ENV, "").split(",")
+        if part.strip()
+    }
+    selected: list[PluginDescriptor] = []
+    for descriptor in descriptors:
+        toggle = descriptor.benchmark.enabled_when
+        if descriptor.id in pipeline or (toggle is not None and toggle in environment):
+            selected.append(descriptor)
+    return selected
 
 
 def _launched_environment(record: dict[str, object]) -> dict[str, str] | None:

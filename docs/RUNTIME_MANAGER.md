@@ -95,6 +95,20 @@ akbench runtime state llm-router-external
 
 ## Self-start (managed) LLM Router
 
+### The endpoint must belong to the run
+
+A managed run measures the instance it started, so before anything else AK-Bench
+refuses to launch when something already answers the runtime's `base_url`:
+a leftover router on the configured port would answer `/health` for a process
+the run never bound, the run would then execute against an instance it does
+not own, and the log it keeps would prove nothing about the configuration it
+claims to have tested. The start fails with the port named, the task does not
+start, and the run records an infrastructure error instead of a result that
+cannot be attributed. The same rule holds while waiting for readiness: the
+child's death is always checked before its port is probed, so an answer from a
+foreign process can never stand in for a process that is already gone.
+
+
 A runtime whose `supported_lifecycles` is `[managed]` and which declares a
 `managed` launch block is **owned by the run**: AK-Bench starts it before the
 agent and stops it when the run ends, and the run keeps the evidence.
@@ -193,3 +207,15 @@ those fields:
   verified as an alias, with the resolved model recorded), a model the log
   never names is a `mismatch`, and an instance that gave no log or no
   inventory is recorded as having given none.
+
+### Which plugins a run reports
+
+A plugin row in the report is a statement about a plugin the run configured,
+so a run records a row only for the plugins it engaged: a plugin named in the
+pipeline its process loads (`LLM_ROUTER_UTILS_PLUGINS_PIPELINE` in the
+declared environment), or a plugin whose own `benchmark.enabled_when` toggle
+is set there. A plugin that ships with the installation and was named by
+neither is not part of the run — a row about it would say `unverified` for a
+plugin the process never loaded, which reads as a defect that does not exist.
+A run that measures a single model on a plugin-free instance therefore has
+no plugin rows at all.
