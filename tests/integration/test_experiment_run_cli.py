@@ -67,6 +67,31 @@ def test_an_experiment_matrix_runs_and_reports_each_run(project: Path) -> None:
     assert {run["state"] for run in payload["runs"]} == {"completed"}
 
 
+def test_a_run_reports_when_it_started_and_how_long_it_took(project: Path) -> None:
+    """A blocking run says where it started and what the clock read at the end."""
+    experiment = EXPERIMENTS / "wordcount-direct-sanity.yaml"
+
+    result = runner.invoke(app, ["experiment", "run", str(experiment), "--only", "1"])
+
+    assert result.exit_code == 0, result.output
+    assert "started " in result.output
+    assert "took " in result.output
+
+
+def test_the_json_result_carries_the_run_and_the_wall_clock(project: Path) -> None:
+    experiment = EXPERIMENTS / "wordcount-direct-sanity.yaml"
+
+    result = runner.invoke(app, ["experiment", "run", str(experiment), "--only", "1", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = _json(result.output)
+    assert isinstance(payload, dict)
+    assert payload["wall_seconds"] > 0
+    run = payload["runs"][0]
+    assert run["started_at"].endswith("+00:00")
+    assert run["elapsed_seconds"] > 0
+
+
 def test_runs_of_an_experiment_land_in_the_history_and_the_report(project: Path) -> None:
     experiment = EXPERIMENTS / "wordcount-direct-sanity.yaml"
     runner.invoke(app, ["experiment", "run", str(experiment), "--store", "--json"])
