@@ -54,8 +54,8 @@ experiment:
     filters:
       categories: [ bug_fix, new_feature ]
       task_ids:
-        - stockpile-writeoff-001
-        - slugify-001
+        - depweaver-backtracking-001
+        - typeweave-inference-001
 
   factors:
     strategy: custom_matrix
@@ -87,7 +87,7 @@ experiment:
     concurrency: 1
     # Per-run router startup (model config plus plugin pipeline, verbose mode)
     # runs before the agent is started; the bound must cover both.
-    timeout_seconds: 260
+    timeout_seconds: 10800
     retry_infrastructure_errors: 1
 
   evaluation:

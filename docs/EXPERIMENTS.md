@@ -107,9 +107,23 @@ run record as `runtime_environment` and named in the plan and run output.
 | File | What it shows |
 |---|---|
 | `wordcount-direct-sanity.yaml` | the reference case: one task, one agent, no factors |
-| `knowledge-on-off.yaml` | a plugin factor against a managed router (plan 25, B) |
-| `model-comparison.yaml` | one-factor-at-a-time over models (plan 25, D) |
-| `full-matrix.yaml` | knowledge × model, a full factorial (plan 25, E) |
+| `knowledge-on-off.yaml` | a plugin factor on the self-start instance (plan 25, B) |
+| `model-comparison.yaml` | one-factor-at-a-time over models, external instance (plan 25, D) |
+| `full-matrix.yaml` | knowledge × model, a full factorial on the self-start instance (plan 25, E) |
+| `router-config-comparison.yaml` | the operator's four-arm comparison, every arm started on its own instance |
+| `llm-router-external-fast.yaml` | the cheap shared-instance comparison: the model arms only |
+| `llm-router-selfhost-fast.yaml` | the same shape on an instance the run owns, with the knowledge plugin |
+| `knowledge-replay.yaml` | a memory experiment; the managed instance gives it its own namespace |
+
+The split between the two runtimes is a rule, not a choice per file: an
+experiment varies a *plugin* configuration only where the run owns the
+process — that is `llm-router-ak-bench`, `lifecycle: managed`, and each arm
+names the plugin pipeline its instance starts with. An experiment that only
+sends requests — model values, plain runs — names the shared instance,
+`llm-router-external`, `lifecycle: external`, and claims no control it does
+not have. The shared descriptor declares `external` only; a plan that asked it
+for `managed` would be refused, because a shared instance AK-Bench does not
+start is not a managed one.
 
 The plan's example E adds Auto Codex as a third axis; it is deliberately left
 out of `full-matrix.yaml` because the router in this installation refuses

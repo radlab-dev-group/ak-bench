@@ -11,6 +11,13 @@
 # learning arm never worked; the plan builder rejects a transfer scenario that
 # points at a learning task, so adding one without a second matching task fails
 # instead of measuring the wrong thing.
+#
+# Lifecycle managed, on the instance AK-Bench starts: a memory experiment must
+# own the knowledge namespace it reads and writes, and a shared router does not
+# let that be scoped (the isolation report says so). The learning, replay and
+# fresh arms therefore run against an instance whose knowledge prefixes are the
+# run's own, and replay keeps requiring confirmed readiness instead of assuming
+# the memory is there.
 schema_version: "1.0"
 id: knowledge-replay
 version: "1.0.0"
@@ -31,7 +38,7 @@ experiment:
   execution:
     mode: router
     runtime:
-      id: llm-router-external
+      id: llm-router-ak-bench
       lifecycle: managed
 
   dataset:

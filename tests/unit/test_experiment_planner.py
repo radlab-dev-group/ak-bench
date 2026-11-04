@@ -117,7 +117,7 @@ def test_the_plan_pins_the_descriptors_it_used(planner: ExperimentPlanner) -> No
 
     snapshots = plan.descriptor_snapshots
     assert any(key.startswith("agent:codex@") for key in snapshots)
-    assert any(key.startswith("runtime:llm-router-external@") for key in snapshots)
+    assert any(key.startswith("runtime:llm-router-ak-bench@") for key in snapshots)
     assert any(key.startswith("dimension:knowledge_enabled@") for key in snapshots)
     assert all(value.startswith("sha256:") for value in snapshots.values())
 
@@ -183,11 +183,22 @@ def test_an_external_router_cannot_control_a_plugin_per_run(planner: ExperimentP
     assert "per_run_plugin_control_unsupported" in codes(report)
 
 
-def test_a_managed_router_may_be_asked_but_says_so(planner: ExperimentPlanner) -> None:
+def test_a_plugin_factor_validates_cleanly_on_the_self_start_runtime(
+    planner: ExperimentPlanner,
+) -> None:
+    """No caveat is owed when the value goes into the process the run launched.
+
+    The self-start instance declares per-run plugin control as verified — the
+    toggle is in the environment the run started — so the plan carries no
+    refusal and no "verified by construction" warning; the remaining doubt is
+    the plugin's own accounting, recorded per run, not a plan-level caveat.
+    The shared instance, which cannot be told, is covered by the refusal test.
+    """
     report = planner.validate(experiment(document()))
 
     assert report.ok
-    assert "plugin_factor_verified_by_construction" in warnings(report)
+    assert "per_run_plugin_control_unsupported" not in codes(report)
+    assert "plugin_factor_verified_by_construction" not in warnings(report)
 
 
 def test_an_unknown_runtime_blocks_the_plan(planner: ExperimentPlanner) -> None:
@@ -330,7 +341,7 @@ def test_the_descriptor_kind_of_a_plan_survives_round_trip(planner: ExperimentPl
     plan = planner.plan(loaded)
 
     assert plan.experiment.digest.startswith("sha256:")
-    assert plan.summary()["strategy"] == "full_factorial"
+    assert plan.summary()["strategy"] == "custom_matrix"
     assert plan.as_dict()["counts"]["runs"] == 12
 
 
@@ -367,13 +378,11 @@ def test_task_timeout_within_experiment_timeout_is_accepted(planner: ExperimentP
 
 def test_a_combination_env_reaches_its_variant(planner: ExperimentPlanner) -> None:
     """The arm that wants a plugin names it where the arm is declared."""
-    from akbench.experiments import load_experiment_file
-
-    loaded = load_experiment_file(EXPERIMENTS / "llm-router-selfhost-fast.yaml")
-    plan = planner.plan(loaded)
+    plan = planner.plan(experiment(document("router-config-comparison")))
 
     by_values = {
-        (v.values.get("model"), v.values.get("knowledge_enabled")): v for v in plan.variants
+        (v.values.get("model"), v.values.get("knowledge_enabled")): v
+        for v in plan.variants
     }
     baseline = by_values[("qwen/Qwen3.8-27B", False)]
     knowledge = by_values[("auto_codex", True)]

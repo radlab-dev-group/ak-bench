@@ -12,7 +12,7 @@ description: >-
 runtime:
   adapter: llm_router
   execution_modes: [direct, runtime, router]
-  supported_lifecycles: [managed, external]
+  supported_lifecycles: [external]
   base_url: http://192.168.100.65:8081
   healthcheck_path: /health
   metrics_path: /metrics
@@ -35,6 +35,12 @@ runtime:
 
   required_env: [LLM_ROUTER_API_KEY]
   notes: >-
+    Lifecycle external, and only external: this process is shared, so AK-Bench
+    must never start, stop or reconfigure it, and an experiment that declared
+    this instance managed would be recording a control it does not have. A run
+    that needs the plugin toggles applied rather than requested names
+    llm-router-ak-bench, whose instance AK-Bench launches and owns.
+
     The shared instance reachable at the address above is lifecycle=external:
     AK-Bench can neither read its effective configuration nor pin plugin state
     per run, so Knowledge and Auto Codex experiments must run against a managed
