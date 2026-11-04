@@ -94,6 +94,13 @@ class LlmRouterPluginAdapter:
 
         values = observe_env(descriptor.benchmark.observed_env, environ)
         by_name = {value.name: value for value in values}
+        environment = dict(environ or {})
+        pipeline = {
+            part.strip()
+            for part in environment.get("LLM_ROUTER_UTILS_PLUGINS_PIPELINE", "").split(",")
+            if part.strip()
+        }
+        loaded = descriptor.id in pipeline
 
         wanted = dict(requested or {})
         unknown = sorted(set(wanted) - set(by_name))
@@ -109,7 +116,7 @@ class LlmRouterPluginAdapter:
             else value
             for value in values
         ]
-        enabled, note = self._enabled_state(descriptor, by_name)
+        enabled, note = self._enabled_state(descriptor, by_name, loaded=loaded)
         if environ_applied:
             note = _append_note(
                 note,
@@ -231,18 +238,38 @@ class LlmRouterPluginAdapter:
         self,
         descriptor: PluginDescriptor,
         by_name: Mapping[str, ConfiguredValue],
+        *,
+        loaded: bool,
     ) -> tuple[bool, str | None]:
-        """``enabled`` comes only from a toggle the descriptor points at."""
+        """``enabled`` comes only from a toggle the descriptor points at.
+
+        ``loaded`` says whether the process this run started actually loaded
+        the plugin (its id was in the pipeline). A loaded plugin whose toggle
+        the run did not set is a fact the report can state plainly; an
+        unloaded one is not a configuration of the run at all, and the row
+        must not read like a finding about it.
+        """
         toggle = descriptor.benchmark.enabled_when
         if toggle is None:
+            if loaded:
+                return False, (
+                    "the process loads this plugin, but the descriptor declares no "
+                    "plugin-level toggle (benchmark.enabled_when), so activation is "
+                    "not observable and enabled is reported as false"
+                )
             return False, (
-                "descriptor declares no plugin-level toggle (benchmark.enabled_when), "
+                "the descriptor declares no plugin-level toggle (benchmark.enabled_when), "
                 "so activation is not observable and enabled is reported as false"
             )
         value = by_name.get(toggle)
         if value is None:
             return False, f"benchmark.enabled_when names an entry that is not allowlisted: {toggle}"
         if value.observed_value is None:
+            if loaded:
+                return False, (
+                    f"{toggle} is not set, so the process runs the plugin with its "
+                    "built-in default rather than a configuration this run chose"
+                )
             return False, f"{toggle} is not set, so the plugin keeps its built-in default"
         return bool(value.observed_value), None
 

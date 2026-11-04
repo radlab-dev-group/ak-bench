@@ -400,9 +400,11 @@ def test_the_shipped_selfhost_experiment_keeps_its_pipeline_out_of_the_runtime(
 
     The regression this guards: the first version of the self-hosted run loaded
     the knowledge plugin in the arm that measured the router without it, because
-    the pipeline sat in the runtime's static environment. An arm that wants a
-    plugin names it under its own ``runtime_env``; an arm that does not leave
-    the pipeline out, so its process loads no plugins at all.
+    the pipeline sat in the runtime's static environment. Which plugins an arm
+    loads is always declared under its own ``runtime_env`` — an arm that wants
+    no plugin leaves the pipeline out, an arm that measures knowledge names the
+    knowledge plugin — so the difference between arms is a fact about the
+    processes they started, not about the runtime.
     """
     from akbench.descriptors import DescriptorKind, load_registry
 
@@ -415,12 +417,15 @@ def test_the_shipped_selfhost_experiment_keeps_its_pipeline_out_of_the_runtime(
 
     loaded = load_experiment_file(EXPERIMENTS / "llm-router-selfhost-fast.yaml")
     plan = planner.plan(loaded)
-    for variant in plan.variants:
-        pipeline = variant.runtime_env.get("LLM_ROUTER_UTILS_PLUGINS_PIPELINE")
-        if pipeline is not None:
-            assert "agentic_knowledge" not in pipeline.split(","), (
-                "an arm that does not measure knowledge loads no knowledge plugin"
-            )
+    pipelines = [
+        (variant.values, variant.runtime_env.get("LLM_ROUTER_UTILS_PLUGINS_PIPELINE"))
+        for variant in plan.variants
+    ]
+    # every arm that names the knowledge plugin is the knowledge arm; no other
+    # arm may load it, and the runtime descriptor names none.
+    for values, pipeline in pipelines:
+        if "agentic_knowledge" in (pipeline or ""):
+            assert values.get("model") == "auto_codex"
 
 
 def test_a_variant_env_is_part_of_the_variant_identity(planner: ExperimentPlanner) -> None:
