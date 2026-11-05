@@ -310,6 +310,7 @@ spike/          # Phase 0 code (flow validation)
 - `docs/REPRODUCIBILITY.md` — what "the same conditions" means here and where it is tested
 - `docs/CLI.md` — every implemented command and the interface facts that go with it
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
+- `CHANGELOG.md` — release notes per version, with a short summary table at the top
 
 ## Conventions
 
