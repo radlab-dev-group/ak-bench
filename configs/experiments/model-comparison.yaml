@@ -10,6 +10,12 @@
 # serves) and against the agent descriptor's own parameter declaration. What the
 # router eventually served is a different fact — recorded by the routed_model
 # dimension, never inferred from the value asked for here.
+#
+# The lifecycle is external because that is what this instance is: a shared
+# router AK-Bench only sends requests to. Nothing here needs the run to own the
+# process — a model value is carried in the request, not in the router's
+# environment — so the shared instance answers the question without pretending
+# to be under this run's control.
 schema_version: "1.0"
 id: model-comparison
 version: "1.0.0"
@@ -29,8 +35,8 @@ experiment:
   execution:
     mode: router
     runtime:
-      id: llm-router
-      lifecycle: managed
+      id: llm-router-external
+      lifecycle: external
 
   dataset:
     filters:

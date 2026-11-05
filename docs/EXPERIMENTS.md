@@ -66,14 +66,64 @@ agent parameters and the environment requests, and a baseline flag. The plan
 pins the digests of every descriptor it depends on (plan 9), so editing a
 descriptor later cannot reinterpret the plan.
 
+### The launch environment of a combination
+
+A `custom_matrix` combination may carry a reserved key `runtime_env`, a
+mapping of environment variables to scalar values. It is the environment the
+run's **managed** runtime instance is started with: the planner strips the key
+from the factor values, the variant's identity hashes it, the orchestrator
+hands it to the runtime adapter, and the adapter applies it last, so it wins
+over the descriptor's static environment and over the ambient shell.
+
+```yaml
+  factors:
+    strategy: custom_matrix
+    dimensions:
+      - id: model
+      - id: knowledge_enabled
+    combinations:
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+      - model: auto_codex
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+```
+
+This exists because some configuration is fixed when a process starts: the
+plugin pipeline of a router is read at launch, so an arm that wants a plugin
+has to name it in its combination, and the runtime descriptor ships no
+pipeline of its own (a pipeline there would load its plugins in **every** run
+of that runtime, including the arms that measure the router without them).
+Declaring `runtime_env` against a runtime that is not started by the run is a
+plan error (`runtime_environment_needs_managed`): an environment sent nowhere
+is not a configuration. The environment the run declared is recorded in the
+run record as `runtime_environment` and named in the plan and run output.
+
 ## The shipped examples
 
 | File | What it shows |
 |---|---|
 | `wordcount-direct-sanity.yaml` | the reference case: one task, one agent, no factors |
-| `knowledge-on-off.yaml` | a plugin factor against a managed router (plan 25, B) |
-| `model-comparison.yaml` | one-factor-at-a-time over models (plan 25, D) |
-| `full-matrix.yaml` | knowledge × model, a full factorial (plan 25, E) |
+| `knowledge-on-off.yaml` | a plugin factor on the self-start instance (plan 25, B) |
+| `model-comparison.yaml` | one-factor-at-a-time over models, external instance (plan 25, D) |
+| `full-matrix.yaml` | knowledge × model, a full factorial on the self-start instance (plan 25, E) |
+| `router-config-comparison.yaml` | the operator's four-arm comparison, every arm started on its own instance |
+| `llm-router-external-fast.yaml` | the cheap shared-instance comparison: the model arms only |
+| `llm-router-selfhost-fast.yaml` | the same shape on an instance the run owns, with the knowledge plugin |
+| `knowledge-replay.yaml` | a memory experiment; the managed instance gives it its own namespace |
+
+The split between the two runtimes is a rule, not a choice per file: an
+experiment varies a *plugin* configuration only where the run owns the
+process — that is `llm-router-ak-bench`, `lifecycle: managed`, and each arm
+names the plugin pipeline its instance starts with. An experiment that only
+sends requests — model values, plain runs — names the shared instance,
+`llm-router-external`, `lifecycle: external`, and claims no control it does
+not have. The shared descriptor declares `external` only; a plan that asked it
+for `managed` would be refused, because a shared instance AK-Bench does not
+start is not a managed one.
 
 The plan's example E adds Auto Codex as a third axis; it is deliberately left
 out of `full-matrix.yaml` because the router in this installation refuses

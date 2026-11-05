@@ -16,6 +16,7 @@ cannot be left again.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -126,6 +127,17 @@ class RunContext:
     state: RunState = RunState.PENDING
     mode: str = "direct"
     runtime_id: str | None = None
+    #: Environment the runtime instance of this run was started with, as far as
+    #: the run declared it: the plugin pipeline of a process is decided at its
+    #: start, so a run that does not record it cannot say what it measured.
+    runtime_environment: dict[str, Any] | None = None
+    #: Model inventory read from the instance this run used. It says what the
+    #: instance can serve, which is not the same as what served the run — the
+    #: per-request evidence is ``model_evidence``.
+    served_models: list[str] | None = None
+    #: The runtime instance's own account of the models it handled, read from
+    #: the log of the process this run started (managed lifecycle only).
+    model_evidence: dict[str, Any] | None = None
     requested_model: str | None = None
     agent_parameters: dict[str, Any] | None = None
     workspace_path: str | None = None
@@ -140,6 +152,12 @@ class RunContext:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     history: TransitionLog = field(default_factory=TransitionLog)
+    #: Called with the state value on every transition. A CLI uses it to keep an
+    #: elapsed-time line honest about the phase it is waiting in — the wait for
+    #: a managed router to become healthy is minutes long and looks exactly like
+    #: a hang without it. It is an observer, not a record: ``as_record`` ignores
+    #: it, so a run's persisted facts do not change because someone was watching.
+    on_transition: Callable[[str], None] | None = None
 
     def __post_init__(self) -> None:
         self.history.record(self.state, "run created")
@@ -154,6 +172,8 @@ class RunContext:
             raise InvalidTransition(f"{self.state.value} -> {target.value}")
         self.state = target
         self.history.record(target, note)
+        if self.on_transition is not None:
+            self.on_transition(target.value)
 
     def finish(self, target: RunState, note: str | None = None) -> None:
         """Move to a terminal state and stamp the end time."""
@@ -168,6 +188,9 @@ class RunContext:
             "agent_id": self.agent_id,
             "mode": self.mode,
             "runtime_id": self.runtime_id,
+            "runtime_environment": self.runtime_environment,
+            "served_models": self.served_models,
+            "model_evidence": self.model_evidence,
             "requested_model": self.requested_model,
             "agent_parameters": dict(self.agent_parameters) if self.agent_parameters else None,
             "workspace_path": self.workspace_path,

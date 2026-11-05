@@ -99,20 +99,32 @@ class PluginAdapter(Protocol):
         descriptor: PluginDescriptor,
         requested: Mapping[str, Any] | None = None,
         environ: Mapping[str, str] | None = None,
+        environ_applied: bool = False,
     ) -> PluginState:
         """Read the allowlisted inputs and build the per-run plugin state.
 
         ``requested`` carries what the experiment asked for (dimension values);
         ``environ`` is the environment to read from (the process environment by
         default). Observation never claims verification.
+
+        ``environ_applied`` marks an environment the caller's run started its
+        runtime with: the values were applied by that run, which is stronger
+        evidence than a coincidental ambient environment and must be recorded
+        as such — still not verification, whose status stays ``unverified``.
         """
         ...
 
-    def verify(self, descriptor: PluginDescriptor, state: PluginState) -> PluginState:
+    def verify(
+        self,
+        descriptor: PluginDescriptor,
+        state: PluginState,
+        environ_applied: bool = False,
+    ) -> PluginState:
         """Run the plugin's verification and stamp the result on the state.
 
         An adapter that cannot verify a plugin must return the state with
-        ``unverified`` (or ``unsupported``), never ``verified``.
+        ``unverified``, or ``unsupported`` only where no evidence could exist
+        for this run at all; never ``verified``.
         """
         ...
 
@@ -130,6 +142,7 @@ class PluginAdapter(Protocol):
         digest: str | None = None,
         requested: Mapping[str, Any] | None = None,
         environ: Mapping[str, str] | None = None,
+        environ_applied: bool = False,
     ) -> PluginReport:
         """Observe, verify and normalize in one call."""
         ...

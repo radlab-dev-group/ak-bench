@@ -28,7 +28,7 @@ The directory name selects the kind; the file name is free.
 | Kind | Directory | Example |
 |---|---|---|
 | agent | `descriptors/agents/` | `codex.yaml` |
-| runtime | `descriptors/runtimes/` | `llm-router.yaml` |
+| runtime | `descriptors/runtimes/` | `llm-router-external.yaml` |
 | plugin | `descriptors/plugins/` | `agentic_knowledge.yaml` |
 | model | `descriptors/models/` | `router_models.yaml` |
 | category | `descriptors/categories/` | `bug_fix.yaml` |

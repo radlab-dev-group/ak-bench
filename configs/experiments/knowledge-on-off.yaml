@@ -3,16 +3,23 @@
 # back to its own default, which the router under test may not serve.
 #
 # The factor is a router-plugin configuration, so the experiment names a
-# managed runtime: AK-Bench starts the instance and owns its environment, which
-# is the only way the value can be pinned to a run. On the shared external
-# router the same factor is refused at validation, because a configuration that
-# cannot be pinned or verified is not an experimental control.
+# managed runtime: AK-Bench starts the instance with this run's value in its
+# environment and stops it when the run ends, which is the only way the value
+# can be pinned to a run. On the shared router the same factor is refused at
+# validation, because a configuration that cannot be pinned or verified is not
+# an experimental control.
+#
+# THE PIPELINE IS PART OF THE ARM. Loading a plugin is decided when the process
+# starts, so the arm that measures knowledge names the plugin in its own
+# runtime_env. The runtime descriptor ships no pipeline of its own — a pipeline
+# there would load it in the off arm too — and a toggle on its own only enables
+# a plugin that is already present.
 schema_version: "1.0"
 id: knowledge-on-off
 version: "1.0.0"
 title: Knowledge plugin on/off
 description: >-
-  Does the knowledge plugin change the outcome when the agent, the model and the task set are held still? The toggle is the only factor and the model is pinned explicitly, because an agent left to its own default may be served something else by the router under test. The runtime is managed on purpose: a factor that cannot be pinned to a run is not an experimental control.
+  Does the knowledge plugin change the outcome when the agent, the model and the task set are held still? The toggle is the only factor and the model is pinned explicitly, because an agent left to its own default may be served something else by the router under test. The runtime is managed on purpose: AK-Bench launches a router instance per run with the toggle applied to its environment, so each arm is a configuration of the process it ran in rather than a request against a shared instance.
 
 experiment:
   type: configuration
@@ -27,7 +34,7 @@ experiment:
   execution:
     mode: router
     runtime:
-      id: llm-router
+      id: llm-router-ak-bench
       lifecycle: managed
 
   dataset:
@@ -36,11 +43,19 @@ experiment:
       task_ids: [wordcount-001, slugify-001]
 
   factors:
-    strategy: full_factorial
+    strategy: custom_matrix
     dimensions:
       - id: knowledge_enabled
     baseline:
       knowledge_enabled: false
+    # The off arm starts with no knowledge plugin loaded; the on arm loads it
+    # and starts with the toggle on, so the arms differ in a fact about the
+    # process each of them ran, not in a value the router was asked to honor.
+    combinations:
+      - knowledge_enabled: false
+      - knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
 
   execution_policy:
     repetitions: 3

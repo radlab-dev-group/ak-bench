@@ -76,12 +76,15 @@ class LlmRouterPluginAdapter:
         descriptor: PluginDescriptor,
         requested: Mapping[str, Any] | None = None,
         environ: Mapping[str, str] | None = None,
+        environ_applied: bool = False,
     ) -> PluginState:
         """Build the per-run state from the allowlist plus requested values.
 
         A requested name that no descriptor entry declares is rejected: an
         experiment may not smuggle configuration past an allowlist it did not
-        write (plan 10.1).
+        write (plan 10.1). ``environ_applied`` marks an environment the run
+        itself launched the runtime with, which is what separates a value this
+        run applied from one it merely sees in its own process environment.
         """
         if not self.supports(descriptor):
             raise PluginAdapterError(
@@ -91,6 +94,13 @@ class LlmRouterPluginAdapter:
 
         values = observe_env(descriptor.benchmark.observed_env, environ)
         by_name = {value.name: value for value in values}
+        environment = dict(environ or {})
+        pipeline = {
+            part.strip()
+            for part in environment.get("LLM_ROUTER_UTILS_PLUGINS_PIPELINE", "").split(",")
+            if part.strip()
+        }
+        loaded = descriptor.id in pipeline
 
         wanted = dict(requested or {})
         unknown = sorted(set(wanted) - set(by_name))
@@ -106,7 +116,14 @@ class LlmRouterPluginAdapter:
             else value
             for value in values
         ]
-        enabled, note = self._enabled_state(descriptor, by_name)
+        enabled, note = self._enabled_state(descriptor, by_name, loaded=loaded)
+        if environ_applied:
+            note = _append_note(
+                note,
+                "environment applied by this run to the runtime process it started; "
+                "the value is what the process was launched with, not a reading of "
+                "the running instance",
+            )
         return PluginState(
             plugin_id=descriptor.id,
             plugin_version=descriptor.version,
@@ -119,21 +136,29 @@ class LlmRouterPluginAdapter:
 
     # ---------------------------------------------------------------- verify
 
-    def verify(self, descriptor: PluginDescriptor, state: PluginState) -> PluginState:
+    def verify(
+        self,
+        descriptor: PluginDescriptor,
+        state: PluginState,
+        environ_applied: bool = False,
+    ) -> PluginState:
         """Verify against injected evidence only, and record how it was done.
 
-        Without evidence the state stays ``unverified`` (or ``unsupported``
-        when no reader could exist at all) and the note names the methods the
-        descriptor declared, so a reader sees what is missing (plan 10.2).
+        Without evidence the state stays ``unverified`` (``unsupported`` only
+        when the evidence could not exist for this run at all) and the note
+        names the methods the descriptor declared, so a reader sees what is
+        missing (plan 10.2).
         """
         effective = self._read_effective_config()
         if effective is None:
             return state.model_copy(
                 update={
-                    "verification_status": self._status_without_evidence(),
+                    "verification_status": self._status_without_evidence(environ_applied),
                     "note": _append_note(
                         state.note,
-                        _no_evidence_note(descriptor.benchmark.verification.methods),
+                        _no_evidence_note(
+                            descriptor.benchmark.verification.methods, environ_applied
+                        ),
                     ),
                 }
             )
@@ -189,9 +214,14 @@ class LlmRouterPluginAdapter:
         digest: str | None = None,
         requested: Mapping[str, Any] | None = None,
         environ: Mapping[str, str] | None = None,
+        environ_applied: bool = False,
     ) -> PluginReport:
         """Observe, verify and normalize one plugin descriptor."""
-        state = self.verify(descriptor, self.observe(descriptor, requested, environ))
+        state = self.verify(
+            descriptor,
+            self.observe(descriptor, requested, environ, environ_applied=environ_applied),
+            environ_applied=environ_applied,
+        )
         return PluginReport(
             plugin_id=descriptor.id,
             plugin_version=descriptor.version,
@@ -208,18 +238,38 @@ class LlmRouterPluginAdapter:
         self,
         descriptor: PluginDescriptor,
         by_name: Mapping[str, ConfiguredValue],
+        *,
+        loaded: bool,
     ) -> tuple[bool, str | None]:
-        """``enabled`` comes only from a toggle the descriptor points at."""
+        """``enabled`` comes only from a toggle the descriptor points at.
+
+        ``loaded`` says whether the process this run started actually loaded
+        the plugin (its id was in the pipeline). A loaded plugin whose toggle
+        the run did not set is a fact the report can state plainly; an
+        unloaded one is not a configuration of the run at all, and the row
+        must not read like a finding about it.
+        """
         toggle = descriptor.benchmark.enabled_when
         if toggle is None:
+            if loaded:
+                return False, (
+                    "the process loads this plugin, but the descriptor declares no "
+                    "plugin-level toggle (benchmark.enabled_when), so activation is "
+                    "not observable and enabled is reported as false"
+                )
             return False, (
-                "descriptor declares no plugin-level toggle (benchmark.enabled_when), "
+                "the descriptor declares no plugin-level toggle (benchmark.enabled_when), "
                 "so activation is not observable and enabled is reported as false"
             )
         value = by_name.get(toggle)
         if value is None:
             return False, f"benchmark.enabled_when names an entry that is not allowlisted: {toggle}"
         if value.observed_value is None:
+            if loaded:
+                return False, (
+                    f"{toggle} is not set, so the process runs the plugin with its "
+                    "built-in default rather than a configuration this run chose"
+                )
             return False, f"{toggle} is not set, so the plugin keeps its built-in default"
         return bool(value.observed_value), None
 
@@ -231,9 +281,16 @@ class LlmRouterPluginAdapter:
         except Exception:  # evidence that cannot be read is absent evidence
             return None
 
-    def _status_without_evidence(self) -> VerificationStatus:
-        """Without a reader a remote read is unsupported; a local one unverified."""
-        return VerificationStatus.UNSUPPORTED
+    def _status_without_evidence(self, environ_applied: bool = False) -> VerificationStatus:
+        """Without a reader a remote read is unsupported; a local one unverified.
+
+        A run that launched the instance with the observed environment applied
+        its configuration by construction, so ``unverified`` is the honest
+        state: the value was applied, its effect is not yet confirmed. Only a
+        run that cannot reach the instance's configuration at all is
+        ``unsupported``.
+        """
+        return VerificationStatus.UNVERIFIED if environ_applied else VerificationStatus.UNSUPPORTED
 
 
 def _apply_effective(
@@ -276,7 +333,13 @@ def _evidence_label() -> str:
     return "verified against an injected effective-configuration reader"
 
 
-def _no_evidence_note(methods: list[str]) -> str:
+def _no_evidence_note(methods: list[str], environ_applied: bool = False) -> str:
+    if environ_applied:
+        return (
+            "no effective-configuration reader was injected and the router refuses "
+            "configuration reads, so the applied environment cannot be confirmed "
+            "against the running instance"
+        )
     if not methods:
         return "no verification method declared and no evidence source available"
     listed = ", ".join(methods)

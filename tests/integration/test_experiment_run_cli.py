@@ -67,6 +67,31 @@ def test_an_experiment_matrix_runs_and_reports_each_run(project: Path) -> None:
     assert {run["state"] for run in payload["runs"]} == {"completed"}
 
 
+def test_a_run_reports_when_it_started_and_how_long_it_took(project: Path) -> None:
+    """A blocking run says where it started and what the clock read at the end."""
+    experiment = EXPERIMENTS / "wordcount-direct-sanity.yaml"
+
+    result = runner.invoke(app, ["experiment", "run", str(experiment), "--only", "1"])
+
+    assert result.exit_code == 0, result.output
+    assert "started " in result.output
+    assert "took " in result.output
+
+
+def test_the_json_result_carries_the_run_and_the_wall_clock(project: Path) -> None:
+    experiment = EXPERIMENTS / "wordcount-direct-sanity.yaml"
+
+    result = runner.invoke(app, ["experiment", "run", str(experiment), "--only", "1", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = _json(result.output)
+    assert isinstance(payload, dict)
+    assert payload["wall_seconds"] > 0
+    run = payload["runs"][0]
+    assert run["started_at"].endswith("+00:00")
+    assert run["elapsed_seconds"] > 0
+
+
 def test_runs_of_an_experiment_land_in_the_history_and_the_report(project: Path) -> None:
     experiment = EXPERIMENTS / "wordcount-direct-sanity.yaml"
     runner.invoke(app, ["experiment", "run", str(experiment), "--store", "--json"])
@@ -153,3 +178,76 @@ experiment:
 
     assert result.exit_code == 1
     assert "not runnable" in result.output or "task_timeout_exceeds_experiment" in result.output
+
+
+GATED_RUNTIME = """\
+schema_version: "1.0"
+id: gated-router
+version: "1.0.0"
+title: A router that names a credential
+runtime:
+  adapter: llm_router
+  execution_modes: [router]
+  supported_lifecycles: [external]
+  base_url: http://127.0.0.1:1
+  required_env: [AKBENCH_TEST_CREDENTIAL]
+"""
+
+ROUTER_EXPERIMENT = """\
+schema_version: "1.0"
+id: gated-run
+version: "1.0.0"
+title: A run whose runtime credential is missing
+experiment:
+  type: configuration
+  agent: {id: codex, version: "1.0.0", config: {model: model-a}}
+  execution: {mode: router, runtime: {id: gated-router}}
+  dataset: {filters: {task_ids: [wordcount-001]}}
+  factors: {strategy: full_factorial}
+  execution_policy: {repetitions: 1, timeout_seconds: 600}
+  evaluation: {evaluators: [pytest_evaluator]}
+  metrics: [task_success_rate]
+"""
+
+
+def test_a_failed_run_reports_why_and_not_only_its_state(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A terminal state without its reason is not a diagnosis.
+
+    The runtime here names a credential nobody exports, so the agent refuses to
+    start; the run must say so rather than print a bare state and send the user
+    to a record file.
+    """
+    monkeypatch.delenv("AKBENCH_TEST_CREDENTIAL", raising=False)
+    (project / "descriptors" / "runtimes" / "gated-router.yaml").write_text(
+        GATED_RUNTIME, encoding="utf-8"
+    )
+    experiment = project / "gated-run.yaml"
+    experiment.write_text(ROUTER_EXPERIMENT, encoding="utf-8")
+
+    result = runner.invoke(app, ["experiment", "run", str(experiment)])
+
+    assert result.exit_code == 0, result.output
+    assert "invalid_configuration" in result.output
+    assert "AKBENCH_TEST_CREDENTIAL" in result.output
+
+
+def test_a_failed_run_carries_its_reason_into_the_json_result(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AKBENCH_TEST_CREDENTIAL", raising=False)
+    (project / "descriptors" / "runtimes" / "gated-router.yaml").write_text(
+        GATED_RUNTIME, encoding="utf-8"
+    )
+    experiment = project / "gated-run.yaml"
+    experiment.write_text(ROUTER_EXPERIMENT, encoding="utf-8")
+
+    result = runner.invoke(app, ["experiment", "run", str(experiment), "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = _json(result.output)
+    assert isinstance(payload, dict)
+    run = payload["runs"][0]
+    assert run["state"] == "invalid_configuration"
+    assert "AKBENCH_TEST_CREDENTIAL" in str(run["detail"])

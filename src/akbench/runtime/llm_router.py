@@ -21,12 +21,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
+import socket
 import subprocess
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from akbench.descriptors.runtime import Lifecycle, RuntimeDescriptor
 from akbench.runtime.contract import (
@@ -43,6 +47,20 @@ from akbench.runtime.http import HttpError, HttpResponse, get_json
 
 ADAPTER_ID = "llm_router"
 MODELS_PATH = "/v1/models"
+
+#: How much of the instance log is read for per-request evidence. The tail is
+#: the part the run just wrote; a runaway verbose log must not be paid for in
+#: full, and an evidence reader that truncates says so rather than guessing.
+LOG_EVIDENCE_TAIL_BYTES = 8 * 1024 * 1024
+
+#: The router's own account of the models a process handled, as observed in the
+#: log of a launched instance (docs/ROUTER_INTEGRATION.md section 9). Each
+#: pattern is one distinct claim, so a report can say which of them it has:
+#: which model the request asked for, which one routing chose, and which one a
+#: request was actually forwarded to.
+SERVED_MODEL_LINE = re.compile(r"Request model (?P<model>\S+) with config id")
+ROUTING_DECISION_LINE = re.compile(r"Codex routing: .*?\bmodel=(?P<model>\S+)")
+RECEIVED_MODEL_LINE = re.compile(r"Overriding trigger model: (?P<model>\S+)")
 
 
 @dataclass(frozen=True)
@@ -64,6 +82,27 @@ class LlmRouterOptions:
     config_file: Path | None = None
     #: Command that starts a managed instance, e.g. a ``docker run ...`` argv.
     start_command: list[str] = field(default_factory=list)
+    #: Working directory of the launched process (the router resolves its
+    #: models config and prompts directory against it).
+    cwd: Path | None = None
+    #: Environment applied to the launched process on top of the ambient one.
+    env: dict[str, str] = field(default_factory=dict)
+    #: Factor id -> environment variable, so a variant value becomes a real
+    #: process configuration instead of a recorded request.
+    factor_env: dict[str, str] = field(default_factory=dict)
+    #: Factor values of the run being started, mapped through ``factor_env``.
+    factor_values: dict[str, Any] = field(default_factory=dict)
+    #: Environment the run declares verbatim for the process (the variant's
+    #: ``runtime_env``). It is applied last because it is the most specific
+    #: statement of what this variant's instance is: the plugin pipeline a
+    #: process loads is decided when it starts, so a variant that wants a
+    #: plugin has to name it here.
+    runtime_env: dict[str, str] = field(default_factory=dict)
+    #: Where the launched process writes its log; ``None`` discards it.
+    log_file: Path | None = None
+    #: Directory the log name is resolved against, so the runner decides where
+    #: a run's evidence lives and the descriptor only decides what it is called.
+    log_dir: Path | None = None
     #: Seconds to wait for a managed instance to become healthy.
     ready_timeout: float = 120.0
     stop_grace: float = 15.0
@@ -85,22 +124,56 @@ class LlmRouterAdapter:
         self.descriptor = descriptor
         base = dict(options.__dict__) if options is not None else {}
         base.update({k: v for k, v in overrides.items() if v is not None})
-        resolved = LlmRouterOptions(**base)
-        if descriptor is not None:
-            body = descriptor.runtime
-            resolved = LlmRouterOptions(
-                base_url=resolved.base_url or (body.base_url or ""),
-                healthcheck_path=resolved.healthcheck_path or (body.healthcheck_path or "/health"),
-                metrics_path=resolved.metrics_path or (body.metrics_path or "/metrics"),
-                api_key_env=resolved.api_key_env
-                or (body.required_env[0] if body.required_env else None),
-                timeout=resolved.timeout,
-                lifecycle=resolved.lifecycle,
-                config_file=resolved.config_file,
-                start_command=list(resolved.start_command),
-                ready_timeout=resolved.ready_timeout,
-                stop_grace=resolved.stop_grace,
-            )
+        given = LlmRouterOptions(**base)
+        defaults = LlmRouterOptions()
+        body = descriptor.runtime if descriptor is not None else None
+        launch = body.managed if body is not None else None
+
+        def pick(name: str, declared: Any) -> Any:
+            """An explicitly passed option wins over the descriptor.
+
+            Only non-``None`` options count as passed, because the registry
+            factory passes every option it knows and an unset one must not
+            erase what the descriptor declares.
+            """
+            if name in base:
+                return getattr(given, name)
+            if declared is not None:
+                return declared
+            return getattr(defaults, name)
+
+        resolved = LlmRouterOptions(
+            base_url=pick("base_url", body.base_url if body else None),
+            healthcheck_path=pick("healthcheck_path", body.healthcheck_path if body else None),
+            metrics_path=pick("metrics_path", body.metrics_path if body else None),
+            api_key_env=pick(
+                "api_key_env", body.required_env[0] if body and body.required_env else None
+            ),
+            timeout=pick("timeout", None),
+            lifecycle=pick("lifecycle", _declared_lifecycle(body)),
+            config_file=pick(
+                "config_file", Path(launch.config_file) if launch and launch.config_file else None
+            ),
+            start_command=pick(
+                "start_command", list(launch.command) if launch and launch.command else None
+            ),
+            cwd=pick("cwd", Path(launch.cwd) if launch and launch.cwd else None),
+            env={**(launch.env if launch else {}), **given.env},
+            factor_env=pick(
+                "factor_env", dict(launch.factor_env) if launch and launch.factor_env else None
+            ),
+            factor_values=given.factor_values,
+            runtime_env=dict(given.runtime_env),
+            log_file=pick(
+                "log_file", Path(launch.log_file) if launch and launch.log_file else None
+            ),
+            # The directory is a property of the run, not of the runtime: the
+            # descriptor names the log, and the runner decides where the
+            # evidence of one run lives.
+            log_dir=Path(given.log_dir) if given.log_dir is not None else None,
+            ready_timeout=pick("ready_timeout", launch.ready_timeout if launch else None),
+            stop_grace=pick("stop_grace", launch.stop_grace if launch else None),
+        )
         if not resolved.base_url:
             raise RuntimeConfigError(
                 "llm_router needs a base_url (from the descriptor or the options)"
@@ -111,6 +184,8 @@ class LlmRouterAdapter:
         self.lifecycle = resolved.lifecycle
         self._process: subprocess.Popen | None = None
         self._started = False
+        self.log_path: Path | None = None
+        self.log_handle = None
 
     # ------------------------------------------------------------- lifecycle
 
@@ -129,38 +204,68 @@ class LlmRouterAdapter:
         if self._process is not None:
             raise RuntimeLayerError(f"runtime {self.runtime_id!r} is already started")
 
+        # A managed run must own its endpoint. If something already answers the
+        # base URL, a readiness probe would pass on that foreign process and the
+        # run would silently measure an instance it did not start — so the start
+        # is refused instead of the task allowed to begin.
+        if self._endpoint_already_serving():
+            raise RuntimeLayerError(
+                f"runtime {self.runtime_id!r} cannot start: {self.base_url} is already "
+                "answered by a process this run did not start; stop that process or "
+                "point the runtime at a free port"
+            )
+
         argv = list(self.options.start_command)
         if len(argv) == 1:
             argv = shlex.split(argv[0])
-        self._process = subprocess.Popen(
-            argv,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        self._open_log(self.options.log_file)
+        try:
+            self._process = subprocess.Popen(
+                argv,
+                cwd=str(self.options.cwd) if self.options.cwd else None,
+                env=self.process_environment(),
+                stdout=(self.log_handle or subprocess.DEVNULL),
+                stderr=(self.log_handle or subprocess.DEVNULL),
+                start_new_session=True,
+            )
+        except OSError as exc:
+            self._close_log()
+            self._process = None
+            raise RuntimeLayerError(
+                f"runtime {self.runtime_id!r} could not be launched: {exc}"
+            ) from exc
         self._started = True
         if not self._wait_until_ready(self.options.ready_timeout):
+            exit_code = self._process.returncode if self._process else None
+            log_note = f" (see {self.log_path})" if self.log_path else ""
+            if self._process is not None and exit_code is not None:
+                self.stop()
+                raise RuntimeLayerError(
+                    f"runtime {self.runtime_id!r} exited with code {exit_code} "
+                    f"before becoming healthy{log_note}"
+                )
             self.stop()
             raise RuntimeLayerError(
                 f"runtime {self.runtime_id!r} did not become healthy within "
-                f"{self.options.ready_timeout}s"
+                f"{self.options.ready_timeout}s{log_note}"
             )
 
     def stop(self) -> None:
         """Stop the managed instance this adapter started; ignore external ones."""
         process = self._process
         self._started = False
-        if process is None:
-            return
-        if process.poll() is None:
-            process.terminate()
-            deadline = time.time() + self.options.stop_grace
-            while process.poll() is None and time.time() < deadline:
-                time.sleep(0.1)
-            if process.poll() is None:
-                process.kill()
-            process.wait(timeout=5)
-        self._process = None
+        try:
+            if process is not None and process.poll() is None:
+                process.terminate()
+                deadline = time.time() + self.options.stop_grace
+                while process.poll() is None and time.time() < deadline:
+                    time.sleep(0.1)
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=5)
+        finally:
+            self._process = None
+            self._close_log()
 
     def healthcheck(self) -> bool:
         """True when the router answers its health endpoint as healthy."""
@@ -272,6 +377,65 @@ class LlmRouterAdapter:
             notes=notes,
         )
 
+    # ---------------------------------------------------- launched process
+
+    def process_environment(self) -> dict[str, str]:
+        """Ambient environment, the descriptor's env, the factors, then the run.
+
+        The variant's own ``runtime_env`` is applied last: it is what this arm
+        of the experiment declared about the process it is about to start, and
+        a variant that could be overridden by a default in the descriptor or a
+        stray shell variable would silently stop being the variant it claims
+        to be.
+        """
+        environment = dict(os.environ)
+        environment.update(self.options.env)
+        environment.update(self.declared_environment())
+        return environment
+
+    def declared_environment(self) -> dict[str, str]:
+        """What this run declared about the process, without the ambient environment.
+
+        The record keeps this rather than the full environment: it holds the
+        configuration under test, while the ambient part is the operator's
+        shell and its credentials. Values whose name marks them as secrets are
+        reported by name only.
+        """
+        declared = dict(self.options.env)
+        for factor, name in self.options.factor_env.items():
+            if factor not in self.options.factor_values:
+                continue
+            declared[name] = _as_environment_value(self.options.factor_values[factor])
+        declared.update(self.options.runtime_env)
+        return {
+            name: (_MASK if _is_secret_name(name) else value)
+            for name, value in declared.items()
+        }
+
+    def _open_log(self, log_file: Path | None):
+        """Open the instance log so the run keeps the router's own account.
+
+        The name comes from the descriptor and lands in the directory the runner
+        supplied, which is what makes the log of a managed instance an artifact
+        of the run that started it rather than a file somebody has to go find.
+        """
+        if log_file is None:
+            return None
+        path = Path(log_file)
+        if not path.is_absolute() and self.options.log_dir is not None:
+            path = Path(self.options.log_dir) / path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.log_path = path
+        self.log_handle = path.open("ab")
+        return self.log_handle
+
+    def _close_log(self) -> None:
+        handle = self.log_handle
+        self.log_handle = None
+        if handle is not None:
+            with suppress(OSError):
+                handle.close()
+
     # ------------------------------------------------------------ observation
 
     def collect_runtime_state(self) -> RuntimeState:
@@ -312,6 +476,41 @@ class LlmRouterAdapter:
             {str(item["id"]) for item in data if isinstance(item, dict) and item.get("id")}
         )
 
+    def model_request_evidence(self, tail_bytes: int = LOG_EVIDENCE_TAIL_BYTES) -> dict[str, Any]:
+        """What the launched instance logged about the models it handled.
+
+        Only a process this run started can be attributed to the run, so an
+        external instance reports no evidence at all. The lines are the
+        router's own account of each request: which model it received, which
+        one its routing chose, and which one it forwarded to. That is the
+        difference between "this configuration was asked for" and "this
+        configuration served the run".
+        """
+        path = self.log_path
+        if self.lifecycle is not Lifecycle.MANAGED or path is None or not Path(path).is_file():
+            return {
+                "available": False,
+                "note": (
+                    "no log of a process this run started: the model a run was "
+                    "served by cannot be attributed to a shared instance"
+                ),
+            }
+        try:
+            text = _read_tail(Path(path), tail_bytes)
+        except OSError as exc:
+            return {
+                "available": False,
+                "log": Path(path).name,
+                "note": f"the instance log could not be read: {exc}",
+            }
+        return {
+            "available": True,
+            "log": Path(path).name,
+            "served_models": sorted(set(SERVED_MODEL_LINE.findall(text))),
+            "routing_decisions": sorted(set(ROUTING_DECISION_LINE.findall(text))),
+            "received_models": sorted(set(RECEIVED_MODEL_LINE.findall(text))),
+        }
+
     # ---------------------------------------------------------------- private
 
     def _token(self) -> str | None:
@@ -340,15 +539,79 @@ class LlmRouterAdapter:
                 return True
         return False
 
+    def _endpoint_already_serving(self) -> bool:
+        """True when something answers the base URL before this run launched."""
+        parts = urlsplit(self.base_url)
+        host = parts.hostname
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        if not host:
+            return False
+        try:
+            with socket.create_connection((host, port), timeout=1.0):
+                return True
+        except OSError:
+            return False
+
     def _wait_until_ready(self, timeout: float) -> bool:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self.healthcheck():
-                return True
+            # The child is asked first. Readiness is a claim about the process
+            # this run launched, so an answer on the port must never be allowed
+            # to outlive the death of the process that owed it.
             if self._process is not None and self._process.poll() is not None:
                 return False
+            if self.healthcheck():
+                return True
             time.sleep(0.5)
         return False
+
+
+def _declared_lifecycle(body: Any) -> Lifecycle | None:
+    """The lifecycle of a descriptor that owns its process, else ``None``.
+
+    A descriptor that declares a ``managed`` launch block and no other
+    lifecycle is AK-Bench's own instance, so it is managed by default. One that
+    also accepts ``external`` stays external: only a managed instance may be
+    started or stopped (plan section 13), and an unasked-for start is worse
+    than a refused one.
+    """
+    if body is None or body.managed is None:
+        return None
+    declared = body.supported_lifecycles
+    if Lifecycle.EXTERNAL in declared:
+        return None
+    return Lifecycle.MANAGED if Lifecycle.MANAGED in declared else None
+
+
+#: What a value whose name marks it as a secret is reported as.
+_MASK = "***"
+_SECRET_NAME_PARTS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+
+
+def _is_secret_name(name: str) -> bool:
+    """True when an environment variable name marks its value as secret."""
+    upper = name.upper()
+    return any(part in upper for part in _SECRET_NAME_PARTS)
+
+
+def _read_tail(path: Path, tail_bytes: int) -> str:
+    """Read the last ``tail_bytes`` of a file, decoding what may be partial."""
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        if size > tail_bytes:
+            handle.seek(size - tail_bytes)
+        return handle.read().decode("utf-8", errors="replace")
+
+
+def _as_environment_value(value: Any) -> str:
+    """Render a factor value the way the router's own parsing expects.
+
+    The router reads booleans as ``true``/``false`` (and ``1``/``0``); Python's
+    ``str(True)`` would hand it ``True``, which most parsers read as a string.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def _looks_healthy(response: HttpResponse | None) -> bool:

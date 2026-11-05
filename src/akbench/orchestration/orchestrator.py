@@ -18,6 +18,7 @@ Two rules from the plan are enforced structurally, not by convention:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -38,7 +39,7 @@ from akbench.evaluators.task_evaluation import evaluate_task
 from akbench.orchestration.errors import RunPreparationError
 from akbench.orchestration.lifecycle import RunContext, RunOutcome, RunState
 from akbench.orchestration.packaging import collect_and_package_artifacts
-from akbench.runtime.contract import ExecutionMode
+from akbench.runtime.contract import ExecutionMode, Lifecycle
 from akbench.runtime.registry import RuntimeRegistry
 
 
@@ -57,6 +58,14 @@ class OrchestrationConfig:
     mode: str = ExecutionMode.DIRECT.value
     runtime_id: str | None = None
     agent_parameters: dict[str, Any] = field(default_factory=dict)
+    #: Factor values the runtime itself has to apply (plugin toggles). They are
+    #: not agent parameters: a managed instance reads them as its own process
+    #: configuration, which is what turns a requested value into an applied one.
+    runtime_environment: dict[str, Any] = field(default_factory=dict)
+    #: Environment the variant declares for the runtime process verbatim, from
+    #: the combination's ``runtime_env``. Which plugins a process loads is
+    #: fixed when it starts, so this is how a variant says which plugins it has.
+    runtime_env: dict[str, str] = field(default_factory=dict)
     workspace_id: str | None = None
     artifacts_dir: Path | None = None
     evaluation_dir: Path | None = None
@@ -66,6 +75,15 @@ class OrchestrationConfig:
     apply_mutation: bool = True
     cleanup_workspace: bool = False
     task_text: str | None = None
+    #: Called with the state value on every transition of this run. The CLI
+    #: shows the phase behind its elapsed-time counter; it observes the run and
+    #: changes nothing about it, and it is not recorded.
+    on_transition: Callable[[str], None] | None = None
+
+
+#: Environment variables whose value is worth a line in the run's history: they
+#: say what the runtime instance of this run actually was.
+NOTABLE_RUNTIME_ENVIRONMENT = ("LLM_ROUTER_UTILS_PLUGINS_PIPELINE",)
 
 
 class RunOrchestrator:
@@ -99,6 +117,7 @@ class RunOrchestrator:
             runtime_id=config.runtime_id,
             requested_model=_requested_model(config.agent_parameters),
             started_at=utc_now(),
+            on_transition=config.on_transition,
         )
         return self._run_with_retries(config, context)
 
@@ -131,7 +150,7 @@ class RunOrchestrator:
         prepared = self._preparing(config, context)
         if isinstance(prepared, RunOutcome):
             return prepared
-        entry, agent_config = prepared
+        entry, agent_config, runtime = prepared
 
         session = None
         adapter = None
@@ -186,13 +205,15 @@ class RunOrchestrator:
         except Exception as exc:  # unexpected: record it, never lose the run
             return self._fail(config, context, exc, adapter=adapter, session=session)
         finally:
+            self._recording_model_evidence(runtime, context)
+            self._stopping_runtime(runtime, context)
             self._cleanup(config, context)
 
     # ---------------------------------------------------------- each step
 
     def _preparing(
         self, config: OrchestrationConfig, context: RunContext
-    ) -> tuple[object, AgentConfig] | RunOutcome:
+    ) -> tuple[object, AgentConfig, object] | RunOutcome:
         """Resolve the agent, validate its configuration and the environment."""
         context.transition(RunState.PREPARING, "resolving agent")
         try:
@@ -232,34 +253,126 @@ class RunOrchestrator:
             return self._infrastructure(context, exc)
 
         # The runtime step is only meaningful when the mode names a runtime.
+        runtime = None
         if config.mode != ExecutionMode.DIRECT.value:
             context.transition(RunState.CONFIGURING_RUNTIME, f"runtime {config.runtime_id}")
-            outcome = self._checking_runtime(config, context)
+            runtime, outcome = self._checking_runtime(config, context)
             if outcome is not None:
                 return outcome
         else:
             # The state is part of the chain even without a runtime: skipping it
             # would make the recorded history differ between modes.
             context.transition(RunState.CONFIGURING_RUNTIME, "no runtime in direct mode")
-        return entry, agent_config
+        return entry, agent_config, runtime
 
-    def _checking_runtime(self, config: OrchestrationConfig, context: RunContext):
+    def _checking_runtime(
+        self, config: OrchestrationConfig, context: RunContext
+    ) -> tuple[object, RunOutcome | None]:
+        """Bring the runtime up and hand the caller what it must stop again.
+
+        A **managed** instance is started here, per run, with this run's factor
+        values in its environment and its log inside the run's artifacts: the
+        variant's plugin configuration is then a property of a process this run
+        owned, and the log is the evidence. An **external** instance is only
+        health-checked, because starting or reconfiguring a shared router would
+        change the experiment for everybody (plan section 13).
+        """
         if self.runtimes is None or config.runtime_id is None:
-            return self._infrastructure(
+            return None, self._infrastructure(
                 context, RunPreparationError("the run mode names no runtime")
             )
         try:
             entry = self.runtimes.resolve(config.runtime_id)
-            manager = entry.manager()
+            manager = entry.manager(
+                factor_values=dict(config.runtime_environment),
+                runtime_env=dict(config.runtime_env),
+                log_dir=config.artifacts_dir,
+            )
+        except AKBenchmarkError as exc:
+            return None, self._infrastructure(context, exc)
+
+        # The manager may carry either Lifecycle vocabulary (contract or
+        # descriptor); compare by value, never by identity.
+        manager_lifecycle = getattr(manager, "lifecycle", None)
+        if manager_lifecycle is not None and str(manager_lifecycle) == Lifecycle.MANAGED.value:
+            try:
+                manager.start()
+            except AKBenchmarkError as exc:
+                manager.stop()
+                return None, self._infrastructure(context, exc)
+            log_path = getattr(manager, "log_path", None)
+            declared = getattr(manager, "declared_environment", None)
+            context.runtime_environment = dict(declared()) if callable(declared) else None
+            notes = [f"managed runtime {config.runtime_id} started"]
+            if log_path:
+                notes.append(f"log {Path(log_path).name}")
+            for name in NOTABLE_RUNTIME_ENVIRONMENT:
+                if context.runtime_environment and name in context.runtime_environment:
+                    notes.append(f"{name}={context.runtime_environment[name]}")
+            context.history.record(context.state, ", ".join(notes))
+            self._recording_served_models(manager, context)
+            return manager, None
+
+        try:
             healthy = manager.healthcheck()
         except AKBenchmarkError as exc:
-            return self._infrastructure(context, exc)
+            manager.stop()
+            return None, self._infrastructure(context, exc)
         if not healthy:
-            return self._infrastructure(
+            manager.stop()
+            return None, self._infrastructure(
                 context,
                 RunPreparationError(f"runtime {config.runtime_id} is not healthy"),
             )
-        return None
+        self._recording_served_models(manager, context)
+        return manager, None
+
+    def _recording_served_models(self, manager: object, context: RunContext) -> None:
+        """Ask the instance which models it serves, and record what it answers.
+
+        Inventory is the weakest model evidence there is — it says what the
+        instance can serve, not what served this run — so a failure to read it
+        is a note, never a run-ending error.
+        """
+        list_models = getattr(manager, "list_models", None)
+        if not callable(list_models):
+            return
+        try:
+            models = list_models()
+        except AKBenchmarkError as exc:
+            context.history.record(context.state, f"model inventory unreadable: {exc}")
+            return
+        context.served_models = list(models) if models is not None else None
+        if models is None:
+            context.history.record(context.state, "model inventory unreadable")
+
+    def _recording_model_evidence(self, manager: object, context: RunContext) -> None:
+        """Read the instance's own account of the models it handled.
+
+        This must happen while the run still owns the process and its log, so
+        it is collected before the runtime is stopped.
+        """
+        evidence = getattr(manager, "model_request_evidence", None)
+        if not callable(evidence):
+            return
+        try:
+            recorded = evidence()
+        except AKBenchmarkError as exc:
+            context.history.record(context.state, f"model evidence failed: {exc}")
+            return
+        if isinstance(recorded, dict):
+            context.model_evidence = recorded
+
+    def _stopping_runtime(self, manager: object, context: RunContext) -> None:
+        """Stop the managed instance this run started; losing it is a bug."""
+        if manager is None:
+            return
+        try:
+            manager.stop()
+        except AKBenchmarkError as exc:
+            context.history.record(context.state, f"runtime stop failed: {exc}")
+        else:
+            context.history.record(context.state, "runtime stopped")
 
     def _creating_workspace(self, config: OrchestrationConfig, context: RunContext):
         context.transition(RunState.CREATING_WORKSPACE, "preparing task workspace")

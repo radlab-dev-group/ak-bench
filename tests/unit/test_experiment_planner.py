@@ -117,7 +117,7 @@ def test_the_plan_pins_the_descriptors_it_used(planner: ExperimentPlanner) -> No
 
     snapshots = plan.descriptor_snapshots
     assert any(key.startswith("agent:codex@") for key in snapshots)
-    assert any(key.startswith("runtime:llm-router@") for key in snapshots)
+    assert any(key.startswith("runtime:llm-router-ak-bench@") for key in snapshots)
     assert any(key.startswith("dimension:knowledge_enabled@") for key in snapshots)
     assert all(value.startswith("sha256:") for value in snapshots.values())
 
@@ -173,18 +173,32 @@ def test_a_plugin_factor_needs_a_runtime(planner: ExperimentPlanner) -> None:
 
 def test_an_external_router_cannot_control_a_plugin_per_run(planner: ExperimentPlanner) -> None:
     payload = document()
-    payload["experiment"]["execution"]["runtime"] = {"id": "llm-router", "lifecycle": "external"}
+    payload["experiment"]["execution"]["runtime"] = {
+        "id": "llm-router-external",
+        "lifecycle": "external",
+    }
 
     report = planner.validate(experiment(payload))
 
     assert "per_run_plugin_control_unsupported" in codes(report)
 
 
-def test_a_managed_router_may_be_asked_but_says_so(planner: ExperimentPlanner) -> None:
+def test_a_plugin_factor_validates_cleanly_on_the_self_start_runtime(
+    planner: ExperimentPlanner,
+) -> None:
+    """No caveat is owed when the value goes into the process the run launched.
+
+    The self-start instance declares per-run plugin control as verified — the
+    toggle is in the environment the run started — so the plan carries no
+    refusal and no "verified by construction" warning; the remaining doubt is
+    the plugin's own accounting, recorded per run, not a plan-level caveat.
+    The shared instance, which cannot be told, is covered by the refusal test.
+    """
     report = planner.validate(experiment(document()))
 
     assert report.ok
-    assert "plugin_factor_verified_by_construction" in warnings(report)
+    assert "per_run_plugin_control_unsupported" not in codes(report)
+    assert "plugin_factor_verified_by_construction" not in warnings(report)
 
 
 def test_an_unknown_runtime_blocks_the_plan(planner: ExperimentPlanner) -> None:
@@ -327,7 +341,7 @@ def test_the_descriptor_kind_of_a_plan_survives_round_trip(planner: ExperimentPl
     plan = planner.plan(loaded)
 
     assert plan.experiment.digest.startswith("sha256:")
-    assert plan.summary()["strategy"] == "full_factorial"
+    assert plan.summary()["strategy"] == "custom_matrix"
     assert plan.as_dict()["counts"]["runs"] == 12
 
 
@@ -357,3 +371,105 @@ def test_task_timeout_within_experiment_timeout_is_accepted(planner: ExperimentP
     report = planner.validate(experiment(payload))
 
     assert "task_timeout_exceeds_experiment" not in codes(report)
+
+
+# ------------------------------------------------------- runtime_env binding
+
+
+def test_a_combination_env_reaches_its_variant(planner: ExperimentPlanner) -> None:
+    """The arm that wants a plugin names it where the arm is declared."""
+    plan = planner.plan(experiment(document("router-config-comparison")))
+
+    by_values = {
+        (v.values.get("model"), v.values.get("knowledge_enabled")): v
+        for v in plan.variants
+    }
+    baseline = by_values[("qwen/Qwen3.8-27B", False)]
+    knowledge = by_values[("auto_codex", True)]
+    pipeline = "LLM_ROUTER_UTILS_PLUGINS_PIPELINE"
+    assert baseline.runtime_env == {pipeline: "agentic_routing_codex"}
+    assert knowledge.runtime_env == {
+        pipeline: "agentic_routing_codex,agentic_knowledge"
+    }
+
+
+def test_the_shipped_selfhost_experiment_keeps_its_pipeline_out_of_the_runtime(
+    planner: ExperimentPlanner,
+) -> None:
+    """A pipeline in the runtime descriptor would load its plugins in every arm.
+
+    The regression this guards: the first version of the self-hosted run loaded
+    the knowledge plugin in the arm that measured the router without it, because
+    the pipeline sat in the runtime's static environment. Which plugins an arm
+    loads is always declared under its own ``runtime_env`` — an arm that wants
+    no plugin leaves the pipeline out, an arm that measures knowledge names the
+    knowledge plugin — so the difference between arms is a fact about the
+    processes they started, not about the runtime.
+    """
+    from akbench.descriptors import DescriptorKind, load_registry
+
+    registry = load_registry(REPO_ROOT / "descriptors")
+    entry = registry.get(DescriptorKind.RUNTIME, "llm-router-ak-bench")
+    assert entry is not None
+    assert "LLM_ROUTER_UTILS_PLUGINS_PIPELINE" not in entry.descriptor.runtime.managed.env
+
+    from akbench.experiments import load_experiment_file
+
+    loaded = load_experiment_file(EXPERIMENTS / "llm-router-selfhost-fast.yaml")
+    plan = planner.plan(loaded)
+    pipelines = [
+        (variant.values, variant.runtime_env.get("LLM_ROUTER_UTILS_PLUGINS_PIPELINE"))
+        for variant in plan.variants
+    ]
+    # every arm that names the knowledge plugin is the knowledge arm; no other
+    # arm may load it, and the runtime descriptor names none.
+    for values, pipeline in pipelines:
+        if "agentic_knowledge" in (pipeline or ""):
+            assert values.get("model") == "auto_codex"
+
+
+def test_a_variant_env_is_part_of_the_variant_identity(planner: ExperimentPlanner) -> None:
+    """Two arms that differ only in their runtime env are two configurations."""
+    payload = document("knowledge-on-off")
+    payload["experiment"]["execution"] = {
+        "mode": "router",
+        "runtime": {"id": "llm-router-ak-bench", "lifecycle": "managed"},
+    }
+    payload["experiment"]["factors"] = {
+        "strategy": "custom_matrix",
+        "dimensions": [{"id": "knowledge_enabled"}],
+        "baseline": {"knowledge_enabled": False},
+        "combinations": [
+            {"knowledge_enabled": False, "runtime_env": {"PIPE": "routing"}},
+            {"knowledge_enabled": True, "runtime_env": {"PIPE": "routing,knowledge"}},
+        ],
+    }
+
+    plan = planner.plan(experiment(payload))
+
+    ids = [variant.variant_id for variant in plan.variants]
+    assert len(ids) == 2 and len(set(ids)) == 2
+    envs = {v.values["knowledge_enabled"]: v.runtime_env for v in plan.variants}
+    assert envs[False] == {"PIPE": "routing"}
+    assert envs[True] == {"PIPE": "routing,knowledge"}
+
+
+def test_a_combination_env_against_an_external_runtime_is_refused(
+    planner: ExperimentPlanner,
+) -> None:
+    payload = document("knowledge-on-off")
+    payload["experiment"]["execution"] = {
+        "mode": "router",
+        "runtime": {"id": "llm-router-external"},
+    }
+    payload["experiment"]["factors"] = {
+        "strategy": "custom_matrix",
+        "dimensions": [{"id": "knowledge_enabled"}],
+        "combinations": [
+            {"knowledge_enabled": True, "runtime_env": {"PIPE": "routing,knowledge"}}
+        ],
+    }
+
+    report = planner.validate(experiment(payload))
+
+    assert "runtime_environment_needs_managed" in codes(report)

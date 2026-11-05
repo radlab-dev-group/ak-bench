@@ -1,29 +1,33 @@
-# Four named configurations on every task of the dataset (plan section 25,
-# the comparison the operator asked for).
+# Two configurations on two tasks, against the router this installation shares
+# (plan section 25, the comparison the operator asked for, cut to its cheapest
+# useful shape).
 #
-# The matrix is explicit rather than a full product: qwen/Qwen3.8-27B and
-# qwen/Qwen3.8-Flash-Next are compared with the knowledge plugin off, and the
-# auto_codex alias is compared with it off and on. A full product would add
-# arms nobody reads (knowledge on, plain model), and every arm costs real
-# router time.
+# NO KNOWLEDGE AXIS HERE. The toggle lives in the router process, and a shared
+# instance neither accepts nor reports a per-run write of it
+# (docs/ROUTER_INTEGRATION.md), so a knowledge factor on this runtime would
+# record a request instead of a difference — which is why the planner refuses
+# one. The arms this experiment can honestly hold still are the model ones:
+# qwen/Qwen3.8-27B is served as it is, while auto_codex is the routing plugin's
+# trigger, so the second arm measures the router deciding.
 #
-# KNOWLEDGE IS A REQUEST, NOT A CONFIRMED STATE. The toggle lives in the router
-# process (LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED) and this installation runs
-# against a shared instance whose configuration cannot be written or read over
-# HTTP (docs/ROUTER_INTEGRATION.md). The knowledge_on arm therefore records the
-# value it asked for and an unverified plugin state; read its ranking as "the
-# auto_codex alias, with knowledge asked for", not as a measured plugin effect.
+# THE OTHER HALF OF THE QUESTION IS llm-router-selfhost-fast: the same shape on
+# an instance AK-Bench starts per run, where the knowledge plugin is loaded and
+# enabled in the process and the toggle is therefore a fact about the run. Read
+# this config as "the shared router as it stands" and that one as "the same
+# comparison with the plugin under control".
 schema_version: "1.0"
 id: llm-router-external-fast
 version: "1.0.0"
 title: "FAST RUN: Router models versus Auto Codex, with and without knowledge"
 description: >-
   Two specific tasks (stockpile-writeoff-001 and slugify-001) are evaluated across
-  two configurations: the Qwen3.8-27B model with knowledge requested off and
-  the Auto Codex alias with knowledge requested on. The matrix is explicit rather
-  than a full product to optimize router time. Knowledge here is a request, not
-  a confirmed state: the shared router refuses per-run plugin control, so the
-  knowledge arm records the value it asked for and an unverified plugin state.
+  two configurations of the shared router: the Qwen3.8-27B model as it is served,
+  and the Auto Codex alias, whose requests the routing plugin decides on. The
+  matrix is explicit rather than a full product to optimize router time. The
+  knowledge toggle is deliberately not a factor here: a shared instance accepts
+  no per-run write of it, so it would record a request rather than a difference,
+  and llm-router-selfhost-fast is the experiment that measures it on an instance
+  the run owns.
 
 experiment:
   type: configuration
@@ -37,8 +41,8 @@ experiment:
   execution:
     mode: router
     runtime:
-      id: llm-router
-      lifecycle: managed
+      id: llm-router-external
+      lifecycle: external
 
   dataset:
     filters:
@@ -52,20 +56,19 @@ experiment:
     dimensions:
       - id: model
         values: [ qwen/Qwen3.8-27B, auto_codex ]
-      - id: knowledge_enabled
     baseline:
       model: qwen/Qwen3.8-27B
-      knowledge_enabled: false
     combinations:
       - model: qwen/Qwen3.8-27B
-        knowledge_enabled: false
       - model: auto_codex
-        knowledge_enabled: true
 
   execution_policy:
     repetitions: 1
     concurrency: 1
-    timeout_seconds: 260
+    # Must cover the slowest task in the selection: stockpile-writeoff-001 and
+    # slugify-001 each declare a 300s timeout, and a bound below a task's own
+    # bound would refuse the plan instead of running it.
+    timeout_seconds: 300
     retry_infrastructure_errors: 1
 
   evaluation:

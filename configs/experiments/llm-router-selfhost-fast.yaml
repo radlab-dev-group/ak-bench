@@ -1,0 +1,103 @@
+# Self-hosted variant of llm-router-external-fast: the same two tasks and the
+# same two arms, but the router is a process AK-Bench starts and stops itself,
+# so the configuration it runs with is applied, not only asked for.
+#
+# WHY THIS EXIST. On the shared instance the knowledge toggle lives in the
+# router process and cannot be written or read over HTTP, so the knowledge arm
+# of the external experiment recorded a request and an unverified plugin state.
+# The runtime below is lifecycle=managed: AK-Bench launches it with the factor
+# value of the run in its environment (llm-router-ak-bench descriptor,
+# managed.factor_env), waits for /health, and stops it when the run finishes.
+# knowledge_enabled is therefore a property of a process this run owned, and
+# the router's own verbose log lands in the run's artifacts as evidence.
+#
+# WHY THE PIPELINE IS A COMBINATION PROPERTY. Loading a plugin is not something
+# a running process can be told to forget: the pipeline is read at start. Each
+# combination therefore carries the environment its instance starts with
+# (runtime_env), and the runtime descriptor ships no pipeline of its own —
+# otherwise every arm would load every plugin, which is what made the baseline
+# of the first version of this experiment run with knowledge loaded.
+#
+# WHAT IS STILL NOT A MEASUREMENT. The router exports no per-plugin counter
+# (docs/ROUTER_INTEGRATION.md section 7), so "knowledge on" means the plugin
+# was enabled in the process and its log is inspectable, not that knowledge was
+# injected into a given generation; the log says that case by case.
+schema_version: "1.0"
+id: llm-router-selfhost-fast
+version: "1.0.0"
+title: "FAST RUN (self-hosted): router models versus Auto Codex, with and without knowledge"
+description: >-
+  Two specific tasks (stockpile-writeoff-001 and slugify-001) are evaluated across
+  two configurations: the Qwen3.8-27B model with knowledge requested off and
+  the Auto Codex alias with knowledge requested on. The router is started and
+  stopped by AK-Bench per run with the run's factor values applied as process
+  environment, so the knowledge arm is a real configuration of the instance
+  rather than a request against a shared one; the instance's verbose log is kept
+  as an artifact of each run.
+
+experiment:
+  type: configuration
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router-ak-bench
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories: [ bug_fix, new_feature ]
+      task_ids:
+        - depweaver-backtracking-001
+        - typeweave-inference-001
+
+  factors:
+    strategy: custom_matrix
+    dimensions:
+      - id: model
+        values: [ qwen/Qwen3.8-27B, auto_codex ]
+      - id: knowledge_enabled
+    baseline:
+      model: qwen/Qwen3.8-27B
+      knowledge_enabled: false
+    # Each arm names the plugins its router process loads. The pipeline is read
+    # once when the process starts, so this is the difference between "the
+    # knowledge plugin was absent from the process" and "it was loaded and
+    # asked not to act"; the runtime declares no pipeline of its own.
+    # agentic_routing_codex is in both arms, so the knowledge plugin is the
+    # only plugin that differs between them.
+    combinations:
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+      - model: auto_codex
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+
+  execution_policy:
+    repetitions: 1
+    concurrency: 1
+    # Per-run router startup (model config plus plugin pipeline, verbose mode)
+    # runs before the agent is started; the bound must cover both.
+    timeout_seconds: 10800
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [ pytest_evaluator ]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    max_runs: 4

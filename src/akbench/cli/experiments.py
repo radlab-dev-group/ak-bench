@@ -10,6 +10,7 @@ dataset, and they report.
 from __future__ import annotations
 
 import hashlib
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,6 +20,13 @@ from rich.table import Table
 from akbench.agents.catalog import build_agent_registry
 from akbench.cli.common import CliContext, console, handle_errors, show_json
 from akbench.cli.records import store_run, write_record
+from akbench.cli.timing import (
+    StepClock,
+    format_clock,
+    format_duration,
+    format_phases,
+    phase_durations,
+)
 from akbench.config.loader import build_app_paths, resolve_database_url
 from akbench.datasets import Dataset, RepositoryManager, TaskLoadError, WorkspaceManager
 from akbench.descriptors import (
@@ -40,7 +48,7 @@ from akbench.experiments import (
 )
 from akbench.experiments.validation import ValidationReport
 from akbench.metrics.catalog import MetricCatalog
-from akbench.orchestration import OrchestrationConfig, RunOrchestrator
+from akbench.orchestration import OrchestrationConfig, RunOrchestrator, RunState
 from akbench.runtime import build_runtime_registry
 from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
@@ -250,6 +258,11 @@ def experiment_plan_cmd(
             mark = " (baseline)" if variant.is_baseline else ""
             values = ", ".join(f"{key}={value}" for key, value in variant.values.items())
             console.print(f"    {variant.variant_id} {values or '(reference)'}{mark}")
+            if variant.runtime_env:
+                declared = ", ".join(
+                    f"{name}={value}" for name, value in sorted(variant.runtime_env.items())
+                )
+                console.print(f"      runtime starts with {declared}")
     for warning in plan.validation.warnings:
         console.print(f"  [yellow]warning[/yellow] {warning.message}")
 
@@ -296,6 +309,10 @@ def _run_experiment(
     experiment's own identity and its variant, which is what makes the report
     and the export traceable back to the plan that produced them.
     """
+    # The matrix's own wall clock: an experiment of managed runs pays instance
+    # startup per run, so "how long is this taking overall" is not answerable
+    # from the per-run numbers a reader has seen so far.
+    wall_start = time.monotonic()
     settings = context.loaded().settings
     paths = build_app_paths(settings)
 
@@ -331,6 +348,7 @@ def _run_experiment(
                     "values": variant.values,
                     "agent_config": variant.agent_config,
                     "environment_requests": variant.environment_requests,
+                    "runtime_env": dict(variant.runtime_env),
                     "applies": variant.applies,
                     "config_hash": variant.config_hash,
                     "is_baseline": variant.is_baseline,
@@ -361,7 +379,12 @@ def _run_experiment(
             for repetition in range(plan.counts.repetitions):
                 index += 1
                 if only is not None and index > only:
-                    return {"runs": results, "completed": len(results), "planned": plan.counts.runs}
+                    return {
+                        "runs": results,
+                        "completed": len(results),
+                        "planned": plan.counts.runs,
+                        "wall_seconds": round(time.monotonic() - wall_start, 1),
+                    }
 
                 task_desc = loaded.task
                 task_title = task_desc.title or task.uid
@@ -385,6 +408,12 @@ def _run_experiment(
                     )
                     if variant.agent_config:
                         console.print(f"  [dim]agent config:[/dim]{variant.agent_config}")
+                    if variant.runtime_env:
+                        declared = ", ".join(
+                            f"{name}={value}"
+                            for name, value in sorted(variant.runtime_env.items())
+                        )
+                        console.print(f"  [dim]runtime env:[/dim]  {declared}")
                     console.print(f"  [dim]progress:[/dim]     {rep_info}")
 
                 # Only the agent's own declared parameters go here: the mode and
@@ -393,6 +422,11 @@ def _run_experiment(
                 artifacts_dir = paths.artifacts_dir / "runs" / _run_slug(
                     plan.agent_id, task.uid, variant.variant_id, repetition
                 )
+                # The clock starts here, before the run: the wait it counts
+                # includes launching a managed instance, which is the part with
+                # no other output to watch.
+                clock = StepClock(f"[{index}/{plan.counts.runs}]")
+                started_at = datetime.now(UTC)
                 config = OrchestrationConfig(
                     task=dataset.materialize(loaded),
                     agent_id=variant.agent_id,
@@ -400,6 +434,12 @@ def _run_experiment(
                     mode=plan.mode,
                     runtime_id=plan.runtime_id,
                     agent_parameters=agent_parameters,
+                    # Plugin factors are the runtime's own configuration: a
+                    # managed instance applies them as process environment, so
+                    # the variant value becomes the state of a process this run
+                    # started instead of a hope aimed at a shared router.
+                    runtime_environment=dict(variant.environment_requests),
+                    runtime_env=dict(variant.runtime_env),
                     artifacts_dir=artifacts_dir,
                     evaluation_dir=artifacts_dir / "evaluation",
                     agent_timeout=policy.timeout_seconds,
@@ -408,8 +448,10 @@ def _run_experiment(
                     apply_mutation=True,
                     cleanup_workspace=False,
                     task_text=None,
+                    on_transition=clock.report_phase,
                 )
-                outcome = orchestrator.run(config)
+                with clock.running(console, enabled=not silent):
+                    outcome = orchestrator.run(config)
                 record = outcome.record or {}
                 write_record(artifacts_dir / "run_record.json", record)
                 if store:
@@ -428,10 +470,27 @@ def _run_experiment(
                 state_color = STATE_COLORS.get(outcome.state.value, "white")
                 score = (record.get("evaluation") or {}).get("score")
                 score_str = f" score: {score:.2f}" if score is not None else ""
+                detail = outcome.detail or record.get("error_message")
                 if not silent:
                     console.print(
                         f"  [dim]outcome:[/dim]      [{state_color}]{outcome.state.value}[/{state_color}]{score_str}"
                     )
+                    # A state alone does not say why, and a run that ends
+                    # before the agent starts has no other output to read: the
+                    # reason is printed here rather than left in the record.
+                    if detail and outcome.state is not RunState.COMPLETED:
+                        for line in str(detail).splitlines():
+                            console.print(f"  [dim]detail:[/dim]       {line}")
+                    console.print(
+                        f"  [dim]time:[/dim]         started {format_clock(started_at)}, took "
+                        f"[bold]{format_duration(clock.elapsed)}[/bold]"
+                    )
+                    # Where the time went is the run's own account, read back from
+                    # its transition log: a run that took four minutes and two of
+                    # them were the router starting is not a slow agent.
+                    phases = phase_durations(record)
+                    if len(phases) > 1:
+                        console.print(f"  [dim]phases:[/dim]       {format_phases(phases)}")
 
                 results.append(
                     {
@@ -439,11 +498,19 @@ def _run_experiment(
                         "variant": variant.variant_id,
                         "repetition": repetition + 1,
                         "state": outcome.state.value,
+                        "detail": detail,
                         "run_uid": record.get("run_uid"),
                         "score": score,
+                        "started_at": started_at.isoformat(),
+                        "elapsed_seconds": round(clock.elapsed, 1),
                     }
                 )
-    return {"runs": results, "completed": len(results), "planned": plan.counts.runs}
+    return {
+        "runs": results,
+        "completed": len(results),
+        "planned": plan.counts.runs,
+        "wall_seconds": round(time.monotonic() - wall_start, 1),
+    }
 
 
 def _run_slug(agent_id: str, task_uid: str, variant_uid: str, repetition: int) -> str:
@@ -496,8 +563,13 @@ def experiment_run_cmd(
     for run in result["runs"]:
         states[str(run["state"])] = states.get(str(run["state"]), 0) + 1
     summary = ", ".join(f"{count} {state}" for state, count in sorted(states.items()))
+    wall_seconds = result.get("wall_seconds")
+    mean = wall_seconds / len(result["runs"]) if wall_seconds and result["runs"] else None
+    spent = f" in {format_duration(wall_seconds)}" if wall_seconds else ""
+    average = f" (mean {format_duration(mean)} per run)" if mean else ""
     console.print(
-        f"  [green]done[/green] {result['completed']}/{result['planned']} runs: {summary}"
+        f"  [green]done[/green] {result['completed']}/{result['planned']} runs{spent}: "
+        f"{summary}{average}"
     )
     if store_runs:
         console.print("  [dim]recorded in the history; `akbench report all` renders it[/dim]")
@@ -585,6 +657,7 @@ def _store_plan(
                 "values": variant.values,
                 "agent_config": variant.agent_config,
                 "environment_requests": variant.environment_requests,
+                "runtime_env": dict(variant.runtime_env),
                 "applies": variant.applies,
                 "config_hash": variant.config_hash,
                 "is_baseline": variant.is_baseline,

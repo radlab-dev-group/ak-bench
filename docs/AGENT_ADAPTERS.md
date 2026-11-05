@@ -95,7 +95,7 @@ akbench agent run codex --workspace data/workspaces/task-workspace \
     --task-file task.txt --param sandbox_mode=workspace-write
 
 # or prepare the workspace from a dataset task (mutation included)
-akbench agent run codex --task wordcount-001 --runtime llm-router \
+akbench agent run codex --task wordcount-001 --runtime llm-router-external \
     --param sandbox_mode=workspace-write --json
 ```
 

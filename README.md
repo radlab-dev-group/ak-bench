@@ -8,27 +8,6 @@ Overriding principle: **the agent under test is a replaceable component**.
 AK-Bench does not implement an agent, a memory, or routing. It orchestrates
 task execution through a chosen agent and verifies the outcome independently.
 
-## Status
-
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | Integration spike (Codex CLI + LLM Router) | done |
-| 1 | Skeleton: CLI, configuration, logging, SQLite, migrations | done |
-| 2 | Descriptors and registries | done |
-| 3 | Dataset, tasks, repositories, workspaces | done |
-| 4 | Agent adapter framework (contract, registry, Codex adapter) | done |
-| 5 | Runtime and Router Manager (modes, LLM Router adapter) | done |
-| 6 | Evaluator Engine (pytest + command evaluators, hidden tests) | done |
-| 7 | Run Orchestrator (lifecycle, isolation, retries, run records) | done |
-| 8 | Experiment Descriptor and Planner | done |
-| 9 | Plugin Configuration and Observability | done |
-| 10 | Knowledge Replay (learning, fresh runs, KB readiness, isolation) | done |
-| 11 | Storage and Metrics (data model, artifacts, hashes, aggregates) | done |
-| 12 | Reporting (static HTML: dashboard, experiment, task, agent, runtime, plugin, model pages) | done |
-| 13 | Export and stabilization (JSON/CSV/HTML export, secret filtering, E2E, reproducibility) | done |
-
-The full plan lives in `.plans/AK-Bench-implementation-plan.md` (Polish).
-
 ## Requirements
 
 - Python 3.12+ (easiest through [`uv`](https://docs.astral.sh/uv/))
@@ -47,6 +26,170 @@ akbench config show   # effective configuration and paths
 akbench descriptor validate  # component descriptors
 akbench dataset validate     # tasks (add --verify-mutations to prove defects)
 ```
+
+## How AK-Bench reads a configuration
+
+Three kinds of file drive everything the platform does, and each answers a
+different question. Reading them in this order explains every behaviour the rest
+of this document assumes.
+
+| File | Question it answers | Read by |
+|---|---|---|
+| `configs/defaults.yaml` | where things live, which database, how loudly to log | `akbench` on every command |
+| `descriptors/**.yaml` | what exists, and what can be proven about it | registries, the planner, adapters |
+| `configs/experiments/**.yaml` | what to measure, in which combinations | `experiment validate/plan/run` |
+
+Nothing outside these files is configuration: an environment variable that the
+platform does not name in a descriptor is never read, and a component without a
+descriptor cannot be measured.
+
+### Settings
+
+`configs/defaults.yaml` holds paths, the database, logging and the `doctor`
+requirements. Override any value with `AKBENCH__SECTION__FIELD`, select the file
+with `--config` or `AKBENCH_CONFIG`, and the project root with `AKBENCH_HOME` or
+`--project-root`. Unknown keys are rejected at load time, so an option that
+would be silently ignored is an error instead.
+
+### Descriptors: what exists, and what can be proven
+
+`descriptors/` carries one file per component in eight kinds: `agent`,
+`runtime`, `plugin`, `dimension`, `model`, `category`, `evaluator`, `metric`.
+Each has `schema_version`, `id`, `version`, `title`, `description` and a body
+named after the kind. Two rules make them more than documentation:
+
+- **Allowlists, not scanning.** A component declares every variable it may be
+  observed through (`observed_env` for plugins), with a type, a role and flags
+  for `observed`, `dimension`, `controllable` and `sensitive`. AK-Bench reads
+  those names and no others; a secret is recorded as presence, never a value.
+- **A status travels with every reading.** One of `verified`, `unverified`,
+  `mismatch`, `unsupported`, `not_configured`, `runtime_error`
+  (`src/akbench/descriptors/statuses.py`). A value AK-Bench cannot confirm is
+  reported with the reason it is unconfirmed, never as a zero and never as a
+  guess.
+
+Validate them before anything else: `akbench descriptor validate`.
+
+### Experiments: what to measure
+
+An experiment file names the agent, the execution mode and runtime, the task
+selection, the factors, the policy, the evaluators and the metrics. Its blocks
+(`src/akbench/experiments/descriptor.py`) are strict — an unknown key is an
+error, and several invalid combinations are refused outright because they would
+measure nothing: an agent failure cannot be retried, a workspace cannot be
+shared between runs, `knowledge_replay` cannot drop its fresh control arm.
+
+The planner turns one file into `tasks x variants x repetitions` and refuses the
+plan, rather than degrading it, when a factor is outside a dimension's declared
+value space, when a factor maps to an agent parameter that the agent does not
+declare controllable, when a task's own timeout exceeds the experiment's, or
+when a plugin factor is aimed at a runtime that cannot control plugins per run.
+Check without executing: `akbench experiment validate FILE`, then
+`akbench experiment plan FILE` to see the matrix.
+
+### Where a factor value actually goes
+
+A dimension's `source` decides the destination, and only that:
+
+| `source` | Destination |
+|---|---|
+| `agent.configuration.<param>` | an agent parameter (`model` becomes `codex -m`) |
+| `plugin.<id>.env` | the runtime process environment, through the runtime's `factor_env` map |
+| `runtime.response.<field>` | observation only: the dimension is not controllable and cannot be a factor |
+
+So a factor named after a real variable is not enough: for a plugin factor the
+runtime descriptor must carry the `factor_env` line that maps the factor to that
+variable, and the dimension must be declared with `source: plugin.<id>.env`.
+This is the most common reason a configuration "runs but changes nothing".
+
+### Runtime lifecycles: managed and external are different instruments
+
+A runtime declares `supported_lifecycles`, and an experiment chooses one:
+
+- **`managed`** — AK-Bench launches the process from the descriptor's `managed`
+  block (`command`, `cwd`, `env`, `factor_env`, `config_file`, `ready_timeout`,
+  `stop_grace`, `log_file`) and stops it when the run ends. Environment
+  precedence, lowest to highest: the ambient environment, `managed.env`, the
+  factor-mapped values, then the arm's own `runtime_env`. A managed run must own
+  its endpoint: if something already answers the configured `base_url`, the
+  start is refused and the task never begins, because a healthcheck passing on a
+  foreign process would measure an instance the run does not control.
+- **`external`** — a shared instance: AK-Bench only ever observes it. It never
+  starts, stops or reconfigures it, and a plugin toggle against it is recorded as
+  requested, not applied (`unsupported` where no read path exists).
+
+An experiment that needs a configuration applied rather than requested runs
+managed. That difference is a property of the plan, not of the runtime software.
+
+### Plugins: loading, enabling and verifying are three separate facts
+
+- **Loading** is decided when the process starts, from
+  `LLM_ROUTER_UTILS_PLUGINS_PIPELINE`, so an arm declares it under its own
+  `runtime_env`. A pipeline in the runtime descriptor's static `env` would load
+  those plugins in every arm of the runtime, which is why the shipped managed
+  descriptor declares none.
+- **Enabling** is a toggle, and `benchmark.enabled_when` names it. That variable
+  must be one of the descriptor's allowlisted entries. A plugin with no toggle
+  cannot report `enabled` honestly: it is reported `false` with a note that
+  activation is not observable.
+- **Verifying** needs evidence the platform does not always have. A run records a
+  plugin row only for a plugin it engaged — named in the pipeline it started its
+  process with, or with its own toggle set. Rows are not emitted for plugins of
+  the installation that the run said nothing about.
+
+```yaml
+# An arm that loads the routing plugin and asks for knowledge, against an
+# instance this run starts and owns.
+combinations:
+  - model: auto_codex
+    knowledge_enabled: true
+    runtime_env:
+      LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+```
+
+### From one run to one report row
+
+Each run walks the lifecycle in `src/akbench/orchestration/lifecycle.py`, from
+`pending` to one terminal state: `completed`, or one of `failed`, `timeout`,
+`cancelled`, `infrastructure_error`, `invalid_configuration`,
+`evaluation_error`. It leaves behind a record (`state`, the transition
+`history`, `runtime_environment`, `served_models`, `model_evidence`), its
+artifacts (`router.log`, the agent's own trace, the diff, the evaluation output)
+and a row in the history database. `akbench report all` renders that history as
+static HTML, and its "Not verified" table is the list of rows whose status is
+not `verified` — a run under them is only as trustworthy as they are.
+
+Model verification is read from the instance's own log of a process the run
+started (`src/akbench/runtime/llm_router.py`): the models it received, the
+routing decision and the model each request was forwarded to. A requested model
+the log names is `verified`; an alias is verified as an alias, with the resolved
+model recorded; a model the log never names is a `mismatch`. A model inventory
+from `GET /v1/models` says what an instance *can* serve, so it can never verify
+the pairing on its own.
+
+### Checking a configuration before it costs a run
+
+```bash
+akbench descriptor validate           # every component descriptor
+akbench experiment validate FILE      # the plan is runnable, or why it is not
+akbench experiment plan FILE          # the resulting matrix, with variants
+akbench plugin status                 # how each plugin reads right now
+akbench doctor                        # tools, directories, database, disk
+```
+
+`experiment run` then prints, per run, when it started, how long it took and
+where the time went (`phases:`), read from the run's own transition log.
+
+### Things that look wrong and are correct
+
+- A plugin row `unverified` with "not set, so the process runs the plugin with
+  its built-in default": the arm loaded the plugin but chose no value for it.
+  The default is a configuration the run did not pick.
+- No plugin row at all: the arm named no pipeline and set no toggle, so it has
+  nothing to verify. That is not a defect.
+- `mismatch` on the model row: the instance the run started never named that
+  model in its log. Either the request never reached it, or the plugin that was
+  expected to rewrite it has no log line AK-Bench knows yet.
 
 ## Commands
 
@@ -167,6 +310,7 @@ spike/          # Phase 0 code (flow validation)
 - `docs/REPRODUCIBILITY.md` — what "the same conditions" means here and where it is tested
 - `docs/CLI.md` — every implemented command and the interface facts that go with it
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
+- `CHANGELOG.md` — release notes per version, with a short summary table at the top
 
 ## Conventions
 

@@ -22,7 +22,9 @@ from akbench.runtime.contract import ExecutionMode, RuntimeManager
 from akbench.runtime.errors import RuntimeError
 from akbench.runtime.llm_router import LlmRouterAdapter
 
-ManagerFactory = Callable[[RuntimeDescriptor], RuntimeManager]
+#: Builds one adapter for a descriptor. ``overrides`` are adapter options that
+#: apply to the specific run being started, not to the runtime in general.
+ManagerFactory = Callable[..., RuntimeManager]
 
 #: descriptor ``runtime.adapter`` id -> adapter class.
 RUNTIME_ADAPTER_TYPES: dict[str, type] = {
@@ -49,8 +51,14 @@ class RuntimeEntry:
     def adapter_id(self) -> str:
         return self.descriptor.runtime.adapter
 
-    def manager(self) -> RuntimeManager:
-        return self.factory(self.descriptor)
+    def manager(self, **overrides: Any) -> RuntimeManager:
+        """Build the adapter, optionally overriding options for one run.
+
+        A managed instance is launched per run, and two runs of one experiment
+        may ask for different plugin configuration; the overrides are how the
+        runner passes that without a second registry entry per variant.
+        """
+        return self.factory(self.descriptor, **overrides)
 
     def supports(self, mode: ExecutionMode | str) -> bool:
         # The descriptor owns its own mode vocabulary; a plain value bridges them.
@@ -99,8 +107,8 @@ def default_manager_factory(
     implementation = adapter_class_ or _adapter_class(adapter_id)
     bound = dict(options or {})
 
-    def factory(descriptor: RuntimeDescriptor) -> Any:
-        return implementation(descriptor, **bound)
+    def factory(descriptor: RuntimeDescriptor, **overrides: Any) -> Any:
+        return implementation(descriptor, **{**bound, **overrides})
 
     return factory
 
@@ -143,7 +151,7 @@ def build_runtime_registry(
 
 
 def _unimplemented_manager_factory(adapter_id: str) -> ManagerFactory:
-    def factory(descriptor: RuntimeDescriptor) -> Any:
+    def factory(descriptor: RuntimeDescriptor, **_overrides: Any) -> Any:
         raise RuntimeError(
             f"runtime {descriptor.identity()} declares adapter {adapter_id!r}, "
             "which has no implementation in this installation"

@@ -21,7 +21,7 @@ explicit. A wrong combination is rejected with the reason: an experiment that
 believes it is routed but is not would produce unusable results.
 
 ```bash
-akbench agent run codex --task wordcount-001 --mode router --runtime llm-router
+akbench agent run codex --task wordcount-001 --mode router --runtime llm-router-external
 akbench agent run codex --task wordcount-001 --mode direct
 ```
 
@@ -78,11 +78,11 @@ claim is from `docs/ROUTER_INTEGRATION.md`:
 
 ```bash
 akbench runtime list
-akbench runtime health llm-router
-akbench runtime models llm-router
-akbench runtime config llm-router            # reports the trust level
-akbench runtime config llm-router --config-file /path/to/models-config.json
-akbench runtime state llm-router
+akbench runtime health llm-router-external
+akbench runtime models llm-router-external
+akbench runtime config llm-router-external            # reports the trust level
+akbench runtime config llm-router-external --config-file /path/to/models-config.json
+akbench runtime state llm-router-external
 ```
 
 ## What is intentionally not faked
@@ -92,3 +92,130 @@ akbench runtime state llm-router
   `managed` instance is required).
 - Per-plugin metrics → the router exposes none, so knowledge metrics are
   `unavailable`, never zero (see `docs/ROUTER_INTEGRATION.md` section 7).
+
+## Self-start (managed) LLM Router
+
+### The endpoint must belong to the run
+
+A managed run measures the instance it started, so before anything else AK-Bench
+refuses to launch when something already answers the runtime's `base_url`:
+a leftover router on the configured port would answer `/health` for a process
+the run never bound, the run would then execute against an instance it does
+not own, and the log it keeps would prove nothing about the configuration it
+claims to have tested. The start fails with the port named, the task does not
+start, and the run records an infrastructure error instead of a result that
+cannot be attributed. The same rule holds while waiting for readiness: the
+child's death is always checked before its port is probed, so an answer from a
+foreign process can never stand in for a process that is already gone.
+
+
+A runtime whose `supported_lifecycles` is `[managed]` and which declares a
+`managed` launch block is **owned by the run**: AK-Bench starts it before the
+agent and stops it when the run ends, and the run keeps the evidence.
+
+The launch block is declared in the descriptor, not in the experiment:
+
+```yaml
+runtime:
+  adapter: llm_router
+  supported_lifecycles: [managed]
+  base_url: http://127.0.0.1:8085
+  managed:
+    command: ["/usr/bin/python3.11", "-m", "llm_router_api.rest_api", "--gunicorn", ...]
+    cwd: /path/to/llm-router
+    env:
+      LLM_ROUTER_MODELS_CONFIG: resources/configs/models-config.json
+      LLM_ROUTER_AUTH_ENABLED: "false"
+    factor_env:
+      knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
+    config_file: /path/to/models-config.json
+    ready_timeout: 180.0
+    stop_grace: 20.0
+    log_file: router.log
+```
+
+What this buys, and what it means:
+
+- **The command is the process itself.** AK-Bench holds the gunicorn master and
+  stops it with SIGTERM, so the router cannot outlive the run. A launcher that
+  daemonizes or supervises the server (`llm-router server start`) would leave a
+  process AK-Bench can neither see nor stop, which is exactly why the managed
+  command execs `python -m llm_router_api.rest_api`.
+- **Environment is applied, not requested.** `managed.env` is static
+  configuration; `factor_env` maps an experiment factor to the variable that
+  carries it; and a combination may declare its own launch environment under
+  `runtime_env`, which is applied last. A run whose variant is
+  `knowledge_enabled: false` therefore runs against a router process that was
+  started with `LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED=false`, and an arm that
+  wants no knowledge plugin starts its process without it in
+  `LLM_ROUTER_UTILS_PLUGINS_PIPELINE`. On the shared instance the same arm
+  could only record that it asked. Precedence, from lowest to highest: the
+  ambient environment, `managed.env`, the factor-mapped values, then the
+  variant's `runtime_env`.
+- **The pipeline is a launch decision, not a request.** Which plugins a router
+  process loads is read when it starts; nothing told to a running process
+  changes that. A pipeline in `managed.env` would load its plugins in every
+  run of the runtime, so the shipped descriptor declares none and each arm of
+  `llm-router-selfhost-fast.yaml` names the pipeline of its process. The run
+  record keeps the declared environment as `runtime_environment`, with values
+  whose names mark them as secrets reported by name only.
+- **The log is an artifact of the run.** The launched process's standard output
+  is written to `managed.log_file` inside the run's artifacts directory,
+  registered like every other artifact, and downloadable from the report.
+- **Restarting is the configuration write.** The router still exposes no
+  configuration write endpoint; a managed instance changes configuration by
+  dying and being started again with different environment. That is why
+  `configuration_write` stays `unsupported` even when `per_run_plugin_control`
+  is `verified`.
+- **The state outlives the process.** Stopping the router does not empty Redis
+  or the vector engine; a separate prefix (declared in `managed.env`) keeps a
+  benchmark from reading the shared instance's collections, but it does not
+  create isolation by itself.
+- **No credential is needed.** The managed instance runs with
+  `LLM_ROUTER_AUTH_ENABLED=false` (declared in `managed.env`), so the
+  descriptor declares no `required_env` and the agent binding carries no
+  `env_key`: codex sends no Authorization header and the router never checks
+  one. A run therefore does not depend on an exported key — including a
+  dummy that would only be a lie.
+
+The shipped instance is `descriptors/runtimes/llm-router-ak-bench.yaml`, and
+`configs/experiments/llm-router-selfhost-fast.yaml` is the self-hosted twin of
+`llm-router-external-fast.yaml`: the same tasks and arms, but each run starts
+its own router, so the knowledge arm is a configuration of a process the run
+owned.
+
+### What a run records from the instance it owned
+
+A run that started its own instance keeps, in its record, the evidence that
+instance gave it, and the report's plugin and model verification rests on
+those fields:
+
+- `runtime_environment` — the environment the process was launched with
+  (descriptor `env`, factor-mapped values and the combination's `runtime_env`).
+  A plugin toggle observed from this environment was **applied by the run**:
+  the report says `unverified` with that note rather than `unsupported`,
+  because the value is known and only the plugin's own confirmation is
+  missing. A run against a shared instance has no such environment, and there
+  `unsupported` stays the honest state.
+- `served_models` — the inventory the instance answered with on
+  `GET /v1/models`. It says what the instance *can* serve and never which
+  model served the run, so it can never verify the pairing by itself.
+- `model_evidence` — the instance's log, read after the run, naming what it
+  handled: the models it received, the routing decision and the model each
+  request was forwarded to. This is the only per-request evidence the router
+  gives, so a requested model the log names is `verified` (an alias is
+  verified as an alias, with the resolved model recorded), a model the log
+  never names is a `mismatch`, and an instance that gave no log or no
+  inventory is recorded as having given none.
+
+### Which plugins a run reports
+
+A plugin row in the report is a statement about a plugin the run configured,
+so a run records a row only for the plugins it engaged: a plugin named in the
+pipeline its process loads (`LLM_ROUTER_UTILS_PLUGINS_PIPELINE` in the
+declared environment), or a plugin whose own `benchmark.enabled_when` toggle
+is set there. A plugin that ships with the installation and was named by
+neither is not part of the run — a row about it would say `unverified` for a
+plugin the process never loaded, which reads as a defect that does not exist.
+A run that measures a single model on a plugin-free instance therefore has
+no plugin rows at all.

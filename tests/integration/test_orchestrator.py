@@ -18,9 +18,11 @@ from akbench.agents.catalog import build_agent_registry
 from akbench.agents.codex import CodexAdapter, CodexOptions
 from akbench.datasets import Dataset, RepositoryManager, WorkspaceManager
 from akbench.descriptors import DescriptorKind, load_descriptor_file
+from akbench.descriptors.runtime import Lifecycle, RuntimeDescriptor
 from akbench.evaluators.registry import default_registry
 from akbench.orchestration import OrchestrationConfig, RunOrchestrator, RunState
 from akbench.orchestration.lifecycle import FORWARD_CHAIN, TERMINAL_STATES, transition_allowed
+from akbench.runtime.registry import RuntimeRegistry
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CODEX_STUB = REPO_ROOT / "tests" / "contract" / "stubs" / "codex_stub.py"
@@ -273,3 +275,227 @@ def test_lifecycle_table_is_explicit() -> None:
         assert any(transition_allowed(current, target) for target in RunState)
     for terminal in TERMINAL_STATES:
         assert not any(transition_allowed(terminal, other) for other in RunState)
+
+
+def _recorded(instances, spec, **overrides):
+    manager = _RecordingRuntimeManager(spec, **overrides)
+    instances.append(manager)
+    return manager
+
+
+class _RecordingRuntimeManager:
+
+    """A runtime manager stub that records start/stop, never touches a port."""
+
+    def __init__(self, descriptor, **overrides):
+        self.descriptor = descriptor
+        self.overrides = overrides
+        self.lifecycle = Lifecycle.MANAGED
+        self.started: list[dict] = []
+        self.stopped = False
+        self.log_path = None
+        self.models: list[str] | None = ["model-a", "model-b"]
+        self.evidence: dict = {
+            "available": True,
+            "log": "router.log",
+            "served_models": ["model-a"],
+            "routing_decisions": ["model-a"],
+            "received_models": ["model-a"],
+        }
+
+    def start(self) -> None:
+        self.started.append(dict(self.overrides))
+        # The orchestrator asks for the environment it recorded; the real
+        # adapter answers from its options, the stub from what it was handed.
+        self.declared = {
+            str(name): str(value)
+            for name, value in self.overrides.get("runtime_env", {}).items()
+        }
+
+    def declared_environment(self) -> dict:
+        return dict(self.declared)
+
+    def stop(self) -> None:
+        self.stopped = True
+
+    def healthcheck(self) -> bool:
+        return True
+
+    def list_models(self) -> list[str] | None:
+        return list(self.models) if self.models is not None else None
+
+    def model_request_evidence(self) -> dict:
+        return dict(self.evidence)
+
+
+def test_a_managed_runtime_is_started_and_stopped_around_the_run(
+    harness: dict,
+) -> None:
+    """The router the run starts is owned by the run: started before the agent,
+    stopped when the run ends, and it received this run's factor values."""
+    use_stub(harness, copy_stub(harness, "codex-fixer", FIXER_STUB))
+
+    instances: list[_RecordingRuntimeManager] = []
+    descriptor = managed_runtime_descriptor()
+    registry = RuntimeRegistry()
+    registry.register(
+        descriptor,
+        lambda spec, **overrides: _recorded(instances, spec, **overrides),
+    )
+
+    orchestrator = RunOrchestrator(
+        agents=harness["agent_registry"],
+        runtimes=registry,
+        workspaces=harness["workspaces"],
+        evaluators=default_registry(),
+    )
+    outcome = orchestrator.run(
+        config(
+            harness,
+            mode="router",
+            runtime_id="llm-router-ak-bench",
+            runtime_environment={"knowledge_enabled": False},
+        )
+    )
+
+    assert outcome.state is RunState.COMPLETED
+    assert len(instances) == 1
+    manager = instances[0]
+    # the run's factor values reach the process, mapped by the descriptor
+    assert manager.overrides.get("factor_values") == {"knowledge_enabled": False}
+    # and the log is placed in the run's artifacts
+    assert manager.overrides.get("log_dir") == harness["tmp"] / "artifacts"
+    assert manager.started, "a managed instance is started before the agent runs"
+    assert manager.stopped, "the run stops the instance it started"
+
+
+def managed_runtime_descriptor():
+    import yaml
+
+    return RuntimeDescriptor.model_validate(
+        yaml.safe_load(
+            """
+schema_version: "1.0"
+id: llm-router-ak-bench
+version: "1.0.0"
+runtime:
+  adapter: llm_router
+  execution_modes: [router, runtime, direct]
+  supported_lifecycles: [managed]
+  base_url: http://127.0.0.1:8085
+  managed:
+    command: ["/bin/sh", "-c", "true"]
+    factor_env:
+      knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
+"""
+        )
+    )
+
+
+def test_a_managed_runtime_gets_the_environment_the_variant_declared(
+    harness: dict,
+) -> None:
+    """The variant's launch environment reaches the process it starts.
+
+    The pipeline of a process is fixed at its start, so the environment has to
+    be in the launch, and the run records what it declared: a run that cannot
+    say which plugins its router had cannot say what it measured.
+    """
+    use_stub(harness, copy_stub(harness, "codex-fixer", FIXER_STUB))
+
+    instances: list[_RecordingRuntimeManager] = []
+    registry = RuntimeRegistry()
+    registry.register(
+        managed_runtime_descriptor(),
+        lambda spec, **overrides: _recorded(instances, spec, **overrides),
+    )
+    orchestrator = RunOrchestrator(
+        agents=harness["agent_registry"],
+        runtimes=registry,
+        workspaces=harness["workspaces"],
+        evaluators=default_registry(),
+    )
+    outcome = orchestrator.run(
+        config(
+            harness,
+            mode="router",
+            runtime_id="llm-router-ak-bench",
+            runtime_environment={"knowledge_enabled": True},
+            runtime_env={
+                "LLM_ROUTER_UTILS_PLUGINS_PIPELINE": (
+                    "agentic_routing_codex,agentic_knowledge"
+                )
+            },
+        )
+    )
+
+    assert outcome.state is RunState.COMPLETED
+    manager = instances[0]
+    assert manager.overrides.get("runtime_env") == {
+        "LLM_ROUTER_UTILS_PLUGINS_PIPELINE": "agentic_routing_codex,agentic_knowledge"
+    }
+    record = outcome.record or {}
+    assert record["runtime_environment"] == {
+        "LLM_ROUTER_UTILS_PLUGINS_PIPELINE": "agentic_routing_codex,agentic_knowledge"
+    }
+
+
+def test_a_run_records_the_model_evidence_its_instance_gave(harness: dict) -> None:
+    """Where the model claim comes from is a fact of the run, not a report-time guess.
+
+    The inventory says what an instance can serve; the evidence is the
+    instance's own account of what it served. The run stores both, so a report
+    can say which claim rests on which kind of evidence.
+    """
+    use_stub(harness, copy_stub(harness, "codex-fixer", FIXER_STUB))
+
+    instances: list[_RecordingRuntimeManager] = []
+    registry = RuntimeRegistry()
+    registry.register(
+        managed_runtime_descriptor(),
+        lambda spec, **overrides: _recorded(instances, spec, **overrides),
+    )
+    orchestrator = RunOrchestrator(
+        agents=harness["agent_registry"],
+        runtimes=registry,
+        workspaces=harness["workspaces"],
+        evaluators=default_registry(),
+    )
+    outcome = orchestrator.run(
+        config(harness, mode="router", runtime_id="llm-router-ak-bench")
+    )
+
+    assert outcome.state is RunState.COMPLETED
+    record = outcome.record or {}
+    assert record["served_models"] == ["model-a", "model-b"]
+    assert record["model_evidence"]["served_models"] == ["model-a"]
+
+
+def test_a_silent_instance_is_recorded_as_silent(harness: dict) -> None:
+    """No inventory and no evidence are recorded as absent, never invented."""
+    use_stub(harness, copy_stub(harness, "codex-fixer", FIXER_STUB))
+
+    instances: list[_RecordingRuntimeManager] = []
+    registry = RuntimeRegistry()
+
+    def silent(spec, **overrides):  # an instance that answers nothing
+        manager = _recorded(instances, spec, **overrides)
+        manager.models = None
+        manager.evidence = {"available": False, "note": "the inventory did not answer"}
+        return manager
+
+    registry.register(managed_runtime_descriptor(), silent)
+    orchestrator = RunOrchestrator(
+        agents=harness["agent_registry"],
+        runtimes=registry,
+        workspaces=harness["workspaces"],
+        evaluators=default_registry(),
+    )
+    outcome = orchestrator.run(
+        config(harness, mode="router", runtime_id="llm-router-ak-bench")
+    )
+
+    record = outcome.record or {}
+    assert record["served_models"] is None
+    assert record["model_evidence"]["available"] is False
+    assert record["model_evidence"]["note"] == "the inventory did not answer"

@@ -7,18 +7,28 @@
 # arms nobody reads (knowledge on, plain model), and every arm costs real
 # router time.
 #
-# KNOWLEDGE IS A REQUEST, NOT A CONFIRMED STATE. The toggle lives in the router
-# process (LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED) and this installation runs
-# against a shared instance whose configuration cannot be written or read over
-# HTTP (docs/ROUTER_INTEGRATION.md). The knowledge_on arm therefore records the
-# value it asked for and an unverified plugin state; read its ranking as "the
-# auto_codex alias, with knowledge asked for", not as a measured plugin effect.
+# KNOWLEDGE IS APPLIED, NOT REQUESTED. Every arm runs on a router instance
+# AK-Bench starts for that run and stops when it ends, so the toggle is in the
+# process's own environment (LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED) instead of
+# being a value a shared instance was asked to honor
+# (docs/ROUTER_INTEGRATION.md, docs/RUNTIME_MANAGER.md).
+#
+# WHY EVERY ARM LOADS THE ROUTING PLUGIN. The pipeline is read when the process
+# starts, so it belongs to the arm, and auto_codex only means something with
+# agentic_routing_codex loaded. It is therefore declared in all four arms, which
+# leaves the knowledge plugin as the only thing that differs between the two
+# auto_codex arms.
+#
+# WHAT IS STILL NOT A MEASUREMENT. The router exports no per-plugin counter, so
+# "knowledge on" means the plugin was loaded and enabled in that run's process
+# and its log is inspectable, not that knowledge was injected into one given
+# generation; the run's router.log says that case by case.
 schema_version: "1.0"
 id: router-config-comparison
 version: "1.0.0"
 title: Router models versus Auto Codex, with and without knowledge
 description: >-
-  Four configurations asked for side by side — two router models and the Auto Codex alias with knowledge off and on — on every task of the dataset. The matrix is explicit rather than a full product: a full one would add arms nobody reads, and every arm costs real router time. Knowledge here is a request, not a confirmed state: the shared router refuses per-run plugin control, so the knowledge arm records the value it asked for and an unverified plugin state, and its ranking reads as "the auto_codex alias, with knowledge asked for".
+  Four configurations asked for side by side — two router models and the Auto Codex alias with knowledge off and on — on every task of the dataset. The matrix is explicit rather than a full product: a full one would add arms nobody reads, and every arm costs real router time. Every arm runs on a router instance this experiment starts and stops, so the knowledge arm is a process with the plugin loaded and enabled rather than a shared instance asked to honor a value; its ranking reads as "the auto_codex alias, on an instance with knowledge enabled". The routing plugin is loaded in all four arms, which keeps the knowledge plugin the only difference between the two alias arms.
 
 experiment:
   type: configuration
@@ -32,7 +42,7 @@ experiment:
   execution:
     mode: router
     runtime:
-      id: llm-router
+      id: llm-router-ak-bench
       lifecycle: managed
 
   dataset:
@@ -56,16 +66,26 @@ experiment:
     combinations:
       - model: qwen/Qwen3.8-27B
         knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
       - model: qwen/Qwen3.8-Flash-Next
         knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
       - model: auto_codex
         knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
       - model: auto_codex
         knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
 
   execution_policy:
     repetitions: 3
     concurrency: 1
+    # The bound covers both halves of a run: starting this run's router instance
+    # (model config, plugin pipeline, verbose logging) and then the agent.
     timeout_seconds: 10800
     retry_infrastructure_errors: 1
 

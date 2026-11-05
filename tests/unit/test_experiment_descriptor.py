@@ -181,3 +181,63 @@ def test_the_descriptor_is_versioned_like_any_other() -> None:
     assert snapshot["id"] == "test-experiment"
     assert snapshot["version"] == "1.0.0"
     assert snapshot["schema_version"] == "1.0"
+
+
+def test_a_combination_may_declare_its_runtime_environment() -> None:
+    """A combination carries the environment its runtime instance starts with.
+
+    Which plugins a process loads is decided when it starts, so the arm that
+    wants a plugin has to say so in the combination; the key is reserved and is
+    not a factor.
+    """
+    descriptor = minimal(
+        execution={"mode": "router", "runtime": {"id": "llm-router", "lifecycle": "managed"}},
+        factors={
+            "strategy": "custom_matrix",
+            "dimensions": [{"id": "knowledge_enabled"}],
+            "combinations": [
+                {"knowledge_enabled": False, "runtime_env": {"PIPE": "routing"}},
+                {"knowledge_enabled": True, "runtime_env": {"PIPE": "routing,knowledge"}},
+            ],
+        },
+    )
+
+    combinations = descriptor.experiment.factors.combinations
+    assert combinations[0]["runtime_env"] == {"PIPE": "routing"}
+    assert combinations[1]["runtime_env"] == {"PIPE": "routing,knowledge"}
+
+
+def _factors(combinations: object) -> dict[str, object]:
+    return {
+        "strategy": "custom_matrix",
+        "dimensions": [{"id": "knowledge_enabled"}],
+        "combinations": combinations,
+    }
+
+
+def test_a_runtime_environment_must_be_a_mapping_of_scalars() -> None:
+    from akbench.experiments.errors import ExperimentError
+
+    with pytest.raises(ExperimentError, match="runtime_env must be a mapping"):
+        minimal(factors=_factors([{"knowledge_enabled": True, "runtime_env": "PIPE=x"}]))
+
+    with pytest.raises(ExperimentError, match="must be a scalar value"):
+        minimal(
+            factors=_factors(
+                [{"knowledge_enabled": True, "runtime_env": {"NESTED": {"a": 1}}}]
+            )
+        )
+
+    with pytest.raises(ExperimentError, match="not an environment variable name"):
+        minimal(
+            factors=_factors(
+                [{"knowledge_enabled": True, "runtime_env": {"not a name": 1}}]
+            )
+        )
+
+
+def test_runtime_env_is_reserved_and_not_a_factor() -> None:
+    from akbench.experiments.errors import ExperimentError
+
+    with pytest.raises(ExperimentError, match="runtime_env is not a factor"):
+        minimal(factors={"strategy": "full_factorial", "dimensions": [{"id": "runtime_env"}]})

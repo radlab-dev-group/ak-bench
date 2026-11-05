@@ -1,15 +1,21 @@
 # Knowledge on/off x model (plan section 25, example E), as a full factorial.
 #
 # The plan's example adds Auto Codex as a third axis; it is left out here
-# because the router in this installation refuses per-run plugin control over
-# the routing alias, which would make the axis unverifiable. A smaller matrix
-# whose cells are all real beats a larger one whose cells are assumed.
+# because a routed alias is not one value but a decision the routing plugin
+# takes per request, and crossing that with a plugin toggle would make each
+# cell depend on two things at once. A smaller matrix whose cells are all real
+# beats a larger one whose cells are assumed.
+#
+# The runtime is the managed instance, because the knowledge axis has to be
+# applied to a process this experiment owns. Each arm names the plugins its
+# instance loads: the knowledge plugin is present only in the arms that measure
+# it, so the off arm is not a plugin asked to behave, it is a plugin absent.
 schema_version: "1.0"
 id: full-matrix
 version: "1.0.0"
 title: Knowledge and model full factorial
 description: >-
-  Every combination of the knowledge toggle and the model on two bug-fix tasks, as a full factorial. It is the same two factors that knowledge-on-off and model-comparison each isolate, crossed instead of held apart, so a difference between the three experiments belongs to what they hold fixed rather than to what they measured.
+  Every combination of the knowledge toggle and the model on two bug-fix tasks, each cell started by AK-Bench on its own router instance with the knowledge plugin loaded only where the cell measures it. It is the same two factors that knowledge-on-off and model-comparison each isolate, crossed instead of held apart, so a difference between the three experiments belongs to what they hold fixed rather than to what they measured.
 
 experiment:
   type: configuration
@@ -23,7 +29,7 @@ experiment:
   execution:
     mode: router
     runtime:
-      id: llm-router
+      id: llm-router-ak-bench
       lifecycle: managed
 
   dataset:
@@ -32,7 +38,7 @@ experiment:
       task_ids: [wordcount-001, slugify-001]
 
   factors:
-    strategy: full_factorial
+    strategy: custom_matrix
     dimensions:
       - id: knowledge_enabled
       - id: model
@@ -40,6 +46,21 @@ experiment:
     baseline:
       knowledge_enabled: false
       model: qwen/Qwen3.8-27B
+    # The cross product of the two axes, written out because each cell carries
+    # the plugin pipeline its instance starts with.
+    combinations:
+      - knowledge_enabled: false
+        model: qwen/Qwen3.8-27B
+      - knowledge_enabled: false
+        model: qwen/Qwen3.8-Flash-Next
+      - knowledge_enabled: true
+        model: qwen/Qwen3.8-27B
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
+      - knowledge_enabled: true
+        model: qwen/Qwen3.8-Flash-Next
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
 
   execution_policy:
     repetitions: 3

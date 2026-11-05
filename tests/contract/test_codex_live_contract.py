@@ -31,7 +31,7 @@ reason = "live check disabled; set AKBENCH_RUN_LIVE=1 to run it"
 
 
 def _descriptor(kind: DescriptorKind, descriptor_id: str):
-    filename = "llm-router.yaml" if kind is DescriptorKind.RUNTIME else "codex.yaml"
+    filename = "llm-router-external.yaml" if kind is DescriptorKind.RUNTIME else "codex.yaml"
     registry = load_descriptor_file(
         REPO_ROOT / "descriptors" / f"{kind.value}s" / filename,
         kind,
@@ -42,7 +42,7 @@ def _descriptor(kind: DescriptorKind, descriptor_id: str):
 
 
 def _binding() -> RuntimeBinding:
-    runtime = _descriptor(DescriptorKind.RUNTIME, "llm-router")
+    runtime = _descriptor(DescriptorKind.RUNTIME, "llm-router-external")
     required = runtime.runtime.required_env
     return RuntimeBinding(
         runtime_id=runtime.id,
