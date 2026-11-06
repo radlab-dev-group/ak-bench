@@ -936,43 +936,39 @@ class HistoryStore:
         grade it, and the mutation patch that planted the defect are recorded
         file by file, so a history read without the dataset checkout can still
         show the exact code a recorded run was handed. A loaded task that did
-        not come from a directory (a test stub) carries no ``path`` and is
-        skipped: there is no code to read, and guessing would fabricate it.
+        not come from a directory (a test stub) yields no files and changes
+        nothing: there is no code to read, and guessing would fabricate it.
         """
-        directory = getattr(loaded, "path", None)
-        if directory is None:
-            return
-        collected = _task_files(loaded)
-        if not collected:
-            return
-        existing = {
-            row.path: row
-            for row in session.scalars(
-                select(TaskFile).where(TaskFile.task_id == task_row.id)
-            ).all()
-        }
-        now = utc_now()
-        for path, kind, content, size_bytes, digest in collected:
-            row = existing.get(path)
-            if row is None:
-                row = TaskFile(
-                    task_id=task_row.id,
-                    path=path,
-                    kind=kind,
-                    content=content,
-                    size_bytes=size_bytes,
-                    digest=digest,
-                    created_at=now,
-                    updated_at=now,
-                )
-                session.add(row)
-            else:
-                row.kind = kind
-                row.content = content
-                row.size_bytes = size_bytes
-                row.digest = digest
-                row.updated_at = now
-        session.flush()
+        _store_task_files(session, task_row.id, collect_task_files(loaded))
+
+    def record_task_files(self, loaded: Any) -> int:
+        """Store the code of a task found on disk, returning how many files changed.
+
+        The write path for ``scripts/update_task_info.py``: a history that
+        predates the recording gets its files from the dataset checkout without
+        waiting for a run. A task with no row was never recorded, and its code
+        is not this history's to claim.
+        """
+        uid = getattr(loaded, "uid", None)
+        collected = collect_task_files(loaded)
+        if not uid or not collected:
+            return 0
+        with session_scope(self.engine) as session:
+            task_row = session.scalar(select(Task).where(Task.uid == uid))
+            if task_row is None:
+                return 0
+            recorded = {
+                row.path: row.digest
+                for row in session.scalars(
+                    select(TaskFile).where(TaskFile.task_id == task_row.id)
+                ).all()
+            }
+            _store_task_files(session, task_row.id, collected)
+            return sum(
+                1
+                for path, _kind, _content, _size, digest in collected
+                if recorded.get(path) != digest
+            )
 
     def _record_component(self, session: Session, model: Any, descriptor: Any, kind: str) -> None:
         """Store an agent or runtime descriptor, keyed by (id, version).
@@ -1425,6 +1421,46 @@ _TASK_FILE_SKIP_SUFFIXES = {
 }
 
 
+def _store_task_files(
+    session: Session, task_id: int, collected: list[tuple[str, str, str, int, str]]
+) -> None:
+    """Insert or update one row per collected file, keyed by (task, path).
+
+    Re-recording a task refreshes its files rather than forking them: the code
+    of a task is what it was at the digest the task row carries, and a second
+    reading of the same directory states the same thing again.
+    """
+    if not collected:
+        return
+    existing = {
+        row.path: row
+        for row in session.scalars(select(TaskFile).where(TaskFile.task_id == task_id)).all()
+    }
+    now = utc_now()
+    for path, kind, content, size_bytes, digest in collected:
+        row = existing.get(path)
+        if row is None:
+            session.add(
+                TaskFile(
+                    task_id=task_id,
+                    path=path,
+                    kind=kind,
+                    content=content,
+                    size_bytes=size_bytes,
+                    digest=digest,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        else:
+            row.kind = kind
+            row.content = content
+            row.size_bytes = size_bytes
+            row.digest = digest
+            row.updated_at = now
+    session.flush()
+
+
 def _repository_root(source: Any, task_dir: Path) -> Path | None:
     """Directory a task's repository source names, or ``None`` when it names none.
 
@@ -1447,7 +1483,7 @@ def _repository_root(source: Any, task_dir: Path) -> Path | None:
     return None
 
 
-def _task_files(loaded: Any) -> list[tuple[str, str, str, int, str]]:
+def collect_task_files(loaded: Any) -> list[tuple[str, str, str, int, str]]:
     """The code a task is made of, read from its directory on disk.
 
     Returns ``(path, kind, content, size_bytes, digest)`` for every file that
@@ -1459,10 +1495,11 @@ def _task_files(loaded: Any) -> list[tuple[str, str, str, int, str]]:
     a file that cannot be shown is not recorded as an empty file, which
     would be a false statement about the task.
     """
-    directory = Path(getattr(loaded, "path", None))
+    raw_directory = getattr(loaded, "path", None)
     body = getattr(loaded.task, "task", None)
-    if body is None:
+    if raw_directory is None or body is None:
         return []
+    directory = Path(raw_directory)
     collected: list[tuple[str, str, str, int, str]] = []
     seen: set[str] = set()
 

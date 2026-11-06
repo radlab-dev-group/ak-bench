@@ -38,6 +38,7 @@ from akbench.core.time import utc_now  # noqa: E402
 from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE, Dataset  # noqa: E402
 from akbench.descriptors import DescriptorKind, load_registry  # noqa: E402
 from akbench.storage.db import create_db_engine, session_scope  # noqa: E402
+from akbench.storage.history import HistoryStore  # noqa: E402
 from akbench.storage.migrator import head_revision, schema_status, upgrade  # noqa: E402
 from akbench.storage.models import Agent, Experiment, Runtime, Task, TaskRun  # noqa: E402
 
@@ -122,6 +123,53 @@ def backfill(
             updated.append({"uid": row.uid, "fields": sorted(changed)})
 
     return updated, unresolved
+
+
+def _backfill_task_files(
+    store: HistoryStore, dataset: Dataset, *, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Record each task's code from the dataset, reporting how much changed.
+
+    Returns ``(tasks_with_code, files_changed, unresolved)``. A task whose
+    repository source is a remote URL has no local files to read and is left
+    as recorded, not reported as broken.
+    """
+    by_uid = {loaded.uid: loaded for loaded in dataset.tasks}
+    by_id: dict[str, list[Any]] = {}
+    for loaded in dataset.tasks:
+        by_id.setdefault(str(loaded.task.id), []).append(loaded)
+
+    with session_scope(store.engine) as session:
+        targets = [
+            (row.uid, row.task_id)
+            for row in session.scalars(select(Task).order_by(Task.uid)).all()
+        ]
+
+    with_code = 0
+    changed = 0
+    unresolved: list[str] = []
+    for uid, task_id in targets:
+        loaded = by_uid.get(uid)
+        if loaded is None:
+            candidates = by_id.get(task_id, [])
+            loaded = candidates[0] if len(candidates) == 1 else None
+        if loaded is None:
+            unresolved.append(uid)
+            continue
+        if not dry_run:
+            delta = store.record_task_files(loaded)
+            if delta:
+                changed += delta
+        if _has_code(loaded):
+            with_code += 1
+    return with_code, changed, unresolved
+
+
+def _has_code(loaded: Any) -> bool:
+    """Whether a task on disk names local files worth recording."""
+    from akbench.storage.history import collect_task_files
+
+    return bool(collect_task_files(loaded))
 
 
 def _descriptor_text(entry: Any) -> str | None:
@@ -321,6 +369,18 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         _report(updated, unresolved, total)
+
+        store = HistoryStore(engine)
+        with_code, files_changed, file_unresolved = _backfill_task_files(
+            store, dataset, dry_run=args.dry_run
+        )
+        if file_unresolved:
+            print(f"  ! {len(file_unresolved)} recorded task(s) had no files to backfill")
+        if args.dry_run:
+            print(f"\ntask files: {with_code} task(s) with local code to record")
+        else:
+            print(f"\ntask files: {files_changed} file(s) recorded for {with_code} task(s)")
+
         if args.tasks_only:
             return 0
         if args.dry_run:
