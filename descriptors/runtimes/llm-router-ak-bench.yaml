@@ -37,6 +37,11 @@ runtime:
     - "experiment combination runtime_env: LLM_ROUTER_UTILS_PLUGINS_PIPELINE, the
       ordered plugin ids the process loads at start (absent means no plugins)"
     - "managed.factor_env: experiment factor values applied as process env"
+    - "managed.env LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_*: the knowledge plugin's
+      own Redis, read from that prefix only and never from LLM_ROUTER_REDIS_*"
+    - "operator environment: the vector engine's login,
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_USERNAME (declared below) and
+      ..._SSE_API_PASSWORD (exported, recorded by name alone)"
 
   capabilities:
     healthcheck: verified                     # GET /health -> 200 healthy
@@ -96,6 +101,24 @@ runtime:
       # the collections the shared instance works with.
       LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX: akbench_bench
       LLM_ROUTER_KNOWLEDGE_AGENTIC_KEY_PREFIX: akbench-bench
+      # The knowledge plugin's own Redis: its event stream, generation cache and
+      # dedup claims. It reads connection settings from this prefix only, never
+      # from LLM_ROUTER_REDIS_*, so without this block the plugin runs stateless
+      # even though it is loaded and enabled: reads pass through, nothing is
+      # cached, nothing is published, and the write side of a knowledge arm
+      # stays empty for the whole run.
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_HOST: 192.168.100.67
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PORT: "6379"
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_DB: "0"
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD: "SuperSecretPassword123"
+      # RESP2 on purpose. The plugin defaults to RESP3, this server answers the
+      # RESP3 handshake with "unknown command HELLO", and the layer fails open
+      # into silence; the operator's launch scripts pin 2 for that reason.
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL: "2"
+      # Login of the vector engine, which authenticates by user and password
+      # rather than by a token. A user name is not a credential and can be
+      # declared here; the password is one, and stays out of this file.
+      LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_USERNAME: default_user
       # Chatty by design: DEBUG plus verbose keeps every request, the routing
       # decision and the knowledge injection in the run's router.log. Verbose
       # logs unmasked payloads, which is why this runtime is a local instance
@@ -109,8 +132,17 @@ runtime:
       # The application's own log goes to the console, which AK-Bench captures;
       # a second copy under ~/.llm-router would only drift from the run.
       LLM_ROUTER_LOG_TO_FILE: "0"
-      # SSE credentials are not stored here: they come from the environment the
-      # benchmark was started in, and reach the process unchanged.
+      # The engine's password is not stored here. The launch environment starts
+      # from the environment the benchmark was started in, so exporting it
+      # before a run is all it takes for it to reach the process:
+      #
+      #   export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD='...'
+      #
+      # The run record keeps the name with a masked value, never the content.
+      # Nothing in a run proves the password was set, and it matters: with the
+      # engine reachable but no token and no login the knowledge layer reads
+      # nothing and fails open, so an arm that ran without it measured a router
+      # that had knowledge and never once looked at it.
 
     # The factor is applied to the process, not to the request: this is the
     # difference between "knowledge was asked for" and "knowledge was on". It
