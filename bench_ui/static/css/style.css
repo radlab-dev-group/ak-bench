@@ -828,7 +828,28 @@ pre {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 12px 18px;
+}
+
+.footer-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.footer-links a {
+  color: var(--fg-faint);
+  border-bottom: 1px solid transparent;
+}
+
+.footer-links a:hover {
+  color: var(--mint);
+  text-decoration: none;
+  border-bottom-color: var(--mint-border);
+}
+
+.footer-sep {
+  color: var(--line);
 }
 
 /* ===== Analytics Explorer ===== */

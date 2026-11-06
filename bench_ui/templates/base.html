@@ -89,8 +89,13 @@
   <footer class="footer">
     <div class="wrap footer-inner">
       <div>
-        AK-Bench &copy; 2026 radlab.dev &middot; Agentic Knowledge Benchmark
+        AK-Bench &copy; 2026 &middot; Agentic Knowledge Benchmark
       </div>
+      <nav class="footer-links" aria-label="Related projects">
+        <a href="https://radlab.dev" target="_blank" rel="noopener noreferrer">radlab.dev</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://llm-router.cloud/" target="_blank" rel="noopener noreferrer">llm-router.cloud</a>
+      </nav>
       {% if database and database.reachable %}
       <div class="db-status db-status-live" title="History is readable">
         <span class="db-status-dot"></span> LIVE DB
