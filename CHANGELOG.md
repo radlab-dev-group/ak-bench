@@ -6,6 +6,11 @@ release tagged as `v<version>`.
 
 ## [Unreleased]
 
+### Added
+- **Task content is recorded in the history and shown in the UI.** Every task row now stores what the task asks — the title, the one-line description, the full `task.yaml` descriptor and the task's `description.md` (migration `0008`). The UI answers a task page from the history alone: the task catalog shows titles, descriptions, authors and timeouts, and the task detail shows the definition with constraints, setup, mutation and repository, the full scope of work, and the recorded descriptor. When a task was recorded before its content was stored, the dataset on disk fills the gap and the page says the definition came from there.
+- **`scripts/update_task_info.py` backfills an existing history** with the task content from the dataset on disk (migrating the schema to head first), for the PostgreSQL the project is already using.
+- **The UI footer links [radlab.dev](https://radlab.dev) and [llm-router.cloud](https://llm-router.cloud/).**
+
 ### Changed
 - **PostgreSQL is now the default database.** Recorded benchmarks go to PostgreSQL instead of the SQLite file, so a project has one shared, server-backed history. SQLite stays available as an explicit fallback for a laptop without a server.
 - **A project `.env` file is read automatically.** The same `AKBENCH_PG_*` connection names `scripts/run-postgres.sh` uses now configure the engine; an exported variable beats the file, and `AKBENCH__DATABASE__*` still overrides both. The connection URL is redacted (password hidden) everywhere it is displayed, in `akbench config show` and in the UI footer.
