@@ -4,63 +4,133 @@ let refreshTimer = null;
 let currentRefreshInterval = 0; // 0 = disabled
 
 // ============================================================ Page-Load Indicator
-// A decorative ramp: the bar climbs quickly, hesitates, then completes when the
-// page is ready. It is not measuring the query, and it never hides content --
-// it only says "arriving", which is friendlier than an empty frame.
-(function initPageLoader() {
+// A decorative ramp: it says "the data is arriving", it does not measure the
+// query. It is driven from one place so that every way of moving through the
+// UI -- a link, a form, a browser button, a fetch that repaints a table, a run
+// inspector -- shows the same signal, and shows it long enough to be seen.
+const pageLoader = (function initPageLoader() {
   const prefersReducedMotion = window.matchMedia
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const loader = document.getElementById('pageLoader');
   const bar = document.getElementById('pageLoaderBar');
-  if (!loader || !bar || prefersReducedMotion) return;
 
-  let hidden = false;
+  // A bar that is gone in 120 ms reads as a glitch, not as loading; one that
+  // outlives the request reads as a lie. These are the two ends held together.
+  const MIN_VISIBLE_MS = 550;
+  const MAX_VISIBLE_MS = 4000;
+  const FETCH_DELAY_MS = 150;
+
+  const state = { visible: false, since: 0, hideTimer: null, capTimer: null, pending: 0 };
+
+  const setWidth = (percent) => {
+    if (bar) bar.style.width = percent + '%';
+  };
+
+  const show = () => {
+    if (!loader || !bar || prefersReducedMotion) return;
+    window.clearTimeout(state.hideTimer);
+    window.clearTimeout(state.capTimer);
+    if (!state.visible) {
+      // Re-arm without letting the browser animate the reset: the bar has to
+      // start at the left edge, not slide back to it.
+      loader.style.transition = 'none';
+      loader.style.display = '';
+      loader.classList.remove('page-loader-done');
+      setWidth(0);
+      void loader.offsetWidth;
+      loader.style.transition = '';
+      state.visible = true;
+      state.since = Date.now();
+      state.capTimer = window.setTimeout(hide, MAX_VISIBLE_MS);
+    }
+    return true;
+  };
 
   const hide = () => {
-    if (hidden) return;
-    hidden = true;
-    loader.classList.add('page-loader-done');
-    window.setTimeout(() => { loader.style.display = 'none'; }, 700);
+    if (!loader || state.pending > 0) return;
+    window.clearTimeout(state.hideTimer);
+    window.clearTimeout(state.capTimer);
+    if (!state.visible) return;
+    const held = Date.now() - state.since;
+    state.hideTimer = window.setTimeout(() => {
+      state.visible = false;
+      loader.classList.add('page-loader-done');
+    }, Math.max(0, MIN_VISIBLE_MS - held));
   };
 
   // Fast to two thirds, slower from there: a bar that never quite stalls looks
   // like work in progress without pretending to know how much is left.
-  const steps = [
-    [40, 16], [300, 46], [650, 68], [1100, 82], [1700, 91],
-  ];
-  steps.forEach(([delay, width]) => {
-    window.setTimeout(() => {
-      if (!hidden) bar.style.width = width + '%';
+  const ramp = () => {
+    const climb = (delay, percent) => window.setTimeout(() => {
+      if (state.visible) setWidth(percent);
     }, delay);
-  });
+    climb(0, 38);
+    climb(300, 66);
+    climb(700, 84);
+    climb(1300, 93);
+  };
 
-  const finish = () => window.setTimeout(hide, 260);
-  if (document.readyState === 'complete') finish();
-  else window.addEventListener('load', finish);
-  // A hard safety net: the bar must never stay up if load() never fires.
-  window.setTimeout(hide, 4000);
+  const begin = () => {
+    if (!show()) return false;
+    ramp();
+    return true;
+  };
 
-  // Internal navigation: start the ramp again so the next page does not look
-  // like the one it replaced.
+  // Every request in flight is a reason to keep the bar up. Short local answers
+  // never show it at all, so the dashboard does not blink every refresh.
+  const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (nativeFetch) {
+    window.fetch = (input, init) => {
+      if (prefersReducedMotion) return nativeFetch(input, init);
+      const background = init && init.loader === false;
+      if (background) return nativeFetch(input, init);
+      let shown = false;
+      const timer = window.setTimeout(() => { shown = begin(); }, FETCH_DELAY_MS);
+      state.pending += 1;
+      return nativeFetch(input, init).then(
+        (response) => { window.clearTimeout(timer); state.pending -= 1; if (shown) hide(); return response; },
+        (error) => { window.clearTimeout(timer); state.pending -= 1; if (shown) hide(); throw error; }
+      );
+    };
+  }
+
+  // A link, however it was made: server-rendered, painted by a script, or a
+  // button that assigns location.href itself.
   document.addEventListener('click', (event) => {
-    const link = event.target.closest && event.target.closest('a[href^="/"]');
-    if (!link || link.target === '_blank' || event.metaKey || event.ctrlKey) return;
-    hidden = false;
-    loader.style.display = '';
-    loader.classList.remove('page-loader-done');
-    bar.style.width = '8%';
+    const anchor = event.target.closest && event.target.closest('a[href]');
+    if (anchor) {
+      const href = anchor.getAttribute('href') || '';
+      const external = /^https?:\/\//i.test(href) && !href.startsWith(window.location.origin);
+      const skips = external || anchor.target === '_blank' || anchor.hasAttribute('download')
+        || /^(javascript:|#|mailto:|tel:)/i.test(href) || event.metaKey || event.ctrlKey
+        || event.shiftKey || event.altKey || event.button !== 0;
+      if (!skips) begin();
+    }
+    const trigger = event.target.closest && event.target.closest('button, [type="submit"]');
+    if (trigger && trigger.closest('form')) begin();
   });
 
-  // Restored from the back/forward cache: show it briefly, then get out.
+  document.addEventListener('submit', begin);
+
+  // The catch-all: a script that navigates by assigning location covers every
+  // path a delegated click could miss, and the browser may never fire load().
+  window.addEventListener('beforeunload', begin);
+
+  // Restored from the back/forward cache: the page is already drawn, so the
+  // bar only says "you are back" before getting out of the way.
   window.addEventListener('pageshow', (event) => {
     if (!event.persisted) return;
-    hidden = false;
-    loader.style.display = '';
-    loader.classList.remove('page-loader-done');
-    bar.style.width = '55%';
-    window.setTimeout(hide, 320);
+    begin();
+    window.setTimeout(hide, 260);
   });
+
+  return { begin, hide };
 })();
+
+window.addEventListener('load', () => {
+  pageLoader.begin();
+  window.setTimeout(() => pageLoader.hide(), 250);
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   initLiveRefresh();
@@ -117,7 +187,7 @@ function triggerLiveUpdate() {
 
 async function fetchOverviewData() {
   try {
-    const res = await fetch('/api/overview');
+    const res = await fetch('/api/overview', { loader: false });
     if (!res.ok) return;
     const data = await res.json();
     updateDashboardDOM(data);
