@@ -46,6 +46,7 @@ from akbench.storage.models import (
     Repository,
     Runtime,
     Task,
+    TaskFile,
     TaskRun,
 )
 
@@ -657,6 +658,53 @@ class HistoryStore:
                 for row in rows
             ]
 
+    def task_files(self, task_uid: str | None = None) -> list[dict[str, Any]]:
+        """The recorded code of a task, or of every task, sorted by path.
+
+        Content is left out: a tree of files is a list of names, sizes and
+        kinds, and the text of one file is read when it is opened. A task with
+        no recorded files is not an error — it predates the recording, or the
+        dataset was not on disk when it was recorded.
+        """
+        with session_scope(self.engine) as session:
+            statement = (
+                select(Task, TaskFile)
+                .join(TaskFile, TaskFile.task_id == Task.id)
+                .order_by(TaskFile.kind, TaskFile.path)
+            )
+            if task_uid is not None:
+                statement = statement.where(Task.uid == task_uid)
+            rows = session.execute(statement).all()
+            return [
+                {
+                    "task_uid": task.uid,
+                    "path": row.path,
+                    "kind": row.kind,
+                    "size_bytes": row.size_bytes,
+                    "digest": row.digest,
+                }
+                for task, row in rows
+            ]
+
+    def task_file(self, task_uid: str, path: str) -> dict[str, Any] | None:
+        """One recorded file with its content, or ``None`` when it was not stored."""
+        with session_scope(self.engine) as session:
+            row = session.execute(
+                select(TaskFile)
+                .join(Task, Task.id == TaskFile.task_id)
+                .where(Task.uid == task_uid, TaskFile.path == path)
+            ).scalar_one_or_none()
+            if row is None:
+                return None
+            return {
+                "task_uid": task_uid,
+                "path": row.path,
+                "kind": row.kind,
+                "content": row.content,
+                "size_bytes": row.size_bytes,
+                "digest": row.digest,
+            }
+
     def plugin_observations(
         self, run_uid: str | None = None
     ) -> list[dict[str, Any]]:
@@ -878,6 +926,52 @@ class HistoryStore:
         task_row.repository_uid = repository_uid
         task_row.base_commit = getattr(loaded.task.task.repository, "ref", None)
         task_row.updated_at = now
+        session.flush()
+        self._record_task_files(session, task_row, loaded)
+
+    def _record_task_files(self, session: Session, task_row: Task, loaded: Any) -> None:
+        """Store the task's code, not only its prose, next to the task row.
+
+        The repository a run was worked in, the hidden and public tests that
+        grade it, and the mutation patch that planted the defect are recorded
+        file by file, so a history read without the dataset checkout can still
+        show the exact code a recorded run was handed. A loaded task that did
+        not come from a directory (a test stub) carries no ``path`` and is
+        skipped: there is no code to read, and guessing would fabricate it.
+        """
+        directory = getattr(loaded, "path", None)
+        if directory is None:
+            return
+        collected = _task_files(loaded)
+        if not collected:
+            return
+        existing = {
+            row.path: row
+            for row in session.scalars(
+                select(TaskFile).where(TaskFile.task_id == task_row.id)
+            ).all()
+        }
+        now = utc_now()
+        for path, kind, content, size_bytes, digest in collected:
+            row = existing.get(path)
+            if row is None:
+                row = TaskFile(
+                    task_id=task_row.id,
+                    path=path,
+                    kind=kind,
+                    content=content,
+                    size_bytes=size_bytes,
+                    digest=digest,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+            else:
+                row.kind = kind
+                row.content = content
+                row.size_bytes = size_bytes
+                row.digest = digest
+                row.updated_at = now
         session.flush()
 
     def _record_component(self, session: Session, model: Any, descriptor: Any, kind: str) -> None:
@@ -1308,6 +1402,128 @@ def _task_texts(loaded: Any) -> tuple[str | None, str | None]:
     task_yaml = _read_text(directory / TASK_FILE)
     description_md = _read_text(directory / DESCRIPTION_FILE)
     return task_yaml, description_md
+
+
+_TASK_FILE_MAX_BYTES = 256 * 1024
+_TASK_FILE_SKIP_DIRS = {".git", "__pycache__", ".venv", "node_modules"}
+_TASK_FILE_SKIP_SUFFIXES = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".pdf",
+    ".zip",
+    ".gz",
+    ".tar",
+    ".whl",
+    ".pyc",
+    ".so",
+    ".bin",
+    ".sqlite",
+    ".sqlite3",
+}
+
+
+def _repository_root(source: Any, task_dir: Path) -> Path | None:
+    """Directory a task's repository source names, or ``None`` when it names none.
+
+    A remote source (a git URL) has no directory to read and is not local code.
+    A relative one is resolved against the task directory and its ancestors,
+    which finds the project root without importing the dataset that loaded it.
+    """
+    if not source:
+        return None
+    text = str(source)
+    if "://" in text or text.startswith("git@"):
+        return None
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return candidate if candidate.is_dir() else None
+    for base in [task_dir, *task_dir.parents]:
+        resolved = base / candidate
+        if resolved.is_dir():
+            return resolved
+    return None
+
+
+def _task_files(loaded: Any) -> list[tuple[str, str, str, int, str]]:
+    """The code a task is made of, read from its directory on disk.
+
+    Returns ``(path, kind, content, size_bytes, digest)`` for every file that
+    defines the task: the repository it is worked in, the hidden and public
+    tests that grade it, and the mutation patch. Paths are relative to where
+    the file belongs — the repository root for repository files, the task
+    directory for tests and the mutation. Files that cannot be read as text,
+    that are binary, or that exceed ``_TASK_FILE_MAX_BYTES`` are skipped:
+    a file that cannot be shown is not recorded as an empty file, which
+    would be a false statement about the task.
+    """
+    directory = Path(getattr(loaded, "path", None))
+    body = getattr(loaded.task, "task", None)
+    if body is None:
+        return []
+    collected: list[tuple[str, str, str, int, str]] = []
+    seen: set[str] = set()
+
+    def add(kind: str, path: Path, recorded: str) -> None:
+        """Record one file under ``recorded``, when it is text worth showing."""
+        if recorded in seen or not path.is_file():
+            return
+        seen.add(recorded)
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return
+        if len(data) > _TASK_FILE_MAX_BYTES:
+            return
+        try:
+            content = data.decode("utf-8")
+        except UnicodeDecodeError:
+            return
+        digest = f"sha256:{hashlib.sha256(data).hexdigest()}"
+        collected.append((recorded, kind, content, len(data), digest))
+
+    def walk(kind: str, root: Path, prefix: str = "") -> None:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(root)
+            if any(part in _TASK_FILE_SKIP_DIRS for part in relative.parts):
+                continue
+            if path.suffix.lower() in _TASK_FILE_SKIP_SUFFIXES:
+                continue
+            add(kind, path, f"{prefix}{relative.as_posix()}")
+
+    # The repository the task is worked in. A materialized task names it by an
+    # absolute path; a bare descriptor names it relative to the project, so the
+    # task directory's ancestors are tried until the source resolves.
+    repository = getattr(body, "repository", None)
+    source = getattr(repository, "source", None)
+    repo_root = _repository_root(source, directory)
+    if repo_root is not None:
+        subdir = getattr(repository, "subdir", None)
+        walk("repository", repo_root / subdir if subdir else repo_root)
+
+    # The mutation patch and the tests are named from the task directory, so a
+    # path says which part of the task it belongs to as well as where it is.
+    mutation = getattr(body, "mutation", None)
+    if mutation is not None:
+        patch = str(getattr(mutation, "patch", ""))
+        if patch:
+            add("mutation", directory / patch, patch)
+
+    for kind, configured in (
+        ("hidden_tests", getattr(body, "hidden_tests", None)),
+        ("public_tests", getattr(body, "public_tests", None)),
+    ):
+        if not configured:
+            continue
+        tests = Path(str(configured))
+        if (directory / tests).is_dir():
+            walk(kind, directory / tests, f"{tests.as_posix()}/")
+
+    return collected
 
 
 def _read_text(path: Path) -> str | None:

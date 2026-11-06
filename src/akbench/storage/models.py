@@ -132,6 +132,39 @@ class Task(Base, TimestampMixin):
     description_md: Mapped[str | None] = mapped_column(Text)
 
 
+class TaskFile(Base, TimestampMixin):
+    """One file of a task: the code it is made of, kept next to the task row.
+
+    A task is more than its prose: it is the repository an agent works in,
+    the hidden and public tests that grade the work, and the mutation patch
+    that planted the defect. Each of those files is a row here, keyed by the
+    task and the path relative to where the file belongs, so a history read
+    without the dataset checkout can still show the exact code a recorded
+    run was handed and graded against.
+    """
+
+    __tablename__ = "task_files"
+    __table_args__ = (
+        UniqueConstraint("task_id", "path", name="uq_task_files_task_id_path"),
+        Index("ix_task_files_task_id", "task_id"),
+        Index("ix_task_files_kind", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    # Relative to the repository root for repository files, relative to the
+    # task directory for tests and the mutation patch.
+    path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # repository, hidden_tests, public_tests or mutation: which part of the
+    # task the file belongs to.
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    digest: Mapped[str] = mapped_column(String(71), nullable=False)
+
+
 class Experiment(Base, TimestampMixin):
     __tablename__ = "experiments"
 

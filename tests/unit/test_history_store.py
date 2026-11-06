@@ -606,3 +606,130 @@ def test_unattributable_evidence_explains_why_the_model_stays_unverified(
 
     assert row["verification_status"] == "unverified"
     assert row["note"] == "no log of a process this run started"
+
+
+TASK_WITH_CODE = """
+schema_version: "1.0"
+id: wordcount-001
+version: "1.0.0"
+task:
+  category: bug_fix
+  difficulty: easy
+  repository:
+    source: _sources/wordcount
+    ref: HEAD
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+"""
+
+
+def _task_with_code(root: Path):
+    """A task on disk with a repository, both test sets and a mutation patch."""
+    from akbench.datasets.dataset import load_task
+
+    repository = root / "_sources" / "wordcount"
+    package = repository / "src" / "wordcount"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text(
+        "def count_words(text):\n    return len(text.split())\n", encoding="utf-8"
+    )
+    (repository / "README.md").write_text("# wordcount\n", encoding="utf-8")
+
+    task_dir = root / "bug_fix" / "wordcount-001"
+    (task_dir / "hidden_tests").mkdir(parents=True)
+    (task_dir / "hidden_tests" / "test_hidden.py").write_text(
+        "def test_repeated_whitespace():\n    assert True\n", encoding="utf-8"
+    )
+    (task_dir / "public_tests").mkdir(parents=True)
+    (task_dir / "public_tests" / "test_public.py").write_text(
+        "def test_counts_words():\n    assert True\n", encoding="utf-8"
+    )
+    (task_dir / "mutations").mkdir(parents=True)
+    (task_dir / "mutations" / "mutation-001.patch").write_text(
+        "--- a/src/wordcount/__init__.py\n+++ b/src/wordcount/__init__.py\n", encoding="utf-8"
+    )
+    (task_dir / "description.md").write_text("# Word counting\n", encoding="utf-8")
+    (task_dir / "task.yaml").write_text(TASK_WITH_CODE, encoding="utf-8")
+    return load_task(task_dir)
+
+
+def test_record_run_stores_the_code_of_the_task(database_url: str, tmp_path: Path) -> None:
+    """A task's code is recorded, not only its prose.
+
+    The repository an agent worked in and the tests that graded it are what a
+    result is about, so they belong to the history rather than to a dataset
+    checkout that may not exist when the history is read.
+    """
+    store = _store(database_url)
+
+    store.record_run(_run_record(), task=_task_with_code(tmp_path))
+
+    files = {row["path"]: row for row in store.task_files("wordcount-001@1.0.0")}
+    kinds = {row["kind"] for row in files.values()}
+    assert kinds == {"repository", "hidden_tests", "public_tests", "mutation"}
+    assert files["src/wordcount/__init__.py"]["size_bytes"] > 0
+    assert files["src/wordcount/__init__.py"]["digest"].startswith("sha256:")
+    assert files["hidden_tests/test_hidden.py"]["kind"] == "hidden_tests"
+    assert files["public_tests/test_public.py"]["kind"] == "public_tests"
+    assert files["mutations/mutation-001.patch"]["kind"] == "mutation"
+
+
+def test_a_recorded_file_is_read_back_verbatim(database_url: str, tmp_path: Path) -> None:
+    store = _store(database_url)
+    store.record_run(_run_record(), task=_task_with_code(tmp_path))
+
+    stored = store.task_file("wordcount-001@1.0.0", "src/wordcount/__init__.py")
+
+    assert stored is not None
+    assert stored["content"] == "def count_words(text):\n    return len(text.split())\n"
+    assert store.task_file("wordcount-001@1.0.0", "src/missing.py") is None
+
+
+def test_recording_a_task_twice_updates_its_files_without_forking(
+    database_url: str, tmp_path: Path
+) -> None:
+    """The same task recorded twice keeps one row per file."""
+    store = _store(database_url)
+    loaded = _task_with_code(tmp_path)
+
+    store.record_run(_run_record(), task=loaded)
+    store.record_run(_run_record(run_uid="run-2"), task=loaded)
+
+    rows = store.task_files("wordcount-001@1.0.0")
+    assert len(rows) == len({row["path"] for row in rows})
+
+
+def test_binary_and_oversized_files_are_not_recorded(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A file that cannot be shown is left out rather than stored as noise."""
+    from akbench import storage
+
+    store = _store(database_url)
+    loaded = _task_with_code(tmp_path)
+    repository = tmp_path / "_sources" / "wordcount"
+    (repository / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01\x02")
+    (repository / "vendor.py").write_text("x" * 300_000, encoding="utf-8")
+
+    store.record_run(_run_record(), task=loaded)
+
+    paths = {row["path"] for row in store.task_files("wordcount-001@1.0.0")}
+    assert "logo.png" not in paths
+    assert "vendor.py" not in paths
+    assert "README.md" in paths
+    assert storage.history  # the module under test is importable
+
+
+def test_a_task_with_no_code_records_nothing(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A stub task with no readable files leaves an empty tree, not an error."""
+    store = _store(database_url)
+
+    store.record_run(_run_record(), task=_task_stub(path=tmp_path))
+
+    assert store.task_files("wordcount-001@1.0.0") == []
