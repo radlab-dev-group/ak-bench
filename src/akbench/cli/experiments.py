@@ -341,6 +341,7 @@ def _run_experiment(
             descriptor_id=experiment.descriptor.id,
             descriptor_version=experiment.descriptor.version,
             config_hash=experiment.digest,
+            experiment_yaml=_experiment_yaml(experiment),
             variants=[
                 {
                     "uid": variant.variant_id,
@@ -575,6 +576,22 @@ def experiment_run_cmd(
         console.print("  [dim]recorded in the history; `akbench report all` renders it[/dim]")
 
 
+def _experiment_yaml(experiment: LoadedExperiment) -> str | None:
+    """The experiment file as written, so the plan can be read from history.
+
+    The plan is derived and the digest pins it; the file is what the operator
+    actually asked for. Recording it means an experiment page explains itself
+    months later, with no checkout of the configuration directory.
+    """
+    path = getattr(experiment, "path", None)
+    if path is None:
+        return None
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 def _snapshot_payload(entry: LoadedDescriptor) -> dict[str, object]:
     """One pinned descriptor in the shape :meth:`HistoryStore.record_plan` wants."""
     snapshot = entry.snapshot
@@ -650,6 +667,7 @@ def _store_plan(
         descriptor_id=experiment.descriptor.id,
         descriptor_version=experiment.descriptor.version,
         config_hash=experiment.digest,
+        experiment_yaml=_experiment_yaml(experiment),
         variants=[
             {
                 "uid": variant.variant_id,

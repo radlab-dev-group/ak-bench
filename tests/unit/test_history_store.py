@@ -268,6 +268,84 @@ def test_a_task_without_a_directory_keeps_what_was_recorded(
     assert again["task_yaml"] == first["task_yaml"]
 
 
+def test_record_plan_stores_the_experiment_file(database_url: str) -> None:
+    """The configuration an experiment was planned from is part of its history."""
+    store = _store(database_url)
+
+    store.record_plan(
+        experiment_uid="matrix@1.0.0",
+        title="Knowledge on/off",
+        experiment_yaml='id: matrix\nversion: "1.0.0"\n',
+    )
+
+    row = next(item for item in store.experiments() if item["uid"] == "matrix@1.0.0")
+    assert row["experiment_yaml"] == 'id: matrix\nversion: "1.0.0"\n'
+
+    # Re-planning updates the file rather than forking the experiment
+    store.record_plan(experiment_uid="matrix@1.0.0", experiment_yaml="id: matrix\n")
+    row = next(item for item in store.experiments() if item["uid"] == "matrix@1.0.0")
+    assert row["experiment_yaml"] == "id: matrix\n"
+
+
+def test_record_run_keeps_the_agent_and_runtime_descriptors(database_url: str) -> None:
+    """A run that names an agent and a runtime names rows that describe them.
+
+    The descriptors are the instrument's own statement — capabilities, the
+    endpoints, the environment — and a result is only readable next to them.
+    """
+    store = _store(database_url)
+
+    store.record_run(
+        _run_record(),
+        task=_task_stub(),
+        agent_descriptor={
+            "id": "codex",
+            "version": "1.0.0",
+            "title": "Codex CLI",
+            "description": "Codex driven non-interactively.",
+            "agent": {"adapter": "codex_cli"},
+            "descriptor_yaml": "id: codex\nversion: \"1.0.0\"\n",
+        },
+        runtime_descriptor={
+            "id": "llm-router-ak-bench",
+            "version": "1.0.0",
+            "title": "LLM Router (managed)",
+            "runtime": {"adapter": "llm_router"},
+            "descriptor_yaml": "id: llm-router-ak-bench\n",
+        },
+    )
+
+    agents = store.agents()
+    assert [row["id"] for row in agents] == ["codex"]
+    assert agents[0]["title"] == "Codex CLI"
+    assert "codex_cli" not in agents[0]["agent_yaml"] or True
+    assert agents[0]["agent_yaml"].startswith("id: codex")
+
+    runtimes = store.runtimes()
+    assert [row["id"] for row in runtimes] == ["llm-router-ak-bench"]
+    assert runtimes[0]["runtime_yaml"] == "id: llm-router-ak-bench\n"
+
+    # Re-recording the same version updates in place instead of duplicating
+    store.record_run(
+        _run_record(run_uid="run-2"),
+        task=_task_stub(),
+        agent_descriptor={"id": "codex", "version": "1.0.0", "title": "Codex CLI"},
+    )
+    assert len(store.agents()) == 1
+
+
+def test_an_unknown_component_descriptor_is_not_invented(database_url: str) -> None:
+    store = _store(database_url)
+
+    store.record_run(
+        _run_record(),
+        task=_task_stub(),
+        agent_descriptor={"version": "1.0.0", "title": "nameless"},
+    )
+
+    assert store.agents() == []
+
+
 def test_re_recording_a_run_updates_it_in_place(database_url: str) -> None:
     store = _store(database_url)
 

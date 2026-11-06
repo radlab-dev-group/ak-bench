@@ -116,6 +116,48 @@ def _launched_environment(record: dict[str, object]) -> dict[str, str] | None:
     return environment or None
 
 
+def component_descriptors(
+    settings: Settings, *, agent_id: str | None, runtime_id: str | None
+) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+    """What the run's agent and runtime said about themselves, as stored payloads.
+
+    A run names its components by id; the descriptors under ``descriptors/``
+    are what those ids mean — capabilities, controllable configuration, the
+    endpoints and environment a runtime is launched with. Both are returned in
+    the shape :meth:`HistoryStore.record_run` stores, with the file text kept
+    beside the parsed identity, and either is ``None`` when the run did not
+    name it or the registry does not carry it. A missing descriptor tree is a
+    missing fact, not a failed run.
+    """
+    try:
+        paths = build_app_paths(settings)
+        registry = load_registry(paths.descriptors_dir)
+    except Exception:
+        return None, None
+    agent = _descriptor_payload(registry, DescriptorKind.AGENT, agent_id)
+    runtime = _descriptor_payload(registry, DescriptorKind.RUNTIME, runtime_id)
+    return agent, runtime
+
+
+def _descriptor_payload(
+    registry: object, kind: DescriptorKind, descriptor_id: str | None
+) -> dict[str, object] | None:
+    """One descriptor of ``kind``, resolved by id, with the file it was written in."""
+    if not descriptor_id:
+        return None
+    entry = registry.get(kind, descriptor_id)  # type: ignore[attr-defined]
+    if entry is None:
+        return None
+    payload = dict(entry.snapshot.payload)
+    payload["kind"] = kind.value
+    if entry.source is not None:
+        try:
+            payload["descriptor_yaml"] = Path(entry.source).read_text(encoding="utf-8")
+        except OSError:
+            pass
+    return payload
+
+
 def store_run(
     context: CliContext,
     record: dict[str, object],
@@ -183,12 +225,19 @@ def store_run(
     write_record(manifest_path, manifest.as_dict())
     record["manifest_digest"] = manifest.digest
 
+    agent_descriptor, runtime_descriptor = component_descriptors(
+        settings,
+        agent_id=str(record.get("agent_id") or agent_id),
+        runtime_id=str(record["runtime_id"]) if record.get("runtime_id") else None,
+    )
     stored = store.record_run(
         record,
         experiment_uid=uid,
         variant_uid=variant_uid,
         task=loaded,
         repetition=repetition,
+        agent_descriptor=agent_descriptor,
+        runtime_descriptor=runtime_descriptor,
     )
     if reports:
         store.record_plugin_observations(str(stored["run_uid"]), reports)

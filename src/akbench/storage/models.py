@@ -149,6 +149,54 @@ class Experiment(Base, TimestampMixin):
     )
     config_hash: Mapped[str | None] = mapped_column(String(71))
     notes: Mapped[str | None] = mapped_column(Text)
+    # The experiment file as written: the plan is derived, the file is the
+    # claim, and a page that explains an experiment quotes the claim.
+    experiment_yaml: Mapped[str | None] = mapped_column(Text)
+
+
+class Agent(Base, TimestampMixin):
+    """An agent as its own descriptor recorded it, kept per version.
+
+    A run names an agent by id (``task_runs.agent_id``); this table says what
+    that agent declared itself — capabilities, controllable configuration,
+    observability — so a result can be read next to the instrument that
+    produced it.
+    """
+
+    __tablename__ = "agents"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "version", name="uq_agents_agent_id_version"),
+        Index("ix_agents_agent_id", "agent_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    agent_yaml: Mapped[str | None] = mapped_column(Text)
+
+
+class Runtime(Base, TimestampMixin):
+    """A runtime as its own descriptor recorded it, kept per version.
+
+    The same reasoning as :class:`Agent`: the run records ``runtime_id``, the
+    row states what that runtime was — adapter, execution modes, lifecycles,
+    endpoints and the environment it is launched with.
+    """
+
+    __tablename__ = "runtimes"
+    __table_args__ = (
+        UniqueConstraint("runtime_id", "version", name="uq_runtimes_runtime_id_version"),
+        Index("ix_runtimes_runtime_id", "runtime_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    runtime_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    runtime_yaml: Mapped[str | None] = mapped_column(Text)
 
 
 class Benchmark(Base, TimestampMixin):

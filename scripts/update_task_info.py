@@ -19,6 +19,7 @@ targets the same PostgreSQL the CLI and the UI use.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -28,25 +29,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+import yaml  # noqa: E402
 from sqlalchemy import Engine, make_url, select  # noqa: E402
 
 from akbench.config.loader import load_settings, resolve_database_url  # noqa: E402
 from akbench.core.errors import AKBenchmarkError  # noqa: E402
+from akbench.core.time import utc_now  # noqa: E402
 from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE, Dataset  # noqa: E402
+from akbench.descriptors import DescriptorKind, load_registry  # noqa: E402
 from akbench.storage.db import create_db_engine, session_scope  # noqa: E402
 from akbench.storage.migrator import head_revision, schema_status, upgrade  # noqa: E402
-from akbench.storage.models import Task  # noqa: E402
-
-#: The content columns this script owns. ``category``/``difficulty`` already
-#: existed and are rewritten too: they are part of what a task says it is.
-FIELDS = (
-    "title",
-    "description",
-    "authors_json",
-    "task_created_at",
-    "task_yaml",
-    "description_md",
-)
+from akbench.storage.models import Agent, Experiment, Runtime, Task, TaskRun  # noqa: E402
 
 
 def _read_text(path: Path) -> str | None:
@@ -131,6 +124,111 @@ def backfill(
     return updated, unresolved
 
 
+def _descriptor_text(entry: Any) -> str | None:
+    """The file a descriptor was read from, when it still exists."""
+    source = getattr(entry, "source", None)
+    if source is None:
+        return None
+    with contextlib.suppress(OSError):
+        return Path(source).read_text(encoding="utf-8")
+    return None
+
+
+def _backfill_components(engine: Engine) -> int:
+    """The agents and runtimes the history names, from the descriptor tree.
+
+    A run that names an agent or runtime names a row; this fills those rows
+    from ``descriptors/`` so a stored run can be read next to the instrument
+    that produced it. A component the registry does not carry is left as is:
+    an unknown row is a fact the script cannot invent.
+    """
+    with session_scope(engine) as session:
+        agent_ids = {
+            row[0] for row in session.execute(select(TaskRun.agent_id)).all() if row[0]
+        }
+        runtime_ids = {
+            row[0] for row in session.execute(select(TaskRun.runtime_id)).all() if row[0]
+        }
+    try:
+        registry = load_registry(PROJECT_ROOT / "descriptors")
+    except Exception:
+        return 0
+
+    filled = 0
+    for kind, model, body_name, ids in (
+        (DescriptorKind.AGENT, Agent, "agent", agent_ids),
+        (DescriptorKind.RUNTIME, Runtime, "runtime", runtime_ids),
+    ):
+        for identifier in sorted(ids):
+            entry = registry.get(kind, identifier)
+            if entry is None:
+                print(f"  ! {body_name} {identifier!r}: not in descriptors/, left as recorded")
+                continue
+            document = _descriptor_text(entry)
+            payload = entry.snapshot.payload
+            version = str(entry.snapshot.version)
+            column = f"{body_name}_yaml"
+            with session_scope(engine) as session:
+                row = session.scalar(
+                    select(model).where(
+                        getattr(model, f"{body_name}_id") == identifier,
+                        model.version == version,
+                    )
+                )
+                if row is None:
+                    session.add(
+                        model(
+                            **{
+                                f"{body_name}_id": identifier,
+                                "version": version,
+                                "title": payload.get("title"),
+                                "description": payload.get("description"),
+                                column: document,
+                                "created_at": utc_now(),
+                                "updated_at": utc_now(),
+                            }
+                        )
+                    )
+                    filled += 1
+                elif document and not getattr(row, column):
+                    setattr(row, column, document)
+                    row.updated_at = utc_now()
+                    filled += 1
+    return filled
+
+
+def _backfill_experiments(engine: Engine) -> int:
+    """The experiment rows that can be matched to a configuration file.
+
+    The file under ``configs/experiments/`` is matched by the descriptor id
+    the experiment row carries; its text is what the page quotes. Rows whose
+    configuration no longer exists are left as recorded and named.
+    """
+    config_dir = PROJECT_ROOT / "configs" / "experiments"
+    if not config_dir.is_dir():
+        return 0
+    by_id: dict[str, str] = {}
+    for path in sorted(config_dir.glob("*.yaml")):
+        try:
+            document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            continue
+        if isinstance(document, dict) and document.get("id"):
+            by_id[str(document["id"])] = path.read_text(encoding="utf-8")
+    if not by_id:
+        return 0
+    filled = 0
+    with session_scope(engine) as session:
+        rows = session.scalars(select(Experiment)).all()
+        for row in rows:
+            document = by_id.get(str(row.descriptor_id or ""))
+            if document and not row.experiment_yaml:
+                row.experiment_yaml = document
+                row.updated_at = utc_now()
+                filled += 1
+    return filled
+
+
 def _report(updated: list[dict[str, Any]], unresolved: list[str], total: int) -> None:
     if updated:
         print(f"{'TASK UID':<40} FIELDS")
@@ -167,6 +265,11 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run",
         action="store_true",
         help="report what would change without writing",
+    )
+    parser.add_argument(
+        "--tasks-only",
+        action="store_true",
+        help="backfill task content only (skip experiments, agents and runtimes)",
     )
     parser.add_argument(
         "--skip-migrations",
@@ -209,19 +312,30 @@ def main(argv: list[str] | None = None) -> int:
 
     engine = create_db_engine(database_url)
     try:
-        updated, unresolved = backfill(engine, dataset, dry_run=args.dry_run)
-        with session_scope(engine) as session:
-            total = len(session.scalars(select(Task.uid)).all())
-    except Exception as exc:
-        print(f"cannot update tasks: {exc}", file=sys.stderr)
-        return 1
+        try:
+            updated, unresolved = backfill(engine, dataset, dry_run=args.dry_run)
+            with session_scope(engine) as session:
+                total = len(session.scalars(select(Task.uid)).all())
+        except Exception as exc:
+            print(f"cannot update tasks: {exc}", file=sys.stderr)
+            return 1
+
+        _report(updated, unresolved, total)
+        if args.tasks_only:
+            return 0
+        if args.dry_run:
+            print(
+                "\nexperiments, agents and runtimes: "
+                "would be refreshed from configs/ and descriptors/"
+            )
+        else:
+            experiments_filled = _backfill_experiments(engine)
+            components_filled = _backfill_components(engine)
+            print(f"\nexperiments: {experiments_filled} with their configuration file")
+            print(f"components: {components_filled} agent/runtime rows filled")
+        return 0
     finally:
         engine.dispose()
-
-    _report(updated, unresolved, total)
-    if args.dry_run and updated:
-        print("\n(dry run: nothing was written)")
-    return 0
 
 
 def _target(database_url: str) -> str:

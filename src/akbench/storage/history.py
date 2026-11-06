@@ -30,6 +30,7 @@ from akbench.core.time import utc_now
 from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE
 from akbench.storage.db import session_scope
 from akbench.storage.models import (
+    Agent,
     AgentObservation,
     Artifact,
     Benchmark,
@@ -43,6 +44,7 @@ from akbench.storage.models import (
     ModelObservation,
     PluginObservation,
     Repository,
+    Runtime,
     Task,
     TaskRun,
 )
@@ -96,6 +98,7 @@ class HistoryStore:
         descriptor_id: str | None = None,
         descriptor_version: str | None = None,
         config_hash: str | None = None,
+        experiment_yaml: str | None = None,
         benchmark_uid: str | None = None,
         variants: list[dict[str, Any]] | None = None,
         snapshots: list[dict[str, Any]] | None = None,
@@ -130,6 +133,8 @@ class HistoryStore:
                 experiment.descriptor_version = descriptor_version
             if config_hash is not None:
                 experiment.config_hash = config_hash
+            if experiment_yaml is not None:
+                experiment.experiment_yaml = experiment_yaml
             experiment.updated_at = now
 
             if benchmark_uid is not None:
@@ -181,6 +186,8 @@ class HistoryStore:
         task: Any | None = None,
         observed_model: dict[str, Any] | None = None,
         repetition: int | None = None,
+        agent_descriptor: Any | None = None,
+        runtime_descriptor: Any | None = None,
     ) -> dict[str, Any]:
         """Store one run record and its attached observations.
 
@@ -208,6 +215,10 @@ class HistoryStore:
 
             if task is not None:
                 self._record_task(session, task)
+            if agent_descriptor is not None:
+                self._record_component(session, Agent, agent_descriptor, "agent")
+            if runtime_descriptor is not None:
+                self._record_component(session, Runtime, runtime_descriptor, "runtime")
 
             run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
             if run is None:
@@ -869,6 +880,94 @@ class HistoryStore:
         task_row.updated_at = now
         session.flush()
 
+    def _record_component(self, session: Session, model: Any, descriptor: Any, kind: str) -> None:
+        """Store an agent or runtime descriptor, keyed by (id, version).
+
+        ``descriptor`` is the validated descriptor model or a mapping with the
+        same fields; ``*_yaml`` carries the file it was written in. Re-recording
+        updates the row — a descriptor that gained a note is still the same
+        component — and a descriptor with no id is not a component at all, so
+        it is skipped rather than guessed at.
+        """
+        def stated(name: str, target: Any = None) -> Any:
+            """Read ``name`` from a mapping or an attribute, whichever it is."""
+            subject = descriptor if target is None else target
+            if isinstance(subject, dict):
+                return subject.get(name)
+            return getattr(subject, name, None)
+
+        identifier = stated("id")
+        if not identifier:
+            return
+        version = str(stated("version") or "")
+        title = stated("title")
+        description = stated("description")
+        document = stated("descriptor_yaml")
+
+        row = session.scalar(
+            select(model).where(
+                getattr(model, f"{kind}_id") == str(identifier),
+                model.version == version,
+            )
+        )
+        now = utc_now()
+        if row is None:
+            row = model(
+                **{
+                    f"{kind}_id": str(identifier),
+                    "version": version,
+                    "title": title,
+                    "description": description,
+                    f"{kind}_yaml": document,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+            session.add(row)
+        else:
+            if title:
+                row.title = title
+            if description:
+                row.description = description
+            if document:
+                setattr(row, f"{kind}_yaml", document)
+            row.updated_at = now
+        session.flush()
+
+    def agents(self) -> list[dict[str, Any]]:
+        """Every recorded agent version, newest first inside its id."""
+        with session_scope(self.engine) as session:
+            rows = session.scalars(select(Agent).order_by(Agent.agent_id, Agent.version)).all()
+            return [
+                {
+                    "id": row.agent_id,
+                    "version": row.version,
+                    "uid": f"{row.agent_id}@{row.version}",
+                    "title": row.title,
+                    "description": row.description,
+                    "agent_yaml": row.agent_yaml,
+                }
+                for row in rows
+            ]
+
+    def runtimes(self) -> list[dict[str, Any]]:
+        """Every recorded runtime version, newest first inside its id."""
+        with session_scope(self.engine) as session:
+            rows = session.scalars(
+                select(Runtime).order_by(Runtime.runtime_id, Runtime.version)
+            ).all()
+            return [
+                {
+                    "id": row.runtime_id,
+                    "version": row.version,
+                    "uid": f"{row.runtime_id}@{row.version}",
+                    "title": row.title,
+                    "description": row.description,
+                    "runtime_yaml": row.runtime_yaml,
+                }
+                for row in rows
+            ]
+
     def _record_snapshot(
         self, session: Session, experiment_id: int | None, payload: dict[str, Any]
     ) -> None:
@@ -1089,6 +1188,7 @@ class HistoryStore:
             else None,
             "validity": row.validity_status,
             "config_hash": row.config_hash,
+            "experiment_yaml": row.experiment_yaml,
             "runs": len(runs),
             "statuses": sorted({run.status for run in runs if run.status}),
             "verdicts": verdicts,
