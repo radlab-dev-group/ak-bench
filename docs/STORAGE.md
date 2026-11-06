@@ -44,6 +44,13 @@ that make a result re-readable are the ones a report later needs:
 - `tasks`, `repositories`, `datasets`: the exact task versions, what they ask
   (title, description, the full `task.yaml` and the task's `description.md`)
   and the repositories they came from;
+- `task_files`: the code a task is made of — the repository it is worked in,
+  its hidden and public tests and its mutation patch — one row per file with a
+  `kind`, `size_bytes` and a `sha256` digest, so a task's code can be read
+  from the history without the dataset checkout (migration `0010`);
+- `agents`, `runtimes`: every agent and runtime version a run was made of,
+  keyed by the id a run already carries, each with the descriptor file it
+  declared; `experiments.experiment_yaml` is the experiment's own descriptor;
 - `task_runs`, `evaluations`, `plugin_observations`, `agent_observations`,
   `model_observations`: one row per run, per verdict, per plugin state, per
   token count;
@@ -93,9 +100,16 @@ stored as `NULL`, never as zero.
 
 Recording a run also records the task's own content — the title, the
 one-line description, the descriptor as written and the task's
-`description.md` — so the history stands alone: a task page can be answered
-from the database without the dataset checkout, and a dataset edited after a
-run cannot rewrite what was recorded. A history built before the content
-columns existed is backfilled from the dataset on disk with
-`scripts/update_task_info.py`, which migrates the schema to head first and
-reports, per task row, which columns it filled.
+`description.md` — and the task's *code*: the repository it is worked in,
+its hidden and public tests and its mutation patch, file by file. A file
+that cannot be shown is not recorded as an empty one — binary content and
+files over 256 KB are skipped, and a task that did not come from a
+directory (a test stub) records no files at all — so what is stored is
+always what a reader would be handed. The same applies to the components a
+run was made of: the experiment's descriptor, the agent and the runtime,
+each kept per `(id, version)` with the file it declared.
+
+A history built before these columns and tables existed is backfilled from
+the dataset on disk with `scripts/update_task_info.py`, which migrates the
+schema to head first and reports, per task row, which columns it filled and
+how many files it recorded.
