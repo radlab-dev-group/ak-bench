@@ -122,6 +122,14 @@ class Task(Base, TimestampMixin):
     snapshot_digest: Mapped[str] = mapped_column(String(71), nullable=False)
     task_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     authors_json: Mapped[str | None] = mapped_column(Text)
+    # What the task asks, as the task itself stated it. The identity columns
+    # above say which task ran; these say what it was, so the history can be
+    # read without the dataset checkout that produced it.
+    description: Mapped[str | None] = mapped_column(Text)
+    # The task descriptor as loaded, serialized back to YAML.
+    task_yaml: Mapped[str | None] = mapped_column(Text)
+    # description.md verbatim: the full scope of work, not the one-line summary.
+    description_md: Mapped[str | None] = mapped_column(Text)
 
 
 class Experiment(Base, TimestampMixin):

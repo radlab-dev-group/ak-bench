@@ -41,8 +41,9 @@ that make a result re-readable are the ones a report later needs:
 
 - `experiments`, `experiment_variants`, `benchmarks`: what was planned, and
   what it cost in runs;
-- `tasks`, `repositories`, `datasets`: the exact task versions and the
-  repositories they came from;
+- `tasks`, `repositories`, `datasets`: the exact task versions, what they ask
+  (title, description, the full `task.yaml` and the task's `description.md`)
+  and the repositories they came from;
 - `task_runs`, `evaluations`, `plugin_observations`, `agent_observations`,
   `model_observations`: one row per run, per verdict, per plugin state, per
   token count;
@@ -89,3 +90,12 @@ observes the plugin state, registers the artifacts and appends an event.
 Both are idempotent: re-planning or re-recording updates the existing rows
 rather than forking the history, and a value that was never measured is
 stored as `NULL`, never as zero.
+
+Recording a run also records the task's own content — the title, the
+one-line description, the descriptor as written and the task's
+`description.md` — so the history stands alone: a task page can be answered
+from the database without the dataset checkout, and a dataset edited after a
+run cannot rewrite what was recorded. A history built before the content
+columns existed is backfilled from the dataset on disk with
+`scripts/update_task_info.py`, which migrates the schema to head first and
+reports, per task row, which columns it filled.

@@ -24,8 +24,8 @@ def _store(database_url: str) -> HistoryStore:
     return HistoryStore(create_db_engine(database_url))
 
 
-def _task_stub(digest: str = "sha256:task") -> SimpleNamespace:
-    from datetime import datetime, timezone, timedelta
+def _task_stub(digest: str = "sha256:task", path: Path | None = None) -> SimpleNamespace:
+    from datetime import datetime, timedelta, timezone
 
     tz = timezone(timedelta(hours=1))
     repository = SimpleNamespace(source="https://example.test/wc.git", ref="abc1234")
@@ -38,9 +38,13 @@ def _task_stub(digest: str = "sha256:task") -> SimpleNamespace:
         evaluator="pytest",
         created_at=datetime(2026, 11, 1, 19, 0, 0, tzinfo=tz),
         authors=["Alice", "Bob"],
+        title=None,
+        description=None,
         task=body,
     )
-    return SimpleNamespace(uid="wordcount-001@1.0.0", digest=digest, task=descriptor)
+    return SimpleNamespace(
+        uid="wordcount-001@1.0.0", digest=digest, path=path, task=descriptor
+    )
 
 
 def _run_record(run_uid: str = "run-1", **overrides: object) -> dict[str, object]:
@@ -219,6 +223,49 @@ def test_record_run_creates_the_task_and_repository_rows(database_url: str) -> N
     assert len(tasks) == 1
     assert tasks[0]["authors"] == ["Alice", "Bob"]
     assert tasks[0]["created_at"] == "2026-11-01T19:00:00"
+
+
+def test_record_run_stores_what_the_task_asks(database_url: str, tmp_path: Path) -> None:
+    """The task's own prose travels with the task row.
+
+    A report read months later has to say what the task was, not only which
+    task ran, so ``task.yaml``, ``description.md``, the title and the one-line
+    description are recorded next to the identity.
+    """
+    store = _store(database_url)
+    (tmp_path / "task.yaml").write_text(
+        'schema_version: "1.0"\nid: wordcount-001\nversion: "1.0.0"\n', encoding="utf-8"
+    )
+    (tmp_path / "description.md").write_text(
+        "# Whitespace\n\nFix count_words.\n", encoding="utf-8"
+    )
+    loaded = _task_stub(path=tmp_path)
+    loaded.task.title = "Word counting must ignore repeated whitespace"
+    loaded.task.description = "Runs of whitespace are counted as words."
+
+    store.record_run(_run_record(), task=loaded)
+
+    tasks = store.tasks()
+    assert tasks[0]["title"] == "Word counting must ignore repeated whitespace"
+    assert tasks[0]["description"] == "Runs of whitespace are counted as words."
+    assert "id: wordcount-001" in tasks[0]["task_yaml"]
+    assert tasks[0]["description_md"].startswith("# Whitespace")
+
+
+def test_a_task_without_a_directory_keeps_what_was_recorded(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A stub with no path records nothing new and erases nothing."""
+    store = _store(database_url)
+    (tmp_path / "task.yaml").write_text("id: wordcount-001\n", encoding="utf-8")
+    store.record_run(_run_record(), task=_task_stub(path=tmp_path))
+    first = store.tasks()[0]
+    assert first["task_yaml"] == "id: wordcount-001\n"
+
+    store.record_run(_run_record(), task=_task_stub())
+
+    again = store.tasks()[0]
+    assert again["task_yaml"] == first["task_yaml"]
 
 
 def test_re_recording_a_run_updates_it_in_place(database_url: str) -> None:

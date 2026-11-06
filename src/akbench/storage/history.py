@@ -27,6 +27,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from akbench.core.time import utc_now
+from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE
 from akbench.storage.db import session_scope
 from akbench.storage.models import (
     AgentObservation,
@@ -628,6 +629,7 @@ class HistoryStore:
                     "uid": row.uid,
                     "id": row.task_id,
                     "version": row.version,
+                    "title": row.title,
                     "category": row.category,
                     "difficulty": row.difficulty,
                     "evaluator": row.evaluator,
@@ -636,6 +638,9 @@ class HistoryStore:
                     "snapshot_digest": row.snapshot_digest,
                     "created_at": row.task_created_at.isoformat() if row.task_created_at else None,
                     "authors": _load(row.authors_json) or [],
+                    "description": row.description,
+                    "task_yaml": row.task_yaml,
+                    "description_md": row.description_md,
                     "runs": by_task.get(row.uid, 0),
                 }
                 for row in rows
@@ -819,17 +824,29 @@ class HistoryStore:
         authors = getattr(loaded.task, "authors", None)
         authors_json = _dump(authors) if authors else None
 
+        # The prose belongs to the task itself: the title, the one-line
+        # description, the descriptor as written and the full description.md.
+        # A reader of the history should see what a run was about without the
+        # dataset checkout, so it is recorded, not re-derived.
+        title = getattr(loaded.task, "title", None)
+        description = getattr(loaded.task, "description", None)
+        task_yaml, description_md = _task_texts(loaded)
+
         if task_row is None:
             task_row = Task(
                 uid=loaded.uid,
                 task_id=str(loaded.task.id),
                 version=str(loaded.task.version),
+                title=title,
                 category=str(loaded.task.category),
                 difficulty=str(loaded.task.difficulty),
                 evaluator=str(loaded.task.evaluator),
                 snapshot_digest=str(loaded.digest),
                 task_created_at=task_created_at,
                 authors_json=authors_json,
+                description=description,
+                task_yaml=task_yaml,
+                description_md=description_md,
                 created_at=now,
                 updated_at=now,
             )
@@ -839,6 +856,14 @@ class HistoryStore:
                 task_row.task_created_at = task_created_at
             if authors_json is not None:
                 task_row.authors_json = authors_json
+            if title is not None:
+                task_row.title = title
+            if description is not None:
+                task_row.description = description
+            if task_yaml is not None:
+                task_row.task_yaml = task_yaml
+            if description_md is not None:
+                task_row.description_md = description_md
         task_row.repository_uid = repository_uid
         task_row.base_commit = getattr(loaded.task.task.repository, "ref", None)
         task_row.updated_at = now
@@ -1168,6 +1193,28 @@ class HistoryStore:
             "unavailable_reason": row.unavailable_reason,
             "computed_at": row.computed_at.isoformat() if row.computed_at else None,
         }
+
+
+def _task_texts(loaded: Any) -> tuple[str | None, str | None]:
+    """``task.yaml`` and ``description.md`` exactly as written on disk.
+
+    A loaded task that did not come from a directory (a test stub) carries no
+    ``path`` and yields ``(None, None)``: the columns stay what was recorded.
+    """
+    directory = getattr(loaded, "path", None)
+    if directory is None:
+        return None, None
+    directory = Path(directory)
+    task_yaml = _read_text(directory / TASK_FILE)
+    description_md = _read_text(directory / DESCRIPTION_FILE)
+    return task_yaml, description_md
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
 
 
 def _parse_time(value: Any) -> datetime | None:
