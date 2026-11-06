@@ -22,6 +22,16 @@
 # (docs/ROUTER_INTEGRATION.md section 7), so "knowledge on" means the plugin
 # was enabled in the process and its log is inspectable, not that knowledge was
 # injected into a given generation; the log says that case by case.
+#
+# WHAT THE KNOWLEDGE ARM DEPENDS ON. Knowledge is not self-contained: the
+# plugin reads a vector engine and writes through a Redis of its own, both
+# declared in the runtime descriptor under the plugin's own prefix (the generic
+# LLM_ROUTER_REDIS_* names configure nothing here), and the protocol is pinned
+# to RESP2 because a RESP3 handshake against this Redis fails into silence. The
+# engine answers to a login, and its password is not a descriptor's business:
+# export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD before the run, or the
+# arm runs with knowledge enabled, enabled-but-unauthenticated, and reading
+# nothing — which the plugin survives rather than failing the run.
 schema_version: "1.0"
 id: llm-router-selfhost-fast
 version: "1.0.0"
@@ -54,8 +64,10 @@ experiment:
     filters:
       categories: [ bug_fix, new_feature ]
       task_ids:
-        - depweaver-backtracking-001
-        - typeweave-inference-001
+        - bookshop-stock-002
+        - bookshop-tiers-001
+        - cadence-catchup-001
+        - freight-shop-001
 
   factors:
     strategy: custom_matrix
@@ -75,15 +87,13 @@ experiment:
     combinations:
       - model: qwen/Qwen3.8-27B
         knowledge_enabled: false
-        runtime_env:
-          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
       - model: auto_codex
         knowledge_enabled: true
         runtime_env:
           LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
 
   execution_policy:
-    repetitions: 1
+    repetitions: 3
     concurrency: 1
     # Per-run router startup (model config plus plugin pipeline, verbose mode)
     # runs before the agent is started; the bound must cover both.
@@ -100,4 +110,4 @@ experiment:
     - total_tokens
 
   limits:
-    max_runs: 4
+    max_runs: 24
