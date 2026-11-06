@@ -1,7 +1,8 @@
 # Knowledge layer plugin, verified against the plugin code (no invented names:
 # every env name below appears in the override table of
 # llm_router_plugins/utils/knowledge/agentic_knowledge/config.py, prefix
-# LLM_ROUTER_KNOWLEDGE_AGENTIC_).
+# LLM_ROUTER_KNOWLEDGE_AGENTIC_, or in the connection reader it reuses from
+# llm_router_plugins/utils/routing/agentic_routing/codex/state.py).
 schema_version: "1.0"
 id: agentic_knowledge
 version: "1.0.0"
@@ -169,6 +170,56 @@ benchmark:
       dimension: false
       controllable: false
       sensitive: false
+    # The plugin's own Redis: the event stream, the generation cache and the
+    # dedup claims. Connection settings are read from this prefix only, never
+    # from LLM_ROUTER_REDIS_* or LLM_ROUTER_AUTH_REDIS_*, so these names are
+    # what decides whether a run publishes anything at all.
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_HOST
+      type: string
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+      note: empty means stateless - the plugin reads but never caches or publishes
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PORT
+      type: integer
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_DB
+      type: integer
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL
+      type: integer
+      role: infrastructure
+      observed: true
+      dimension: false
+      controllable: false
+      sensitive: false
+      note: >-
+        defaults to 3 (RESP3); a Redis 5 server answers the RESP3 handshake with
+        "unknown command HELLO", every command then fails and the layer fails
+        open, so a run against such a server must pin 2
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_USERNAME
+      type: string
+      role: secret
+      observed: true
+      dimension: false
+      controllable: false
+      note: an optional ACL user; the plugin treats it as a credential
+    - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PASSWORD
+      type: string
+      role: secret
+      observed: true
+      dimension: false
+      controllable: false
 
   metrics:
     - knowledge_write_count
