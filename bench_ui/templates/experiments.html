@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Experiments Catalog{% endblock %}
+
+{% block content %}
+<div>
+  <!-- Header -->
+  <div style="margin-bottom: 24px;">
+    <h1 style="margin:0 0 4px;">Experiments Catalog</h1>
+    <div style="color:var(--fg-dim); font-size:13.5px;">
+      Matrix configurations, pinned descriptor snapshots, and validity audit of recorded experiments.
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th>Experiment UID & Title</th>
+            <th>Type</th>
+            <th class="num">Runs</th>
+            <th class="num">Passed</th>
+            <th>Success Rate</th>
+            <th>Mean Score</th>
+            <th class="num">Mean Duration</th>
+            <th class="num">Tokens</th>
+            <th>Validity</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for exp in experiments %}
+            <tr>
+              <td>
+                <a href="/experiments/{{ exp.uid }}" class="mono" style="font-weight:600; font-size:13.5px;">
+                  {{ exp.uid }}
+                </a>
+                <div style="font-size:12px; color:var(--fg-dim); margin-top:2px;">
+                  {{ exp.title or exp.description or "—" }}
+                </div>
+              </td>
+              <td><span class="badge badge-info">{{ exp.type or "matrix" }}</span></td>
+              <td class="num mono">{{ exp.runs_count }}</td>
+              <td class="num mono">{{ exp.passed_count }}</td>
+              <td>
+                <div class="cell-bar">
+                  <div class="cell-bar-fill" style="width:{{ ((exp.success_rate or 0) * 70)|round|int }}px;"></div>
+                  <span class="mono" style="font-size:12px;">{% if exp.success_rate is not none %}{{ "%.1f"|format(exp.success_rate * 100) }}%{% else %}—{% endif %}</span>
+                </div>
+              </td>
+              <td>
+                <span class="mono" style="font-weight:600; color:{% if (exp.mean_score or 0) >= 0.95 %}var(--mint){% elif (exp.mean_score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
+                  {% if exp.mean_score is not none %}{{ "%.3f"|format(exp.mean_score) }}{% else %}—{% endif %}
+                </span>
+              </td>
+              <td class="num mono">
+                {% if exp.mean_duration is not none %}
+                  {% set s = exp.mean_duration|round|int %}
+                  {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="num mono">
+                {% if exp.total_tokens %}{{ "{:,}".format(exp.total_tokens) }}{% else %}—{% endif %}
+              </td>
+              <td>
+                <span class="badge {% if exp.validity == 'valid' %}badge-passed{% elif exp.validity == 'valid_with_warnings' %}badge-partial{% else %}badge-neutral{% endif %}">
+                  {{ exp.validity or "valid" }}
+                </span>
+              </td>
+              <td style="text-align:right;">
+                <a href="/experiments/{{ exp.uid }}" class="btn btn-sm">Explore</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

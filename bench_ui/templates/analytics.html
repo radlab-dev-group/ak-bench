@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Analytics Explorer{% endblock %}
+
+{% block content %}
+<div id="analyticsRoot">
+  <div style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px;">
+    <div>
+      <h1 style="margin:0 0 4px;">Analytics Explorer</h1>
+      <div style="color:var(--fg-dim); font-size:13.5px;">
+        Universal view: filter any runs, group by any dimension (config, parameter, task, model, agent…), pick metrics and compare with many chart types.
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn" id="anExportCsv">Export CSV</button>
+      <button class="btn" id="anCopyLink">Copy link</button>
+      <button class="btn" id="anReset">Reset</button>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">Controls</div><span class="badge badge-info" id="anCount">0 runs</span></div>
+    <div class="panel-body">
+      <div class="an-controls">
+        <label>Group by <select id="anGroup" class="select"></select></label>
+        <label>Split by (series) <select id="anSplit" class="select"></select></label>
+        <label>Metric <select id="anMetric" class="select"></select></label>
+        <label>Scatter X <select id="anX" class="select"></select></label>
+        <label>Scatter Y <select id="anY" class="select"></select></label>
+        <label>Sort groups <select id="anSort" class="select">
+          <option value="metric_desc">metric ↓</option><option value="metric_asc">metric ↑</option>
+          <option value="name">name</option><option value="count">runs ↓</option></select></label>
+        <label>Aggregate <select id="anAgg" class="select">
+          <option value="mean">mean</option><option value="median">median</option>
+          <option value="min">min</option><option value="max">max</option><option value="sum">sum</option></select></label>
+      </div>
+      <div id="anFilters" class="an-filters"></div>
+    </div>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="grid-cards" id="anKpis"></div>
+
+  <div class="an-grid">
+    <div class="panel"><div class="panel-header"><div class="panel-title" id="tBar">Metric by group</div></div>
+      <div class="panel-body"><div class="an-chart" id="hBar"><canvas id="chBar"></canvas></div></div></div>
+
+    <div class="panel"><div class="panel-header"><div class="panel-title">Success rate vs mean score by group</div></div>
+      <div class="panel-body"><div class="an-chart" id="hRate"><canvas id="chRate"></canvas></div></div></div>
+
+    <div class="panel"><div class="panel-header"><div class="panel-title">Verdict mix by group (stacked %)</div></div>
+      <div class="panel-body"><div class="an-chart" id="hVerdict"><canvas id="chVerdict"></canvas></div></div></div>
+
+    <div class="panel"><div class="panel-header"><div class="panel-title">Token breakdown by group (mean per run)</div></div>
+      <div class="panel-body"><div class="an-chart" id="hTok"><canvas id="chTok"></canvas></div></div></div>
+
+    <div class="panel"><div class="panel-header"><div class="panel-title">Efficiency frontier — tokens vs score (bubble = mean time)</div></div>
+      <div class="panel-body"><div class="an-chart tall"><canvas id="chBubble"></canvas></div></div></div>
+
+    <div class="panel"><div class="panel-header"><div class="panel-title">Radar — normalized profile (higher is better)</div></div>
+      <div class="panel-body"><div class="an-chart tall"><canvas id="chRadar"></canvas></div></div></div>
+
+    <div class="panel"><div class="panel-header"><div class="panel-title" id="tScatter">Run scatter</div></div>
+      <div class="panel-body"><div class="an-chart tall"><canvas id="chScatter"></canvas></div></div></div>
+
+    <div class="panel"><div class="panel-header"><div class="panel-title" id="tHist">Metric distribution (histogram per group)</div></div>
+      <div class="panel-body"><div class="an-chart tall"><canvas id="chHist"></canvas></div></div></div>
+
+    <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Timeline — metric per run over time</div></div>
+      <div class="panel-body"><div class="an-chart tall"><canvas id="chTime"></canvas></div></div></div>
+
+    <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Cumulative cost — tokens spent over time</div></div>
+      <div class="panel-body"><div class="an-chart"><canvas id="chCum"></canvas></div></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title" id="tHeat">Heatmap — task × group (metric)</div></div>
+    <div class="table-responsive" id="anHeat"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">Group statistics</div></div>
+    <div class="table-responsive" id="anTable"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/analytics.js"></script>
+{% endblock %}

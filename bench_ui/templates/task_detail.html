@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Task: {{ task.uid }}{% endblock %}
+
+{% block content %}
+<div>
+  <!-- Header -->
+  <div style="margin-bottom: 24px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+    <div>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+        <span class="badge badge-info">{{ task.category or "general" }}</span>
+        <span class="badge badge-neutral">{{ task.difficulty or "medium" }}</span>
+      </div>
+      <h1 style="margin:0 0 6px;">{{ task.uid }}</h1>
+      <div class="mono" style="color:var(--fg-dim); font-size:13px;">
+        Task ID: {{ task.id }} &middot; Evaluator: {{ task.evaluator or "pytest" }}
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a href="/runs?task_uid={{ task.uid }}" class="btn btn-primary">Filter Runs in Explorer</a>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="grid-cards">
+    <div class="card card-mint">
+      <div class="card-title">Success Rate & Mean Score</div>
+      <div class="card-value">
+        <span>{% if summary.success_rate is not none %}{{ "%.1f"|format(summary.success_rate * 100) }}%{% else %}—{% endif %}</span>
+        <span style="font-size:15px; color:var(--fg-dim); font-weight:normal;">/</span>
+        <span style="color:var(--mint); font-size:1.5rem;">{% if summary.mean_score is not none %}{{ "%.3f"|format(summary.mean_score) }}{% else %}—{% endif %}</span>
+      </div>
+      <div class="card-sub">{{ summary.passed }} / {{ summary.evaluated }} passed</div>
+    </div>
+    <div class="card card-blue">
+      <div class="card-title">Total Runs</div>
+      <div class="card-value">{{ summary.runs }}</div>
+      <div class="card-sub">Recorded across all experiments</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Mean Duration</div>
+      <div class="card-value">
+        {% if summary.mean_duration_seconds is not none %}
+          {% set s = summary.mean_duration_seconds|round|int %}
+          {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+        {% else %}—{% endif %}
+      </div>
+      <div class="card-sub">Wall-clock time</div>
+    </div>
+    <div class="card card-amber">
+      <div class="card-title">Total Tokens</div>
+      <div class="card-value">{% if summary.total_tokens %}{{ "{:,}".format(summary.total_tokens) }}{% else %}—{% endif %}</div>
+      <div class="card-sub">In: {{ "{:,}".format(summary.input_tokens or 0) }} &middot; Out: {{ "{:,}".format(summary.output_tokens or 0) }}</div>
+    </div>
+  </div>
+
+  <!-- Runs of this task -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Recorded Runs of this Task ({{ runs|length }})</div>
+    </div>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th>Run UID</th>
+            <th>Experiment</th>
+            <th>Configuration</th>
+            <th>Verdict</th>
+            <th class="num">Score</th>
+            <th class="num">Duration</th>
+            <th class="num">Tokens</th>
+            <th>Status</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td>
+                <a href="javascript:void(0)" onclick="openRunModal('{{ run.uid }}')" class="mono" style="font-weight:600;">
+                  {{ run.uid }}
+                </a>
+              </td>
+              <td><a href="/experiments/{{ run.experiment_uid }}" class="mono">{{ run.experiment_uid }}</a></td>
+              <td class="mono" style="font-size:11.5px;">{{ run.config_str }}</td>
+              <td>
+                <span class="badge {% if run.verdict == 'passed' %}badge-passed{% elif run.verdict == 'partial' %}badge-partial{% elif run.verdict == 'failed' %}badge-failed{% else %}badge-neutral{% endif %}">
+                  {{ run.verdict or "unverified" }}
+                </span>
+              </td>
+              <td class="num mono" style="font-weight:600; color:{% if (run.score or 0) >= 1.0 %}var(--mint){% elif (run.score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
+                {% if run.score is not none %}{{ "%.3f"|format(run.score) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono">
+                {% if run.duration_seconds is not none %}
+                  {% set s = run.duration_seconds|round|int %}
+                  {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="num mono">{% if run.total_tokens %}{{ "{:,}".format(run.total_tokens) }}{% else %}—{% endif %}</td>
+              <td><span class="badge badge-neutral" style="font-size:11px;">{{ run.status }}</span></td>
+              <td style="text-align:right;">
+                <button class="btn btn-sm" onclick="openRunModal('{{ run.uid }}')">Inspect</button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
