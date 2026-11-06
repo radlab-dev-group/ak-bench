@@ -24,6 +24,7 @@ def _task_stub(uid: str = "wordcount-001@1.0.0") -> SimpleNamespace:
     return SimpleNamespace(
         uid=uid,
         digest="sha256:task",
+        path=None,
         task=SimpleNamespace(
             id=uid.split("@")[0],
             version="1.0.0",
@@ -32,6 +33,8 @@ def _task_stub(uid: str = "wordcount-001@1.0.0") -> SimpleNamespace:
             evaluator="pytest",
             created_at=datetime(2026, 11, 1, 12, 0, 0),
             authors=["Alice"],
+            title="Word counting must ignore repeated whitespace",
+            description="Runs of whitespace are counted as words.",
             task=SimpleNamespace(repository=repository),
         ),
     )
@@ -201,6 +204,63 @@ def test_experiments_and_tasks_pages(database_url: str) -> None:
     r_task_detail = client.get("/tasks/wordcount-001@1.0.0")
     assert r_task_detail.status_code == 200
     assert "wordcount-001@1.0.0" in r_task_detail.text
+
+
+def test_the_footer_links_the_projects_on_every_page(database_url: str) -> None:
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    for page in ("/", "/runs", "/analytics", "/experiments", "/tasks"):
+        body = client.get(page).text
+        assert "AK-Bench" in body
+        assert 'href="https://radlab.dev"' in body, page
+        assert 'href="https://llm-router.cloud/"' in body, page
+
+
+def test_the_task_detail_shows_the_recorded_definition(database_url: str) -> None:
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/tasks/wordcount-001@1.0.0").text
+    # The task's own prose, recorded with the run
+    assert "Task Definition" in body
+    assert "recorded with the run" in body
+    assert "Word counting must ignore repeated whitespace" in body
+    assert "Runs of whitespace are counted as words." in body
+    # The identity that was already recorded
+    assert "pytest" in body
+    assert "Alice" in body
+
+
+def test_the_task_detail_reads_the_dataset_when_not_recorded(database_url: str) -> None:
+    """A task recorded before its prose was stored still gets a definition.
+
+    The dataset on disk is the fallback source: its one-line description
+    reaches the page, and the page says it came from the dataset.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/tasks/wordcount-001@1.0.0").text
+    assert "Task Definition" in body
+    # The recorded columns win where they exist
+    assert "Runs of whitespace are counted as words." in body
+    # The dataset fills in what was never recorded: constraints, the scope of
+    # work, the repository and the raw descriptor
+    assert "do not change the public API of the wordcount package" in body
+    assert "count_words" in body
+    assert "datasets/_sources/wordcount" in body
+    assert "task.yaml" in body
+
+
+def test_the_tasks_list_carries_the_task_prose(database_url: str) -> None:
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/tasks").text
+    assert "Word counting must ignore repeated whitespace" in body
+    assert "Runs of whitespace are counted as words." in body
+    assert "Alice" in body
 
 
 def test_analytics_page_and_data_api(database_url: str) -> None:

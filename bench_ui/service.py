@@ -7,12 +7,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+import yaml
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from akbench.config.loader import load_settings, resolve_database_url
 from akbench.core.errors import ConfigError, DatabaseError
 from akbench.datasets import Dataset, TaskLoadError
+from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE
 from akbench.reporting.data import (
     HistoryData,
     build_experiment_report,
@@ -38,6 +40,171 @@ from akbench.storage.models import (
     EvaluationRecord,
     TaskRun,
 )
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def _task_yaml(text_value: Any) -> dict[str, Any] | None:
+    """The recorded ``task.yaml`` parsed back into a mapping, or ``None``.
+
+    A task recorded before its descriptor was stored has nothing to parse, and
+    a value that is not a mapping is not a descriptor; both yield ``None`` and
+    the page says the definition was never recorded.
+    """
+    if not text_value:
+        return None
+    try:
+        parsed = yaml.safe_load(text_value)
+    except yaml.YAMLError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _definition_from_yaml(
+    parsed: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """The flat shape the task page renders, from a parsed descriptor.
+
+    ``None`` in, ``None`` out: a task without a recorded descriptor is not
+    defined, and the page says so instead of rendering an empty definition.
+    """
+    if parsed is None:
+        return None
+    """The flat shape the task page renders, from a parsed descriptor.
+
+    The database keeps the descriptor itself, so a recorded task can be read
+    without the dataset checkout. ``source`` mirrors the reporting helper,
+    which names the same fields from the validated model.
+    """
+    body = parsed.get("task") or {}
+    repository = body.get("repository") or {}
+    mutation = body.get("mutation") or {}
+    return {
+        "uid": f"{parsed.get('id')}@{parsed.get('version')}",
+        "title": parsed.get("title"),
+        "description": parsed.get("description"),
+        "created_at": parsed.get("created_at"),
+        "authors": list(parsed.get("authors") or []),
+        "category": body.get("category"),
+        "difficulty": body.get("difficulty"),
+        "evaluator": body.get("evaluator"),
+        "constraints": list(body.get("constraints") or []),
+        "setup": list(body.get("setup") or []),
+        "notes": body.get("notes"),
+        "timeout_seconds": body.get("timeout_seconds"),
+        "hidden_tests": body.get("hidden_tests"),
+        "public_tests": body.get("public_tests"),
+        "repository": repository.get("source"),
+        "ref": repository.get("ref"),
+        "repository_notes": repository.get("notes"),
+        "mutation": mutation.get("patch"),
+        "mutation_version": mutation.get("version"),
+        "mutation_verification": mutation.get("verification"),
+        "mutation_notes": mutation.get("notes"),
+        "schema_version": parsed.get("schema_version"),
+    }
+
+
+#: The task columns this page reads, as the flat definition shape names them.
+_ROW_FIELDS = {
+    "title": "title",
+    "description": "description",
+    "authors": "authors",
+    "created_at": "created_at",
+    "category": "category",
+    "difficulty": "difficulty",
+    "evaluator": "evaluator",
+}
+
+
+def _definition_from_disk(dataset: Any, uid: str) -> dict[str, Any] | None:
+    """The definition read from the dataset on disk, if it holds the task."""
+    if dataset is None:
+        return None
+    try:
+        loaded = dataset.require(uid)
+    except Exception:
+        return None
+    body = loaded.task.task
+    repository = getattr(body, "repository", None)
+    mutation = getattr(body, "mutation", None)
+    description = None
+    path = Path(loaded.path) / DESCRIPTION_FILE
+    if path.is_file():
+        description = path.read_text(encoding="utf-8")
+    return {
+        "uid": loaded.uid,
+        "title": getattr(loaded.task, "title", None),
+        "description": getattr(loaded.task, "description", None),
+        "created_at": getattr(loaded.task, "created_at", None),
+        "authors": list(getattr(loaded.task, "authors", []) or []),
+        "category": loaded.task.category,
+        "difficulty": loaded.task.difficulty,
+        "evaluator": getattr(body, "evaluator", None),
+        "constraints": list(getattr(body, "constraints", None) or []),
+        "setup": list(getattr(body, "setup", None) or []),
+        "notes": getattr(body, "notes", None),
+        "timeout_seconds": getattr(body, "timeout_seconds", None),
+        "hidden_tests": getattr(body, "hidden_tests", None),
+        "public_tests": getattr(body, "public_tests", None),
+        "repository": getattr(repository, "source", None),
+        "ref": getattr(repository, "ref", None),
+        "repository_notes": getattr(repository, "notes", None),
+        "mutation": getattr(mutation, "patch", None),
+        "mutation_version": getattr(mutation, "version", None),
+        "mutation_verification": getattr(mutation, "verification", None),
+        "mutation_notes": getattr(mutation, "notes", None),
+        "description_markdown": description,
+        "task_yaml": _read_text(Path(loaded.path) / TASK_FILE),
+        "digest": getattr(loaded, "digest", None),
+        "path": str(loaded.path),
+    }
+
+
+def _recorded_definition(
+    task_row: dict[str, Any] | None, on_disk: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """What the task asked, read from the database and enriched by the dataset.
+
+    Three sources, weakest first: the dataset on disk, the task row's own
+    columns, and the descriptor the row carries whole. The recorded word wins
+    over the file because the file can have moved on since the run, and the
+    descriptor wins over the columns because it is the whole of what was
+    recorded rather than the summary. Nothing recorded at all, and no file to
+    read, is ``None``: the page then says the definition is unknown.
+    """
+    row = task_row or {}
+    recorded = _definition_from_yaml(_task_yaml(row.get("task_yaml")))
+    own = {
+        name: row.get(column)
+        for column, name in _ROW_FIELDS.items()
+        if row.get(column) not in (None, [], {})
+    }
+    if not recorded and not own and on_disk is None:
+        return None
+
+    definition = dict(on_disk or {})
+    for source in (own, recorded):
+        for key, value in (source or {}).items():
+            definition[key] = value
+    definition["uid"] = row.get("uid") or definition.get("uid")
+
+    if row.get("description_md"):
+        definition["description_markdown"] = row["description_md"]
+    # The descriptor text stays available next to its parsed form: a reader
+    # who wants the bytes the task was defined by should not have to rebuild
+    # them from the fields the page happens to show.
+    if row.get("task_yaml"):
+        definition["task_yaml"] = row["task_yaml"]
+    definition["recorded"] = bool(recorded or own)
+    if definition.get("digest") and row.get("snapshot_digest"):
+        definition["digest_matches"] = definition["digest"] == row["snapshot_digest"]
+    return definition
 
 
 def _safe_load_json(val: Any) -> Any:
@@ -494,15 +661,34 @@ class BenchDataService:
             t_runs = [r for r in history.runs if r.get("task_uid") == t_uid]
             summary = summarize_runs(t_runs)
             doc_available = False
+            on_disk: dict[str, Any] | None = None
             if dataset:
                 with contextlib.suppress(Exception):
-                    doc_available = dataset.get(t_uid) is not None
+                    loaded_task = dataset.get(t_uid)
+                    doc_available = loaded_task is not None
+                    if loaded_task is not None:
+                        on_disk = {
+                            "title": getattr(loaded_task.task, "title", None),
+                            "description": getattr(loaded_task.task, "description", None),
+                        }
 
+            recorded = _definition_from_yaml(_task_yaml(task.get("task_yaml"))) or {}
+            description = (
+                task.get("description")
+                or recorded.get("description")
+                or (on_disk or {}).get("description")
+            )
             results.append(
                 {
                     "uid": t_uid,
                     "task_id": task.get("id"),
                     "version": task.get("version"),
+                    "title": task.get("title") or recorded.get("title"),
+                    "description": description,
+                    "authors": task.get("authors") or recorded.get("authors") or [],
+                    "created_at": task.get("created_at") or recorded.get("created_at"),
+                    "timeout_seconds": recorded.get("timeout_seconds"),
+                    "has_content": bool(task.get("task_yaml") or task.get("description_md")),
                     "category": task.get("category"),
                     "difficulty": task.get("difficulty"),
                     "evaluator": task.get("evaluator"),
@@ -522,11 +708,15 @@ class BenchDataService:
         if history.task(task_uid) is None:
             return None
 
-        report = build_task_report(history, task_uid, dataset=self.get_dataset())
+        dataset = self.get_dataset()
+        report = build_task_report(history, task_uid, dataset=dataset)
+        definition = _recorded_definition(
+            history.task(task_uid), _definition_from_disk(dataset, task_uid)
+        )
         return {
             "task": report.task,
             "summary": report.summary,
-            "definition": report.definition,
+            "definition": definition,
             "variants": report.variants,
             "runs": [self._format_run_summary(r, history) for r in report.runs],
         }

@@ -18,6 +18,8 @@
         <thead>
           <tr>
             <th>Task UID</th>
+            <th>Task</th>
+            <th>Authors</th>
             <th>Category</th>
             <th>Difficulty</th>
             <th class="num">Runs</th>
@@ -36,6 +38,22 @@
                 <a href="/tasks/{{ t.uid }}" class="mono" style="font-weight:600; font-size:13.5px;">
                   {{ t.uid }}
                 </a>
+              </td>
+              <td>
+                <div style="font-weight:600; max-width:340px;">{{ t.title or "—" }}</div>
+                {% if t.description %}
+                <div class="task-snippet" title="{{ t.description }}">
+                  {{ t.description }}
+                  {% if t.timeout_seconds %}<span class="task-snippet-dim">&middot; {{ t.timeout_seconds }}s</span>{% endif %}
+                </div>
+                {% endif %}
+              </td>
+              <td>
+                {% if t.authors %}
+                  <div class="author-list">
+                    {% for author in t.authors %}<span class="chip chip-sm">{{ author }}</span>{% endfor %}
+                  </div>
+                {% else %}<span style="color:var(--fg-faint);">—</span>{% endif %}
               </td>
               <td><span class="badge badge-info">{{ t.category or "general" }}</span></td>
               <td><span class="badge badge-neutral">{{ t.difficulty or "medium" }}</span></td>

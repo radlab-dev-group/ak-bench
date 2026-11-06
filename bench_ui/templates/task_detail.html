@@ -54,6 +54,158 @@
     </div>
   </div>
 
+  <!-- What the task asked -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Task Definition
+        {% if definition %}
+          <span class="badge {% if definition.recorded %}badge-passed{% else %}badge-neutral{% endif %}">
+            {% if definition.recorded %}recorded with the run{% else %}read from the dataset{% endif %}
+          </span>
+        {% else %}
+          <span class="badge badge-neutral">not recorded</span>
+        {% endif %}
+      </div>
+      {% if definition and definition.digest_matches is defined and definition.digest_matches is false %}
+      <span class="badge badge-partial" title="The dataset on disk no longer matches the task these runs were worked under">
+        dataset edited since
+      </span>
+      {% endif %}
+    </div>
+
+    {% if definition %}
+    <div class="panel-body">
+      {% if definition.title %}
+      <h2 style="margin:0 0 6px; font-size:17px;">{{ definition.title }}</h2>
+      {% endif %}
+      {% if definition.description %}
+      <p style="margin:0 0 16px; color:var(--fg-dim);">{{ definition.description }}</p>
+      {% endif %}
+
+      <div class="task-meta">
+        <div class="task-meta-item">
+          <div class="task-meta-label">Category</div>
+          <div class="task-meta-value">{{ definition.category or task.category or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Difficulty</div>
+          <div class="task-meta-value">{{ definition.difficulty or task.difficulty or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Evaluator</div>
+          <div class="task-meta-value mono">{{ definition.evaluator or task.evaluator or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Timeout</div>
+          <div class="task-meta-value mono">
+            {% if definition.timeout_seconds %}{{ definition.timeout_seconds }}s{% else %}—{% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Task created</div>
+          <div class="task-meta-value mono">{{ definition.created_at or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Version</div>
+          <div class="task-meta-value mono">{{ task.version or "—" }}</div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Authors</div>
+          <div class="task-meta-value">
+            {% if definition.authors %}
+            {% for author in definition.authors %}
+            <span class="chip">{{ author }}</span>
+            {% endfor %}
+          {% else %}
+            —
+          {% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Repository</div>
+          <div class="task-meta-value mono" style="word-break:break-all;">{{ definition.repository or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Pinned ref</div>
+          <div class="task-meta-value mono">{{ definition.ref or task.base_commit or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Hidden tests</div>
+          <div class="task-meta-value mono">{{ definition.hidden_tests or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Public tests</div>
+          <div class="task-meta-value mono">{{ definition.public_tests or "—" }}</div>
+        </div>
+        {% if definition.mutation %}
+        <div class="task-meta-item">
+          <div class="task-meta-label">Mutation</div>
+          <div class="task-meta-value mono">{{ definition.mutation }}{% if definition.mutation_version %} @ {{ definition.mutation_version }}{% endif %}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Mutation proven by</div>
+          <div class="task-meta-value mono">{{ definition.mutation_verification or "—" }}</div>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if definition.mutation_notes %}
+      <div class="task-note"><span class="task-note-label">Mutation notes</span>{{ definition.mutation_notes }}</div>
+      {% endif %}
+      {% if definition.repository_notes %}
+      <div class="task-note"><span class="task-note-label">Repository notes</span>{{ definition.repository_notes }}</div>
+      {% endif %}
+      {% if definition.notes %}
+      <div class="task-note"><span class="task-note-label">Notes</span>{{ definition.notes }}</div>
+      {% endif %}
+
+      {% if definition.constraints %}
+      <div class="task-list-block">
+        <div class="task-list-title">Constraints</div>
+        <ul class="task-list">
+          {% for constraint in definition.constraints %}<li>{{ constraint }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if definition.setup %}
+      <div class="task-list-block">
+        <div class="task-list-title">Setup</div>
+        <ul class="task-list">
+          {% for step in definition.setup %}<li class="mono">{{ step }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="panel-body" style="color:var(--fg-dim);">
+      This task's definition was never recorded and no matching task was found in
+      <span class="mono">datasets/</span>. Record a run from this dataset, or backfill history with
+      <span class="mono">scripts/update_task_info.py</span>.
+    </div>
+    {% endif %}
+  </div>
+
+  {% if definition and definition.description_markdown %}
+  <!-- The full scope of work, exactly as the task states it -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Description <span class="badge badge-neutral">description.md</span></div>
+    </div>
+    <pre class="task-prose">{{ definition.description_markdown }}</pre>
+  </div>
+  {% endif %}
+
+  {% if definition and definition.task_yaml %}
+  <details class="panel raw-descriptor">
+    <summary class="panel-header">
+      <span class="panel-title">Task descriptor <span class="badge badge-neutral">task.yaml</span></span>
+    </summary>
+    <pre class="task-prose">{{ definition.task_yaml }}</pre>
+  </details>
+  {% endif %}
+
   <!-- Runs of this task -->
   <div class="panel">
     <div class="panel-header">
