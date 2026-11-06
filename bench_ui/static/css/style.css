@@ -214,6 +214,46 @@ h3 { font-size: 1.1rem; }
   background: var(--panel);
 }
 
+/* Page-load indicator.
+   Decorative by design: it says "the data is arriving", it does not measure
+   the query. It never covers content, never blocks a click, and disappears
+   for anyone who asked for less motion. */
+.page-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 999;
+  background: transparent;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.4s ease 0.15s;
+}
+
+.page-loader-bar {
+  height: 100%;
+  width: 8%;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(90deg, var(--mint), rgba(0, 229, 155, 0.35));
+  box-shadow: 0 0 12px var(--mint-border);
+  transition: width 0.5s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+
+.page-loader-done {
+  opacity: 0;
+}
+
+.page-loader-done .page-loader-bar {
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-loader {
+    display: none;
+  }
+}
+
 .chip-live {
   border-color: var(--mint-border);
   color: var(--mint);

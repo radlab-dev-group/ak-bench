@@ -316,3 +316,17 @@ def test_a_live_database_shows_a_status(monkeypatch, tmp_path, database_url: str
     assert "LIVE DB" in page.text
     assert "sqlite:///" not in page.text
     assert client.get("/api/database").json()["reachable"] is True
+
+
+# --------------------------------------------------------------------- loader
+def test_every_page_carries_the_page_load_indicator(database_url: str) -> None:
+    """One markup in the base template: the ramp belongs to the shell, not a page."""
+    from bench_ui.app import create_app
+
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+    for page in ("/", "/runs", "/analytics", "/compare", "/experiments", "/tasks"):
+        body = client.get(page).text
+        assert 'id="pageLoader"' in body, page
+        assert 'id="pageLoaderBar"' in body, page
+        assert "initPageLoader" in client.get("/static/js/app.js").text

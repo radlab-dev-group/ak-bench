@@ -3,6 +3,65 @@
 let refreshTimer = null;
 let currentRefreshInterval = 0; // 0 = disabled
 
+// ============================================================ Page-Load Indicator
+// A decorative ramp: the bar climbs quickly, hesitates, then completes when the
+// page is ready. It is not measuring the query, and it never hides content --
+// it only says "arriving", which is friendlier than an empty frame.
+(function initPageLoader() {
+  const prefersReducedMotion = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const loader = document.getElementById('pageLoader');
+  const bar = document.getElementById('pageLoaderBar');
+  if (!loader || !bar || prefersReducedMotion) return;
+
+  let hidden = false;
+
+  const hide = () => {
+    if (hidden) return;
+    hidden = true;
+    loader.classList.add('page-loader-done');
+    window.setTimeout(() => { loader.style.display = 'none'; }, 700);
+  };
+
+  // Fast to two thirds, slower from there: a bar that never quite stalls looks
+  // like work in progress without pretending to know how much is left.
+  const steps = [
+    [40, 16], [300, 46], [650, 68], [1100, 82], [1700, 91],
+  ];
+  steps.forEach(([delay, width]) => {
+    window.setTimeout(() => {
+      if (!hidden) bar.style.width = width + '%';
+    }, delay);
+  });
+
+  const finish = () => window.setTimeout(hide, 260);
+  if (document.readyState === 'complete') finish();
+  else window.addEventListener('load', finish);
+  // A hard safety net: the bar must never stay up if load() never fires.
+  window.setTimeout(hide, 4000);
+
+  // Internal navigation: start the ramp again so the next page does not look
+  // like the one it replaced.
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest && event.target.closest('a[href^="/"]');
+    if (!link || link.target === '_blank' || event.metaKey || event.ctrlKey) return;
+    hidden = false;
+    loader.style.display = '';
+    loader.classList.remove('page-loader-done');
+    bar.style.width = '8%';
+  });
+
+  // Restored from the back/forward cache: show it briefly, then get out.
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    hidden = false;
+    loader.style.display = '';
+    loader.classList.remove('page-loader-done');
+    bar.style.width = '55%';
+    window.setTimeout(hide, 320);
+  });
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   initLiveRefresh();
   initRunsFilter();
