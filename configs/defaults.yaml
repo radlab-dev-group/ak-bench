@@ -2,6 +2,8 @@
 # Override any value with an environment variable: AKBENCH__SECTION__FIELD
 #   AKBENCH__LOGGING__LEVEL=DEBUG
 #   AKBENCH__DATABASE__URL=sqlite:////tmp/akbench.sqlite
+# Connection parameters live in the project .env (see .env.example); they are
+# the same AKBENCH_PG_* names scripts/run-postgres.sh uses.
 schema_version: 1
 
 paths:
@@ -17,8 +19,17 @@ paths:
   logs_dir: data/logs
 
 database:
-  # null means "use paths.database_file as a SQLite file".
+  # Recorded benchmarks go to PostgreSQL by default. "sqlite" writes the
+  # paths.database_file SQLite file instead; database.url overrides both.
+  backend: postgres
   url: null
+  postgres:
+    # Defaults of scripts/run-postgres.sh; .env (AKBENCH_PG_*) wins over them.
+    host: 127.0.0.1
+    port: 5959
+    user: akbench
+    password: akbench_local
+    database: akbench
   echo: false
   timeout_seconds: 30
 

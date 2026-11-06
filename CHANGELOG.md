@@ -4,6 +4,12 @@ All notable changes to the `ak-bench` package are documented here.
 Versions follow the `MAJOR.MINOR.PATCH` scheme; a new entry is added for every
 release tagged as `v<version>`.
 
+## [Unreleased]
+
+### Changed
+- **PostgreSQL is now the default database.** Recorded benchmarks go to PostgreSQL instead of the SQLite file, so a project has one shared, server-backed history. SQLite stays available as an explicit fallback for a laptop without a server.
+- **A project `.env` file is read automatically.** The same `AKBENCH_PG_*` connection names `scripts/run-postgres.sh` uses now configure the engine; an exported variable beats the file, and `AKBENCH__DATABASE__*` still overrides both. The connection URL is redacted (password hidden) everywhere it is displayed, in `akbench config show` and in the UI footer.
+
 ## Summary
 
 | Version | Changelog |

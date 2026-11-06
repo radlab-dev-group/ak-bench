@@ -11,6 +11,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from akbench.config.dotenv import find_dotenv_file, load_dotenv
 from akbench.config.models import Settings
 from akbench.core.errors import ConfigError
 from akbench.core.paths import AppPaths, resolve_path, resolve_project_root
@@ -19,6 +20,18 @@ DEFAULT_CONFIG_RELPATH = Path("configs/defaults.yaml")
 ENV_CONFIG_PATH = "AKBENCH_CONFIG"
 ENV_OVERRIDE_PREFIX = "AKBENCH__"
 ENV_NESTED_SEPARATOR = "__"
+
+#: ``.env`` names of the PostgreSQL connection, shared with
+#: ``scripts/run-postgres.sh`` so one file configures the container and the
+#: engine. They map onto ``database.postgres.*``.
+POSTGRES_ENV_KEYS = {
+    "AKBENCH_PG_HOST": "host",
+    "AKBENCH_PG_PORT": "port",
+    "AKBENCH_PG_USER": "user",
+    "AKBENCH_PG_PASSWORD": "password",
+    "AKBENCH_PG_DB": "database",
+}
+ENV_BACKEND_KEY = "AKBENCH_DB_BACKEND"
 
 
 class ConfigSource(StrEnum):
@@ -35,6 +48,7 @@ class LoadedConfig:
     settings: Settings
     path: Path | None
     source: ConfigSource
+    dotenv_path: Path | None = None
 
     def describe(self) -> str:
         if self.path is None:
@@ -59,6 +73,44 @@ def _parse_env_value(raw: str) -> Any:
         return yaml.safe_load(raw)
     except yaml.YAMLError:
         return raw
+
+
+def dotenv_overlay(
+    root: Path | None = None, environ: dict[str, str] | None = None
+) -> tuple[dict[str, str], Path | None]:
+    """The project ``.env`` merged under the real environment.
+
+    A variable that is already exported wins over the file: an ad-hoc override
+    on the command line has to beat a checked-in default. The file is looked up
+    from the project root and its parents, so a command run from a subdirectory
+    still finds it.
+    """
+    env = os.environ if environ is None else environ
+    path = find_dotenv_file(root or Path.cwd())
+    if path is None:
+        return dict(env), None
+    merged = {**load_dotenv(path), **env}
+    return merged, path
+
+
+def connection_overrides(environ: dict[str, str]) -> dict[str, Any]:
+    """Translate ``AKBENCH_PG_*`` / ``AKBENCH_DB_BACKEND`` into settings.
+
+    Lower priority than ``AKBENCH__`` overrides, so ``.env`` states the
+    connection and ``AKBENCH__DATABASE__*`` still overrides it explicitly.
+    """
+    database: dict[str, Any] = {}
+    postgres = {
+        field: _parse_env_value(environ[key])
+        for key, field in POSTGRES_ENV_KEYS.items()
+        if environ.get(key)
+    }
+    backend = environ.get(ENV_BACKEND_KEY)
+    if backend:
+        database["backend"] = _parse_env_value(backend)
+    if postgres:
+        database["postgres"] = postgres
+    return {"database": database} if database else {}
 
 
 def env_overrides(environ: dict[str, str] | None = None) -> dict[str, Any]:
@@ -129,12 +181,14 @@ def load_settings(
     environ: dict[str, str] | None = None,
 ) -> LoadedConfig:
     """Build validated settings from built-ins, an optional file and env overrides."""
-    env = os.environ if environ is None else environ
+    outer = os.environ if environ is None else environ
     root = (
         Path(project_root).expanduser().resolve()
         if project_root
-        else resolve_project_root(environ=env)
+        else resolve_project_root(environ=outer)
     )
+
+    env, dotenv_path = dotenv_overlay(root, outer)
 
     explicit = Path(config_path).expanduser() if config_path else None
     path, source = discover_config_file(explicit, root, env)
@@ -142,6 +196,7 @@ def load_settings(
     data: dict[str, Any] = {}
     if path is not None:
         data = _read_yaml(path)
+    data = deep_merge(data, connection_overrides(env))
     data = deep_merge(data, env_overrides(env))
     data.setdefault("project_root", str(root))
 
@@ -149,7 +204,9 @@ def load_settings(
         settings = Settings.model_validate(data)
     except ValidationError as exc:
         raise ConfigError(f"invalid configuration: {_render_validation_error(exc)}") from exc
-    return LoadedConfig(settings=settings, path=path, source=source)
+    return LoadedConfig(
+        settings=settings, path=path, source=source, dotenv_path=dotenv_path
+    )
 
 
 def _render_validation_error(exc: ValidationError) -> str:
@@ -183,8 +240,33 @@ def build_app_paths(settings: Settings, environ: dict[str, str] | None = None) -
     )
 
 
-def resolve_database_url(settings: Settings, environ: dict[str, str] | None = None) -> str:
-    """Return the effective SQLAlchemy URL (explicit URL wins over the file path)."""
-    if settings.database.url:
-        return settings.database.url
+def sqlite_database_url(settings: Settings, environ: dict[str, str] | None = None) -> str:
+    """SQLAlchemy URL of the configured SQLite file."""
     return f"sqlite:///{build_app_paths(settings, environ).database_file}"
+
+
+def resolve_database_url(settings: Settings, environ: dict[str, str] | None = None) -> str:
+    """Return the effective SQLAlchemy URL.
+
+    Precedence: an explicit ``database.url``, then the backend's own
+    configuration -- PostgreSQL parameters for ``postgres``, the SQLite file for
+    ``sqlite``.
+    """
+    database = settings.database
+    if database.url:
+        return database.url
+    if database.backend == "postgres":
+        return database.postgres_url
+    return sqlite_database_url(settings, environ)
+
+
+def redact_database_url(url: str) -> str:
+    """The URL as displayed to a human: the password never travels to a screen."""
+    if "://" not in url:
+        return url
+    from sqlalchemy.engine import make_url
+
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except Exception:  # pragma: no cover - already-validated URLs parse
+        return url

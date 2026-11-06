@@ -22,8 +22,10 @@ akbench doctor
 ```
 
 Tests need neither network nor an agent: they run against temporary
-directories, real local git repositories and SQLite files. Integration tests
- (the CLI) use `typer.testing.CliRunner`.
+directories, real local git repositories and SQLite files. The suite pins
+`AKBENCH_DB_BACKEND=sqlite` (`tests/conftest.py`), so no test needs a running
+PostgreSQL; a test that wants the product default clears the variable itself.
+Integration tests (the CLI) use `typer.testing.CliRunner`.
 
 Contract tests worth knowing about:
 

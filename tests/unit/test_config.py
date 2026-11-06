@@ -6,9 +6,11 @@ import pytest
 
 from akbench.config.loader import (
     build_app_paths,
+    connection_overrides,
     deep_merge,
     env_overrides,
     load_settings,
+    redact_database_url,
     resolve_database_url,
 )
 from akbench.config.models import Settings
@@ -76,6 +78,85 @@ def test_explicit_missing_config_file_fails(
 ) -> None:
     with pytest.raises(ConfigError, match="config file not found"):
         load_settings(project_dir / "missing.yaml", environ=empty_environ)
+
+
+def test_postgres_is_the_default_backend(project_dir: Path, empty_environ: dict[str, str]) -> None:
+    """Recorded benchmarks go to PostgreSQL unless the configuration says otherwise."""
+    environ = {key: value for key, value in empty_environ.items() if key != "AKBENCH_DB_BACKEND"}
+    loaded = load_settings(None, project_root=project_dir, environ=environ)
+    assert loaded.settings.database.backend == "postgres"
+    assert resolve_database_url(loaded.settings, environ=environ).startswith("postgresql+psycopg://")
+
+
+def test_sqlite_backend_selects_the_configured_file(
+    project_dir: Path, empty_environ: dict[str, str]
+) -> None:
+    loaded = load_settings(None, project_root=project_dir, environ=empty_environ)
+    assert loaded.settings.database.backend == "sqlite"
+    url = resolve_database_url(loaded.settings, environ=empty_environ)
+    assert url == f"sqlite:///{project_dir / 'data' / 'akbench.sqlite'}"
+
+
+def test_postgres_connection_comes_from_the_env_file(
+    project_dir: Path, empty_environ: dict[str, str]
+) -> None:
+    """One .env configures the helper script and the engine."""
+    (project_dir / ".env").write_text(
+        "AKBENCH_DB_BACKEND=postgres\n"
+        "AKBENCH_PG_HOST=db.internal\n"
+        "AKBENCH_PG_PORT=6543\n"
+        "AKBENCH_PG_USER=akbench\n"
+        'AKBENCH_PG_PASSWORD="secret words"\n'
+        "AKBENCH_PG_DB=akbench_prod\n",
+        encoding="utf-8",
+    )
+    environ = {key: value for key, value in empty_environ.items() if key != "AKBENCH_DB_BACKEND"}
+    loaded = load_settings(None, project_root=project_dir, environ=environ)
+    assert loaded.dotenv_path == project_dir / ".env"
+    assert loaded.settings.database.backend == "postgres"
+    assert loaded.settings.database.postgres.port == 6543
+    assert loaded.settings.database.postgres.password == "secret words"
+    url = resolve_database_url(loaded.settings, environ=environ)
+    assert url == "postgresql+psycopg://akbench:secret%20words@db.internal:6543/akbench_prod"
+
+
+def test_exported_environment_beats_the_env_file(
+    project_dir: Path, empty_environ: dict[str, str]
+) -> None:
+    (project_dir / ".env").write_text("AKBENCH_PG_DB=from_file\n", encoding="utf-8")
+    environ = {**empty_environ, "AKBENCH_PG_DB": "from_shell"}
+    loaded = load_settings(None, project_root=project_dir, environ=environ)
+    assert loaded.settings.database.postgres.database == "from_shell"
+
+
+def test_akbench_override_beats_the_connection_variables(
+    project_dir: Path, empty_environ: dict[str, str]
+) -> None:
+    """AKBENCH__DATABASE__* is the explicit word; AKBENCH_PG_* only states a connection."""
+    environ = {
+        **empty_environ,
+        "AKBENCH_PG_DB": "from_env",
+        "AKBENCH__DATABASE__BACKEND": "sqlite",
+    }
+    loaded = load_settings(None, project_root=project_dir, environ=environ)
+    assert loaded.settings.database.backend == "sqlite"
+    assert loaded.settings.database.postgres.database == "from_env"
+
+
+def test_connection_overrides_map_named_variables() -> None:
+    overrides = connection_overrides(
+        {"AKBENCH_PG_HOST": "h", "AKBENCH_PG_PORT": "5432", "AKBENCH_PG_PASSWORD": "***"}
+    )
+    assert overrides == {"database": {"postgres": {"host": "h", "port": 5432, "password": "***"}}}
+    assert connection_overrides({"PATH": "/usr/bin"}) == {}
+
+
+def test_redact_database_url_hides_the_password() -> None:
+    url = "postgresql+psycopg://akbench:akbench_local@127.0.0.1:5959/akbench"
+    redacted = redact_database_url(url)
+    assert "akbench_local" not in redacted
+    assert redacted == "postgresql+psycopg://akbench:***@127.0.0.1:5959/akbench"
+    assert redact_database_url("relative/path") == "relative/path"
 
 
 def test_database_url_defaults_to_file(project_dir: Path, empty_environ: dict[str, str]) -> None:

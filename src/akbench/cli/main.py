@@ -39,7 +39,11 @@ from akbench.cli.report import report_app
 from akbench.cli.run import run_app
 from akbench.cli.runtime import runtime_app
 from akbench.cli.ui import ui_app
-from akbench.config.loader import build_app_paths, resolve_database_url
+from akbench.config.loader import (
+    build_app_paths,
+    redact_database_url,
+    resolve_database_url,
+)
 from akbench.doctor import CheckStatus, run_diagnostics
 
 app = typer.Typer(
@@ -235,9 +239,10 @@ def config_show_cmd(
     payload = {
         "source": loaded.describe(),
         "config_path": str(loaded.path) if loaded.path else None,
+        "dotenv_path": str(loaded.dotenv_path) if loaded.dotenv_path else None,
         "settings": settings.model_dump(mode="json"),
         "resolved_paths": build_app_paths(settings).report(),
-        "database_url": resolve_database_url(settings),
+        "database_url": redact_database_url(resolve_database_url(settings)),
     }
     if as_json:
         show_json(payload)
@@ -247,6 +252,8 @@ def config_show_cmd(
     for key, value in payload["resolved_paths"].items():
         console.print(f"  {key:<22} {value}")
     console.print(f"  {'database_url':<22} {payload['database_url']}")
+    if payload["dotenv_path"]:
+        console.print(f"  {'dotenv_file':<22} {payload['dotenv_path']}")
     if show_all:
         console.print("[bold]settings[/bold]")
         for section, values in payload["settings"].items():

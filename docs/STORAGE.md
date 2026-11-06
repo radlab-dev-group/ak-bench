@@ -1,8 +1,12 @@
 # Storage
 
-The project's state lives in one SQLite database, created and migrated by
-`akbench init`. This page describes the layout, the history model added in
-phase 11, and the rules that keep a recorded result honest.
+The project's state lives in one database — PostgreSQL by default, a SQLite
+file when `database.backend: sqlite` is configured — created and migrated by
+`akbench init`. The connection parameters of the default backend come from the
+project `.env` (`AKBENCH_PG_*`, the names `scripts/run-postgres.sh` reads);
+`database.url` pins a full SQLAlchemy URL over both. This page describes the
+layout, the history model added in phase 11, and the rules that keep a recorded
+result honest.
 
 ## History of experiments (phase 11)
 

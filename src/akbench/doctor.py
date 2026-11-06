@@ -183,7 +183,10 @@ def check_database(database_url: str) -> list[CheckResult]:
         engine = create_db_engine(database_url)
         engine_is_reachable(engine)
     except DatabaseError as exc:
-        hint = "`akbench init` creates the SQLite file"
+        if database_url.startswith("sqlite"):
+            hint = "`akbench init` creates the SQLite file"
+        else:
+            hint = "is PostgreSQL running? `scripts/run-postgres.sh start`, then `akbench init`"
         return [
             CheckResult("database", CheckStatus.FAIL, str(exc), hint=hint),
             CheckResult(

@@ -4,8 +4,10 @@ set -euo pipefail
 # Starts AK-Bench PostgreSQL in Docker.
 # Database data is persisted in a Docker named volume.
 #
-# Configuration:
-#   AKBENCH_PG_IMAGE=postgres:17
+# Configuration comes from the project .env (the same names AK-Bench reads for
+# database.postgres.*); a variable that is already exported wins over the file.
+#   AKBENCH_PG_IMAGE=postgres:18
+#   AKBENCH_PG_HOST=127.0.0.1
 #   AKBENCH_PG_PORT=5959
 #   AKBENCH_PG_USER=akbench
 #   AKBENCH_PG_PASSWORD=akbench_local
@@ -18,12 +20,47 @@ set -euo pipefail
 #   stop   - stop container
 #   status - show container status
 #   down   - remove container (volume survives)
+#   env    - print the connection variables for the shell
 #   psql   - open PostgreSQL shell
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "${SCRIPT_DIR}"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${REPO_ROOT}"
+
+ENV_FILE="${AKBENCH_ENV_FILE:-${REPO_ROOT}/.env}"
+
+# Load KEY=VALUE lines from .env without overriding what is already exported.
+load_env_file() {
+  local file="$1" line key value
+  [ -f "${file}" ] || return 0
+  while IFS= read -r line || [ -n "${line}" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line#export }"
+    case "${line}" in
+      ""|"#"*) continue ;;
+    esac
+    [[ "${line}" == *"="* ]] || continue
+    key="${line%%=*}"
+    value="${line#*=}"
+    key="${key%"${key##*[![:space:]]}"}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    value="${value%%#*}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [ "${#value}" -ge 2 ]; then
+      case "${value}" in
+        \"*\"|\'*\'*) value="${value:1:${#value}-2}" ;;
+      esac
+    fi
+    [ -n "${!key:-}" ] && continue
+    export "${key}=${value}"
+  done < "${file}"
+}
+
+load_env_file "${ENV_FILE}"
 
 IMAGE="${AKBENCH_PG_IMAGE:-postgres:18}"
+HOST_ADDR="${AKBENCH_PG_HOST:-127.0.0.1}"
 PORT="${AKBENCH_PG_PORT:-5959}"
 USER_NAME="${AKBENCH_PG_USER:-akbench}"
 PASSWORD="${AKBENCH_PG_PASSWORD:-akbench_local}"
@@ -34,8 +71,16 @@ VOLUME="${AKBENCH_PG_VOLUME:-akbench-postgres-data}"
 COMMAND="${1:-start}"
 
 url() {
-  printf 'postgresql+psycopg://%s:***@127.0.0.1:%s/%s' \
-    "${USER_NAME}" "${PORT}" "${DB_NAME}"
+  printf 'postgresql+psycopg://%s:***@%s:%s/%s' \
+    "${USER_NAME}" "${HOST_ADDR}" "${PORT}" "${DB_NAME}"
+}
+
+print_env() {
+  echo "  AKBENCH_PG_HOST=${HOST_ADDR}"
+  echo "  AKBENCH_PG_PORT=${PORT}"
+  echo "  AKBENCH_PG_USER=${USER_NAME}"
+  echo "  AKBENCH_PG_PASSWORD=${PASSWORD}"
+  echo "  AKBENCH_PG_DB=${DB_NAME}"
 }
 
 ensure_running() {
@@ -101,8 +146,11 @@ case "${COMMAND}" in
     echo "  User:      ${USER_NAME}"
 
     echo
-    echo "AK-Bench database URL:"
-    echo "  export AKBENCH__DATABASE__URL=$(url)"
+    echo "Connection parameters (from ${ENV_FILE} unless exported):"
+    print_env
+    echo
+    echo "AK-Bench reads these as database.postgres.*; to pin the URL instead:"
+    echo "  export AKBENCH__DATABASE__URL=\'$(url)\'"
     ;;
 
   stop)
@@ -112,6 +160,10 @@ case "${COMMAND}" in
     else
       echo "Container ${CONTAINER} is not running."
     fi
+    ;;
+
+  env)
+    print_env
     ;;
 
   status)
@@ -138,7 +190,7 @@ case "${COMMAND}" in
     ;;
 
   *)
-    echo "Usage: $0 [start|stop|status|down|psql]" >&2
+    echo "Usage: $0 [start|stop|status|down|env|psql]" >&2
     exit 2
     ;;
 

@@ -47,7 +47,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "variants_count": overview["variants_count"],
                 "verdicts": overview["verdicts"],
                 "statuses": overview["statuses"],
-                "database_url": service.database_url,
+                "database_url": service.display_database_url,
             },
         )
 
@@ -82,7 +82,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "runs": data["runs"],
                 "total": data["total"],
                 "filter_options": data["filter_options"],
-                "database_url": service.database_url,
+                "database_url": service.display_database_url,
             },
         )
 
@@ -119,7 +119,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "run_a_uid": run_a,
                 "run_b_uid": run_b,
                 "config_comparison": config_comparison,
-                "database_url": service.database_url,
+                "database_url": service.display_database_url,
             },
         )
 
@@ -132,7 +132,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
             context={
                 "active_page": "experiments",
                 "experiments": experiments,
-                "database_url": service.database_url,
+                "database_url": service.display_database_url,
             },
         )
 
@@ -153,7 +153,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "variant_summaries": detail["variant_summaries"],
                 "snapshots": detail["snapshots"],
                 "runs": detail["runs"],
-                "database_url": service.database_url,
+                "database_url": service.display_database_url,
             },
         )
 
@@ -166,7 +166,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
             context={
                 "active_page": "tasks",
                 "tasks": tasks,
-                "database_url": service.database_url,
+                "database_url": service.display_database_url,
             },
         )
 
@@ -184,7 +184,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "summary": detail["summary"],
                 "definition": detail.get("definition"),
                 "runs": detail["runs"],
-                "database_url": service.database_url,
+                "database_url": service.display_database_url,
             },
         )
 

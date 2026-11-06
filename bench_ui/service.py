@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
-from akbench.config.loader import load_settings, resolve_database_url
+from akbench.config.loader import load_settings, redact_database_url, resolve_database_url
 from akbench.datasets import Dataset, TaskLoadError
 from akbench.reporting.data import (
     HistoryData,
@@ -63,6 +63,9 @@ class BenchDataService:
         else:
             default_sqlite = (self.project_root / "data" / "akbench.sqlite").resolve()
             self.database_url = f"sqlite:///{default_sqlite}"
+
+        #: What the pages show: the same URL with the password hidden.
+        self.display_database_url = redact_database_url(self.database_url)
 
         self.engine: Engine = create_db_engine(self.database_url)
         self.store = HistoryStore(self.engine)
@@ -140,7 +143,7 @@ class BenchDataService:
             "variants_count": sum(len(v) for v in history.variants.values()),
             "task_stats": task_stats,
             "unverified": unverified_configurations(history),
-            "database_url": self.database_url,
+            "database_url": self.display_database_url,
         }
 
     # -------------------------------------------------------- Filtered Runs

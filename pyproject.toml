@@ -14,6 +14,7 @@ dependencies = [
     "alembic>=1.14",
     "fastapi>=0.110",
     "jinja2>=3.1",
+    "psycopg[binary]>=3.2",
     "pydantic>=2.10",
     "pyyaml>=6.0",
     "rich>=13.9",
@@ -50,6 +51,7 @@ pythonpath = [".", "src"]
 addopts = "-q --strict-markers"
 markers = [
     "integration: tests that touch the filesystem or a real SQLite database",
+    "postgres: tests that need a real PostgreSQL (set AKBENCH_RUN_POSTGRES=1)",
     "live: tests that run the real Codex CLI against the LLM router (set AKBENCH_RUN_LIVE=1)",
 ]
 
