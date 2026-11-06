@@ -215,14 +215,14 @@
       <table>
         <thead>
           <tr>
-            <th>Run UID</th>
-            <th>Experiment</th>
-            <th>Configuration</th>
-            <th>Verdict</th>
-            <th class="num">Score</th>
-            <th class="num">Duration</th>
-            <th class="num">Tokens</th>
-            <th>Status</th>
+            <th data-sortable>Run UID</th>
+            <th data-sortable>Experiment</th>
+            <th data-sortable>Configuration</th>
+            <th data-sortable>Verdict</th>
+            <th data-sortable class="num">Score</th>
+            <th data-sortable class="num">Duration</th>
+            <th data-sortable class="num">Tokens</th>
+            <th data-sortable>Status</th>
             <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
@@ -244,7 +244,7 @@
               <td class="num mono" style="font-weight:600; color:{% if (run.score or 0) >= 1.0 %}var(--mint){% elif (run.score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
                 {% if run.score is not none %}{{ "%.3f"|format(run.score) }}{% else %}—{% endif %}
               </td>
-              <td class="num mono">
+              <td class="num mono" data-sort-value="{{ run.duration_seconds if run.duration_seconds is not none else '' }}">
                 {% if run.duration_seconds is not none %}
                   {% set s = run.duration_seconds|round|int %}
                   {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}

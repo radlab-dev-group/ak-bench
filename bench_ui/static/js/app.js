@@ -138,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initModals();
   initTabs();
   initCompareHelpers();
+  initSortableTables();
 });
 
 // ============================================================ Live Refresh
@@ -326,7 +327,7 @@ function createRunTableRow(run) {
         ${scoreFormatted}
       </span>
     </td>
-    <td class="num mono">${durationFormatted}</td>
+    <td class="num mono" data-sort-value="${run.duration_seconds === null || run.duration_seconds === undefined ? '' : run.duration_seconds}">${durationFormatted}</td>
     <td class="num mono">${totalTokensFormatted}</td>
     <td>
       <span class="badge badge-neutral" style="font-size:11px;">
@@ -651,3 +652,135 @@ function getScoreColor(score) {
   if (score >= 0.8) return 'var(--amber)';
   return 'var(--red)';
 }
+
+
+// ============================================================ Sortable Tables
+// A header carrying `data-sortable` sorts its column on click: first click
+// ascending, second descending, third back to the order the page rendered.
+// The value is read from the cell's `data-sort-value` when it has one (a
+// formatted cell like "1m 30s" keeps its own number beside the text), and
+// otherwise from the cell's leading text. Numbers and timestamps compare as
+// numbers, everything else as text.
+//
+// `window.akbenchSortTables()` re-arms the headers of tables rendered after
+// load (the analytics tables), and is idempotent.
+function initSortableTables(root) {
+  const scope = root || document;
+  const tables = scope.matches && scope.matches('table')
+    ? [scope]
+    : Array.from(scope.querySelectorAll('table'));
+  tables.forEach((table) => {
+    if (table.dataset.sortable === 'off' || table.dataset.sortReady === 'yes') return;
+    const headers = Array.from(table.querySelectorAll('thead th[data-sortable]'));
+    if (!headers.length) return;
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return;
+    table.dataset.sortReady = 'yes';
+
+    const state = { index: -1, ascending: true, original: null };
+
+    const cellValue = (row, index) => {
+      const cell = row.cells[index];
+      if (!cell) return '';
+      const explicit = cell.dataset.sortValue;
+      if (explicit !== undefined) return explicit;
+      // The first text node is the cell's own text: a badge or a bar beside
+      // it must not pull the sort after itself.
+      let text = '';
+      cell.childNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
+      });
+      return (text || cell.textContent || '').trim();
+    };
+
+    const parseValue = (raw) => {
+      const text = String(raw).trim();
+      if (text === '' || text === '—' || text === '-') return { numeric: true, value: Number.NEGATIVE_INFINITY };
+      const asNumber = Number(text.replace(/,/g, ''));
+      if (Number.isFinite(asNumber) && /^-?\d[\d,]*\.?\d*[\w%]*$/.test(text)) {
+        return { numeric: true, value: asNumber };
+      }
+      const asDate = Date.parse(text);
+      if (!Number.isNaN(asDate) && /\d{4}-\d{2}-\d{2}/.test(text)) {
+        return { numeric: true, value: asDate };
+      }
+      return { numeric: false, value: text.toLowerCase() };
+    };
+
+    // The order the page rendered, captured once per table body: the third
+    // click restores the order the query asked for rather than an accident of
+    // the last sort. A body that has been repainted (its rows are no longer
+    // the ones captured) is captured again.
+    const remembered = () => {
+      const rows = Array.from(tbody.rows);
+      if (!state.original || state.original.length !== rows.length
+          || (rows.length && state.original[0] !== rows[0]
+              && !state.original.includes(rows[0]))) {
+        state.original = rows;
+      }
+      return state.original;
+    };
+
+    const sort = (index, ascending, rows) => {
+      rows = rows.slice();
+      rows.sort((a, b) => {
+        const av = parseValue(cellValue(a, index));
+        const bv = parseValue(cellValue(b, index));
+        if (av.numeric !== bv.numeric) return av.numeric ? -1 : 1;
+        const compared = av.numeric
+          ? av.value - bv.value
+          : av.value.localeCompare(bv.value);
+        return ascending ? compared : -compared;
+      });
+      rows.forEach((row) => tbody.appendChild(row));
+    };
+
+
+    const clearIndicators = () => {
+      headers.forEach((th) => {
+        th.classList.remove('sorted-asc', 'sorted-desc');
+        th.removeAttribute('aria-sort');
+      });
+    };
+
+    headers.forEach((th, index) => {
+      th.tabIndex = 0;
+      th.setAttribute('role', 'columnheader button');
+      const activate = () => {
+        const recorded = remembered();
+        if (state.index === index) {
+          state.ascending = !state.ascending;
+        } else {
+          state.index = index;
+          state.ascending = true;
+        }
+        clearIndicators();
+        th.classList.add(state.ascending ? 'sorted-asc' : 'sorted-desc');
+        th.setAttribute('aria-sort', state.ascending ? 'ascending' : 'descending');
+        sort(index, state.ascending, Array.from(tbody.rows));
+      };
+
+      const reset = () => {
+        state.index = -1;
+        state.ascending = true;
+        clearIndicators();
+        remembered().forEach((row) => tbody.appendChild(row));
+      };
+      th.title = 'Sort by ' + th.textContent.trim();
+      th.addEventListener('click', activate);
+      th.addEventListener('dblclick', reset);
+      th.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          activate();
+        }
+        if (event.key === 'Escape') reset();
+      });
+    });
+  });
+}
+
+// Tables rendered after the page loaded (the analytics tables) arm themselves
+// through this global; it is idempotent per table, so calling it again after a
+// repaint costs nothing.
+window.akbenchSortTables = initSortableTables;

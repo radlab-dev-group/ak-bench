@@ -17,17 +17,17 @@
       <table>
         <thead>
           <tr>
-            <th>Task UID</th>
-            <th>Task</th>
-            <th>Authors</th>
-            <th>Category</th>
-            <th>Difficulty</th>
-            <th class="num">Runs</th>
-            <th class="num">Passed</th>
-            <th>Success Rate</th>
-            <th>Mean Score</th>
-            <th class="num">Mean Duration</th>
-            <th class="num">Tokens</th>
+            <th data-sortable>Task UID</th>
+            <th data-sortable>Task</th>
+            <th data-sortable>Authors</th>
+            <th data-sortable>Category</th>
+            <th data-sortable>Difficulty</th>
+            <th data-sortable class="num">Runs</th>
+            <th data-sortable class="num">Passed</th>
+            <th data-sortable>Success Rate</th>
+            <th data-sortable>Mean Score</th>
+            <th data-sortable class="num">Mean Duration</th>
+            <th data-sortable class="num">Tokens</th>
             <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
@@ -70,7 +70,7 @@
                   {% if t.mean_score is not none %}{{ "%.3f"|format(t.mean_score) }}{% else %}—{% endif %}
                 </span>
               </td>
-              <td class="num mono">
+              <td class="num mono" data-sort-value="{{ t.mean_duration if t.mean_duration is not none else '' }}">
                 {% if t.mean_duration is not none %}
                   {% set s = t.mean_duration|round|int %}
                   {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}

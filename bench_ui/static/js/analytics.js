@@ -414,11 +414,21 @@
 
   function renderTable(rows) {
     const groups = sortedGroups(rows);
-    $('anTable').innerHTML = `<table><thead><tr><th>${esc(DIMS[state.group].label)}</th><th class="num">Runs</th><th class="num">Success</th><th class="num">Mean score</th><th class="num">σ score</th><th class="num">Mean time</th><th class="num">Mean tokens</th><th class="num">Cache hit</th><th class="num">Tool calls</th></tr></thead><tbody>` +
+    $('anTable').innerHTML = `<table><thead><tr><th data-sortable>${esc(DIMS[state.group].label)}</th><th class="num" data-sortable>Runs</th><th class="num" data-sortable>Success</th><th class="num" data-sortable>Mean score</th><th class="num" data-sortable>σ score</th><th class="num" data-sortable>Mean time</th><th class="num" data-sortable>Mean tokens</th><th class="num" data-sortable>Cache hit</th><th class="num" data-sortable>Tool calls</th></tr></thead><tbody>` +
       groups.map(([k, rs]) => {
         const s = groupStats(rs); const cr = mean(nums(rs, METRICS.cache_ratio.get));
-        return `<tr><td class="mono" style="white-space:normal; word-break:break-word; max-width:520px;">${esc(k)}</td><td class="num mono">${s.n}</td><td class="num mono">${s.pass == null ? '—' : (s.pass * 100).toFixed(1) + '%'}</td><td class="num mono">${s.score == null ? '—' : s.score.toFixed(3)}</td><td class="num mono">${s.scoreStd.toFixed(3)}</td><td class="num mono">${fmtDur(s.dur)}</td><td class="num mono">${fmtNum(s.tok)}</td><td class="num mono">${cr == null ? '—' : (cr * 100).toFixed(0) + '%'}</td><td class="num mono">${s.tools == null ? '—' : s.tools.toFixed(1)}</td></tr>`;
+        // Every formatted cell keeps its number in data-sort-value: the header
+        // sorts the measurement, not the way it happens to be written here.
+        const rank = (value) => value == null ? '' : String(value);
+        return `<tr><td class="mono" style="white-space:normal; word-break:break-word; max-width:520px;">${esc(k)}</td><td class="num mono">${s.n}</td><td class="num mono" data-sort-value="${rank(s.pass)}">${s.pass == null ? '—' : (s.pass * 100).toFixed(1) + '%'}</td><td class="num mono" data-sort-value="${rank(s.score)}">${s.score == null ? '—' : s.score.toFixed(3)}</td><td class="num mono" data-sort-value="${rank(s.scoreStd)}">${s.scoreStd.toFixed(3)}</td><td class="num mono" data-sort-value="${rank(s.dur)}">${fmtDur(s.dur)}</td><td class="num mono" data-sort-value="${rank(s.tok)}">${fmtNum(s.tok)}</td><td class="num mono" data-sort-value="${rank(cr)}">${cr == null ? '—' : (cr * 100).toFixed(0) + '%'}</td><td class="num mono" data-sort-value="${rank(s.tools)}">${s.tools == null ? '—' : s.tools.toFixed(1)}</td></tr>`;
       }).join('') + '</tbody></table>';
+    armSorting($('anTable'));
+  }
+
+  // A table painted after load has no headers wired for sorting; the global
+  // sorter is idempotent, so re-arming after every repaint costs nothing.
+  function armSorting(root) {
+    if (root && window.akbenchSortTables) window.akbenchSortTables(root);
   }
 
   function renderKpis(rows) {

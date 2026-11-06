@@ -122,15 +122,15 @@
       <table>
         <thead>
           <tr>
-            <th style="width:40px;">#</th>
-            <th>Configuration</th>
-            <th class="num">Runs</th>
-            <th class="num">Eval</th>
-            <th>Success Rate</th>
-            <th>Mean Score</th>
-            <th class="num">Mean Time</th>
-            <th class="num">Mean Tokens</th>
-            <th>Against Baseline</th>
+            <th data-sortable style="width:40px;">#</th>
+            <th data-sortable>Configuration</th>
+            <th data-sortable class="num">Runs</th>
+            <th data-sortable class="num">Eval</th>
+            <th data-sortable>Success Rate</th>
+            <th data-sortable>Mean Score</th>
+            <th data-sortable class="num">Mean Time</th>
+            <th data-sortable class="num">Mean Tokens</th>
+            <th data-sortable>Against Baseline</th>
           </tr>
         </thead>
         <tbody>
@@ -161,7 +161,7 @@
                   </span>
                 </div>
               </td>
-              <td class="num mono">
+              <td class="num mono" data-sort-value="{{ row.mean_duration_seconds if row.mean_duration_seconds is not none else '' }}">
                 {% if row.mean_duration_seconds is not none %}
                   {% set s = row.mean_duration_seconds|round|int %}
                   {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
@@ -195,14 +195,14 @@
       <table>
         <thead>
           <tr>
-            <th>Run UID</th>
-            <th>Task</th>
-            <th>Verdict</th>
-            <th class="num">Score</th>
-            <th class="num">Duration</th>
-            <th class="num">Tokens</th>
-            <th>Status</th>
-            <th>Started At</th>
+            <th data-sortable>Run UID</th>
+            <th data-sortable>Task</th>
+            <th data-sortable>Verdict</th>
+            <th data-sortable class="num">Score</th>
+            <th data-sortable class="num">Duration</th>
+            <th data-sortable class="num">Tokens</th>
+            <th data-sortable>Status</th>
+            <th data-sortable>Started At</th>
             <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
@@ -228,7 +228,7 @@
               <td class="num mono" style="font-weight:600; color:{% if (r.score or 0) >= 1.0 %}var(--mint){% elif (r.score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
                 {% if r.score is not none %}{{ "%.3f"|format(r.score) }}{% else %}—{% endif %}
               </td>
-              <td class="num mono">
+              <td class="num mono" data-sort-value="{{ r.duration_seconds if r.duration_seconds is not none else '' }}">
                 {% if r.duration_seconds is not none %}
                   {% set s = r.duration_seconds|round|int %}
                   {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}

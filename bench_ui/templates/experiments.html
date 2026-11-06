@@ -17,15 +17,15 @@
       <table>
         <thead>
           <tr>
-            <th>Experiment UID & Title</th>
-            <th>Type</th>
-            <th class="num">Runs</th>
-            <th class="num">Passed</th>
-            <th>Success Rate</th>
-            <th>Mean Score</th>
-            <th class="num">Mean Duration</th>
-            <th class="num">Tokens</th>
-            <th>Validity</th>
+            <th data-sortable>Experiment UID & Title</th>
+            <th data-sortable>Type</th>
+            <th data-sortable class="num">Runs</th>
+            <th data-sortable class="num">Passed</th>
+            <th data-sortable>Success Rate</th>
+            <th data-sortable>Mean Score</th>
+            <th data-sortable class="num">Mean Duration</th>
+            <th data-sortable class="num">Tokens</th>
+            <th data-sortable>Validity</th>
             <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
@@ -54,7 +54,7 @@
                   {% if exp.mean_score is not none %}{{ "%.3f"|format(exp.mean_score) }}{% else %}—{% endif %}
                 </span>
               </td>
-              <td class="num mono">
+              <td class="num mono" data-sort-value="{{ exp.mean_duration if exp.mean_duration is not none else '' }}">
                 {% if exp.mean_duration is not none %}
                   {% set s = exp.mean_duration|round|int %}
                   {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}

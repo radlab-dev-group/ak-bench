@@ -263,6 +263,17 @@ def test_the_tasks_list_carries_the_task_prose(database_url: str) -> None:
     assert "Alice" in body
 
 
+def test_every_table_header_with_data_sortable_is_wired(database_url: str) -> None:
+    """A header that promises sorting must carry the marker the JS looks for."""
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    for page in ("/", "/runs", "/tasks", "/experiments"):
+        body = client.get(page).text
+        assert 'data-sortable' in body, page
+        assert "initSortableTables" in body or "/static/js/app.js" in body
+
+
 def test_analytics_page_and_data_api(database_url: str) -> None:
     _seeded_store(database_url)
     client = TestClient(create_app(database_url=database_url))
