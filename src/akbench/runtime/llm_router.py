@@ -386,11 +386,13 @@ class LlmRouterAdapter:
         of the experiment declared about the process it is about to start, and
         a variant that could be overridden by a default in the descriptor or a
         stray shell variable would silently stop being the variant it claims
-        to be.
+        to be. The launched process receives the declared values verbatim —
+        masking is a property of the record, never of the process (see
+        ``declared_environment``).
         """
         environment = dict(os.environ)
         environment.update(self.options.env)
-        environment.update(self.declared_environment())
+        environment.update(self._declared_values())
         return environment
 
     def declared_environment(self) -> dict[str, str]:
@@ -401,16 +403,25 @@ class LlmRouterAdapter:
         shell and its credentials. Values whose name marks them as secrets are
         reported by name only.
         """
+        return {
+            name: (_MASK if _is_secret_name(name) else value)
+            for name, value in self._declared_values().items()
+        }
+
+    def _declared_values(self) -> dict[str, str]:
+        """The declared launch values, unmasked, in the order they apply.
+
+        The descriptor's ``env``, the factor-mapped values and the variant's
+        ``runtime_env`` — the same three parts the record and the launched
+        process are built from, before either applies its own treatment.
+        """
         declared = dict(self.options.env)
         for factor, name in self.options.factor_env.items():
             if factor not in self.options.factor_values:
                 continue
             declared[name] = _as_environment_value(self.options.factor_values[factor])
         declared.update(self.options.runtime_env)
-        return {
-            name: (_MASK if _is_secret_name(name) else value)
-            for name, value in declared.items()
-        }
+        return declared
 
     def _open_log(self, log_file: Path | None):
         """Open the instance log so the run keeps the router's own account.
