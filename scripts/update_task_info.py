@@ -190,12 +190,21 @@ def _backfill_components(engine: Engine) -> int:
     that produced it. A component the registry does not carry is left as is:
     an unknown row is a fact the script cannot invent.
     """
+    # The runs are the source of truth for which components a history used: an
+    # agent row must match the identifier a run actually names (id plus the
+    # version the run recorded), not only what the descriptor tree currently
+    # declares. A run that names "codex" at "codex-cli 0.166.0" names a row
+    # keyed by that pair, so the catalog and the filter agree on it.
     with session_scope(engine) as session:
         agent_ids = {
-            row[0] for row in session.execute(select(TaskRun.agent_id)).all() if row[0]
+            (row[0], row[1])
+            for row in session.execute(select(TaskRun.agent_id, TaskRun.agent_version)).all()
+            if row[0]
         }
         runtime_ids = {
-            row[0] for row in session.execute(select(TaskRun.runtime_id)).all() if row[0]
+            (row[0], None)
+            for row in session.execute(select(TaskRun.runtime_id)).all()
+            if row[0]
         }
     try:
         registry = load_registry(PROJECT_ROOT / "descriptors")
@@ -203,24 +212,26 @@ def _backfill_components(engine: Engine) -> int:
         return 0
 
     filled = 0
-    for kind, model, body_name, ids in (
+    for kind, model, body_name, pairs in (
         (DescriptorKind.AGENT, Agent, "agent", agent_ids),
         (DescriptorKind.RUNTIME, Runtime, "runtime", runtime_ids),
     ):
-        for identifier in sorted(ids):
+        for identifier, version in sorted(pairs, key=lambda pair: (pair[0], pair[1] or "")):
             entry = registry.get(kind, identifier)
             if entry is None:
                 print(f"  ! {body_name} {identifier!r}: not in descriptors/, left as recorded")
                 continue
             document = _descriptor_text(entry)
             payload = entry.snapshot.payload
-            version = str(entry.snapshot.version)
+            # A run names a component at the version it recorded; the descriptor
+            # version is a fallback only when the run recorded none.
+            row_version = version if version is not None else str(entry.snapshot.version)
             column = f"{body_name}_yaml"
             with session_scope(engine) as session:
                 row = session.scalar(
                     select(model).where(
                         getattr(model, f"{body_name}_id") == identifier,
-                        model.version == version,
+                        model.version == row_version,
                     )
                 )
                 if row is None:
@@ -228,7 +239,7 @@ def _backfill_components(engine: Engine) -> int:
                         model(
                             **{
                                 f"{body_name}_id": identifier,
-                                "version": version,
+                                "version": row_version,
                                 "title": payload.get("title"),
                                 "description": payload.get("description"),
                                 column: document,
@@ -238,10 +249,15 @@ def _backfill_components(engine: Engine) -> int:
                         )
                     )
                     filled += 1
-                elif document and not getattr(row, column):
-                    setattr(row, column, document)
-                    row.updated_at = utc_now()
-                    filled += 1
+                else:
+                    if document and not getattr(row, column):
+                        setattr(row, column, document)
+                        row.updated_at = utc_now()
+                        filled += 1
+                    if title := payload.get("title"):
+                        if not row.title:
+                            row.title = title
+                            row.updated_at = utc_now()
     return filled
 
 
