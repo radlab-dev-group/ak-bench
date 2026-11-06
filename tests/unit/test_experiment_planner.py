@@ -428,6 +428,42 @@ def test_the_shipped_selfhost_experiment_keeps_its_pipeline_out_of_the_runtime(
             assert values.get("model") == "auto_codex"
 
 
+def test_the_shipped_managed_runtime_declares_the_knowledge_connections() -> None:
+    """A knowledge arm whose plugin reaches neither store measures nothing.
+
+    The plugin reads its Redis settings from its own prefix and never from
+    ``LLM_ROUTER_REDIS_*``, and a RESP3 handshake against the Redis here is
+    answered with ``unknown command HELLO`` — after which every command fails
+    and the layer fails open, silently. The connection is therefore part of the
+    runtime descriptor rather than something the operator remembers to export,
+    with one exception: a credential is never a descriptor's content, so the
+    engine's password stays in the operator's environment.
+    """
+    from akbench.descriptors import DescriptorKind, load_registry
+
+    registry = load_registry(REPO_ROOT / "descriptors")
+    runtime = registry.get(DescriptorKind.RUNTIME, "llm-router-ak-bench")
+    plugin = registry.get(DescriptorKind.PLUGIN, "agentic_knowledge")
+    assert runtime is not None and plugin is not None
+    env = runtime.descriptor.runtime.managed.env
+
+    assert env["LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_HOST"] == env["LLM_ROUTER_REDIS_HOST"]
+    assert env["LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL"] == "2"
+    assert env["LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_HOST"].startswith("http")
+    assert env["LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_USERNAME"]
+    assert env["LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD"]
+
+    # An unallowlisted name is an invisible one: what the plugin descriptor
+    # does not declare cannot be observed, verified or shown in a report.
+    allowlisted = {entry.name for entry in plugin.descriptor.benchmark.observed_env}
+    declared = {
+        name
+        for name in env
+        if name.startswith("LLM_ROUTER_KNOWLEDGE_AGENTIC_")
+    }
+    assert declared <= allowlisted, sorted(declared - allowlisted)
+
+
 def test_a_variant_env_is_part_of_the_variant_identity(planner: ExperimentPlanner) -> None:
     """Two arms that differ only in their runtime env are two configurations."""
     payload = document("knowledge-on-off")
