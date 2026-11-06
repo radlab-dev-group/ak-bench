@@ -104,8 +104,8 @@ def handle_errors[P, R](func: Callable[P, R]) -> Callable[P, R]:
         try:
             return func(*args, **kwargs)
         except AKBenchmarkError as exc:
-            hint = getattr(exc, "hint", None)
-            raise fail(str(exc), hint=hint) from exc
+            hint = getattr(exc, "hint", None) or exc.details.get("remedy")
+            raise fail(str(exc), hint=hint if isinstance(hint, str) else None) from exc
         except typer.Exit:
             raise
         except Exception as exc:  # unexpected: keep a trace for the log

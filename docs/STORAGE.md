@@ -8,6 +8,32 @@ project `.env` (`AKBENCH_PG_*`, the names `scripts/run-postgres.sh` reads);
 layout, the history model added in phase 11, and the rules that keep a recorded
 result honest.
 
+## Namespaces: many histories, one server
+
+A working directory has exactly one history, so two of them cannot share one
+schema: they would collide on the first primary key. PostgreSQL keeps them
+apart with schemas, one per imported SQLite file:
+
+```bash
+akbench migrate sqlite data/akbench.sqlite          # → namespace `akbench`
+akbench migrate sqlite /other/project/data/akbench.sqlite
+akbench migrate list                                # every namespace, its runs, its revision
+```
+
+A namespace is read back by naming it:
+
+```bash
+export AKBENCH__DATABASE__POSTGRES__NAMESPACE=akbench
+akbench history experiments
+```
+
+The import is the same copy the platform has always trusted: the tables come
+from the Alembic revisions, children land after their parents, every table is
+counted on both sides, and a difference is an error. The only translation is
+time: SQLite stores a UTC instant without its offset, so it is re-anchored to
+UTC on the way in -- letting PostgreSQL read it as local time would move every
+recorded run.
+
 ## History of experiments (phase 11)
 
 The database is the single history of everything the project did. The tables

@@ -34,6 +34,10 @@ repository). The engine and `scripts/run-postgres.sh` read the same
 `AKBENCH_PG_*` names, so one file drives both. To keep a run on a local
 SQLite file instead: `export AKBENCH_DB_BACKEND=sqlite`.
 
+Several working directories can share one server: each SQLite history is
+imported into its own namespace and read back by naming it
+(``akbench migrate sqlite …`` / ``akbench migrate list``).
+
 ## How AK-Bench reads a configuration
 
 Three kinds of file drive everything the platform does, and each answers a

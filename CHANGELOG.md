@@ -9,6 +9,7 @@ release tagged as `v<version>`.
 ### Changed
 - **PostgreSQL is now the default database.** Recorded benchmarks go to PostgreSQL instead of the SQLite file, so a project has one shared, server-backed history. SQLite stays available as an explicit fallback for a laptop without a server.
 - **A project `.env` file is read automatically.** The same `AKBENCH_PG_*` connection names `scripts/run-postgres.sh` uses now configure the engine; an exported variable beats the file, and `AKBENCH__DATABASE__*` still overrides both. The connection URL is redacted (password hidden) everywhere it is displayed, in `akbench config show` and in the UI footer.
+- **`akbench migrate` imports a SQLite history into PostgreSQL, one namespace per file.** Several working directories share one server; each import lands in its own schema (read back with `AKBENCH__DATABASE__POSTGRES__NAMESPACE`), children after parents, every table counted on both sides, and a difference is an error. The import surfaced a real defect: `config_hash` was declared 64 characters while the code has always written `sha256:<64 hex>` (71) — SQLite never enforced the length, PostgreSQL does. The column is now what the code writes (migration `0007`).
 
 ## Summary
 

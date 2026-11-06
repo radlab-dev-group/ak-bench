@@ -252,11 +252,13 @@ def resolve_database_url(settings: Settings, environ: dict[str, str] | None = No
     configuration -- PostgreSQL parameters for ``postgres``, the SQLite file for
     ``sqlite``.
     """
+    from akbench.storage.db import search_path_url
+
     database = settings.database
     if database.url:
         return database.url
     if database.backend == "postgres":
-        return database.postgres_url
+        return search_path_url(database.postgres_url, database.postgres.namespace)
     return sqlite_database_url(settings, environ)
 
 

@@ -46,6 +46,9 @@ class PostgresSettings(_StrictModel):
     user: str = "akbench"
     password: str = "akbench_local"
     database: str = "akbench"
+    #: One imported SQLite history per schema (`akbench migrate`), read back by
+    #: naming it here. ``None`` is the server's default schema.
+    namespace: str | None = None
 
 
 class DatabaseSettings(_StrictModel):

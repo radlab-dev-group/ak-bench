@@ -139,7 +139,7 @@ class Experiment(Base, TimestampMixin):
     validity_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=ExperimentValidity.INCOMPLETE
     )
-    config_hash: Mapped[str | None] = mapped_column(String(64))
+    config_hash: Mapped[str | None] = mapped_column(String(71))
     notes: Mapped[str | None] = mapped_column(Text)
 
 
@@ -197,7 +197,7 @@ class ExperimentVariant(Base, TimestampMixin):
     agent_config_json: Mapped[str | None] = mapped_column(Text)
     environment_requests_json: Mapped[str | None] = mapped_column(Text)
     applies_json: Mapped[str | None] = mapped_column(Text)
-    config_hash: Mapped[str | None] = mapped_column(String(64))
+    config_hash: Mapped[str | None] = mapped_column(String(71))
     is_baseline: Mapped[bool] = mapped_column(nullable=False, default=False)
 
 
@@ -257,7 +257,7 @@ class TaskRun(Base, TimestampMixin):
     failure_class: Mapped[str | None] = mapped_column(String(32))
     error_message: Mapped[str | None] = mapped_column(Text)
     exit_code: Mapped[int | None] = mapped_column(Integer)
-    config_hash: Mapped[str | None] = mapped_column(String(64))
+    config_hash: Mapped[str | None] = mapped_column(String(71))
     #: Digest of the reproducibility manifest of this run (plan section 14).
     manifest_digest: Mapped[str | None] = mapped_column(String(71))
     mode: Mapped[str | None] = mapped_column(String(32))
