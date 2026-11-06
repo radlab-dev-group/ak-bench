@@ -38,6 +38,7 @@ from akbench.cli.plugins import plugin_app
 from akbench.cli.report import report_app
 from akbench.cli.run import run_app
 from akbench.cli.runtime import runtime_app
+from akbench.cli.ui import ui_app
 from akbench.config.loader import build_app_paths, resolve_database_url
 from akbench.doctor import CheckStatus, run_diagnostics
 
@@ -64,6 +65,7 @@ app.add_typer(knowledge_app, name="knowledge")
 app.add_typer(history_app, name="history")
 app.add_typer(report_app, name="report")
 app.add_typer(export_app, name="export")
+app.add_typer(ui_app, name="ui")
 
 STATUS_MARKS = {
     CheckStatus.OK: "[green]ok[/green]",
