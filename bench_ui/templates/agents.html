@@ -17,8 +17,8 @@
         <thead>
           <tr>
             <th data-sortable>Agent</th>
+            <th data-sortable>Version</th>
             <th data-sortable>Title</th>
-            <th data-sortable class="num">Versions</th>
             <th data-sortable class="num">Runs</th>
             <th data-sortable>Adapter</th>
             <th data-sortable>Description</th>
@@ -26,22 +26,17 @@
           </tr>
         </thead>
         <tbody>
-          {% set grouped = {} %}
           {% for agent in agents %}
-            {% set _ = grouped.setdefault(agent.id, []).append(agent) %}
-          {% endfor %}
-          {% for agent_id, versions in grouped.items() %}
-            {% set newest = versions[-1] %}
             <tr>
-              <td><a href="/agents/{{ agent_id }}" class="mono" style="font-weight:600;">{{ agent_id }}</a></td>
-              <td>{{ newest.title or "—" }}</td>
-              <td class="num mono">{{ versions | length }}</td>
-              <td class="num mono">{{ versions | sum(attribute="runs_count") }}</td>
-              <td class="mono">{{ (newest.descriptor or {}).get("adapter") or "—" }}</td>
-              <td><div class="task-snippet" title="{{ newest.description or '' }}">{{ newest.description or "—" }}</div></td>
-              <td style="text-align:right;">
-                <a href="/runs?agent={{ newest.uid }}" class="btn btn-sm">Runs</a>
-                <a href="/agents/{{ agent_id }}" class="btn btn-sm">Descriptor</a>
+              <td><a href="/agents/{{ agent.id }}" class="mono" style="font-weight:600;">{{ agent.id }}</a></td>
+              <td class="mono" style="font-size:12px;">{{ agent.version }}</td>
+              <td>{{ agent.title or "—" }}</td>
+              <td class="num mono">{{ agent.runs_count }}</td>
+              <td class="mono">{{ (agent.descriptor or {}).get("adapter") or "—" }}</td>
+              <td><div class="task-snippet" title="{{ agent.description or '' }}">{{ agent.description or "—" }}</div></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <a href="/runs?agent={{ agent.uid | urlencode }}" class="btn btn-sm">Runs</a>
+                <a href="/agents/{{ agent.id }}" class="btn btn-sm">Descriptor</a>
               </td>
             </tr>
           {% else %}
