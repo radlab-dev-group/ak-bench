@@ -977,6 +977,22 @@ pre {
   gap: 12px 18px;
 }
 
+/* The identity and the project links are one group on the left; only the
+   database status is pushed to the right. */
+.footer-identity {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-right: auto;
+}
+
+.footer-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--line);
+}
+
 .footer-links {
   display: inline-flex;
   align-items: center;
