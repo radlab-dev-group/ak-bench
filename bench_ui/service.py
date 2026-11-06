@@ -49,6 +49,47 @@ def _read_text(path: Path) -> str | None:
         return None
 
 
+_FILE_TREE_ORDER = ["repository", "public_tests", "hidden_tests", "mutation"]
+
+
+def _file_tree(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Nest flat ``(path)`` rows into a directory tree for the page.
+
+    Every node is ``{"name": str, "type": "dir"|"file", ...}``; a directory
+    carries ``children`` and a file carries ``path`` and ``size_bytes`` so it
+    can be fetched. The tree is alphabetical by name, files before folders at a
+    level, which reads like a file manager rather than a flat list.
+    """
+    root: dict[str, Any] = {"name": "", "type": "dir", "children": []}
+    for row in rows:
+        parts = [part for part in row["path"].split("/") if part]
+        node = root
+        for index, name in enumerate(parts):
+            is_file = index == len(parts) - 1
+            children = node.setdefault("children", [])
+            match = next((child for child in children if child["name"] == name), None)
+            if match is None:
+                match = {"name": name, "type": "file" if is_file else "dir"}
+                if is_file:
+                    match["path"] = row["path"]
+                    match["size_bytes"] = row["size_bytes"]
+                else:
+                    match["children"] = []
+                children.append(match)
+            node = match
+    _sort_tree(root)
+    return root
+
+
+def _sort_tree(node: dict[str, Any]) -> None:
+    children = node.get("children")
+    if not children:
+        return
+    for child in children:
+        _sort_tree(child)
+    children.sort(key=lambda child: (child["type"] != "file", child["name"].lower()))
+
+
 def _task_yaml(text_value: Any) -> dict[str, Any] | None:
     """The recorded ``task.yaml`` parsed back into a mapping, or ``None``.
 
@@ -775,6 +816,35 @@ class BenchDataService:
             "variants": report.variants,
             "runs": [self._format_run_summary(r, history) for r in report.runs],
         }
+
+    def get_task_files(self, task_uid: str) -> list[dict[str, Any]]:
+        """A task's recorded code, grouped by kind into a renderable tree.
+
+        One entry per kind that has files; each carries a nested tree of
+        directories and files so the page can open a file straight from the
+        structure. Kinds are in the order a reader expects: the code first,
+        then the tests that grade it, then the defect that was planted.
+        """
+        rows = self.store.task_files(task_uid)
+        if not rows:
+            return []
+        order = _FILE_TREE_ORDER
+        by_kind: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            by_kind.setdefault(row["kind"], []).append(row)
+        groups = []
+        for kind in order:
+            if kind not in by_kind:
+                continue
+            groups.append({"kind": kind, "tree": _file_tree(by_kind[kind])})
+        for kind, rows_ in by_kind.items():
+            if kind not in order:
+                groups.append({"kind": kind, "tree": _file_tree(rows_)})
+        return groups
+
+    def get_task_file(self, task_uid: str, path: str) -> dict[str, Any] | None:
+        """The content of one recorded file, or ``None`` when not stored."""
+        return self.store.task_file(task_uid, path)
 
     def get_agents(self) -> list[dict[str, Any]]:
         """Every recorded agent version, with how often its runs happened.

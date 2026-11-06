@@ -595,6 +595,149 @@ h3 { font-size: 1.1rem; }
   display: none;
 }
 
+/* Task code tree: the repository, tests and mutation recorded with a task.
+   A directory opens in place; a file loads into the viewer below the groups. */
+.task-code {
+  padding: 14px 20px 18px;
+}
+
+.code-group {
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.code-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  list-style: none;
+  background: var(--panel-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.code-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.code-group-name {
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.code-group-count {
+  font-size: 11px;
+  color: var(--fg-faint);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 7px;
+}
+
+.file-tree {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 4px 14px;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.code-group > .file-tree {
+  padding: 6px 12px 10px;
+}
+
+.tree-node {
+  margin: 0;
+}
+
+.tree-dir {
+  cursor: pointer;
+  list-style: none;
+  color: var(--fg-dim);
+}
+
+.tree-dir::-webkit-details-marker {
+  display: none;
+}
+
+.tree-caret::before {
+  content: "\25B8";
+  display: inline-block;
+  width: 12px;
+  color: var(--fg-faint);
+}
+
+details[open] > .tree-dir > .tree-caret::before {
+  content: "\25BE";
+}
+
+.tree-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--accent);
+  font: inherit;
+}
+
+.tree-file:hover {
+  text-decoration: underline;
+}
+
+.tree-size {
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.tree-file.active {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.panel-subtitle {
+  font-size: 11.5px;
+  color: var(--fg-faint);
+}
+
+.code-viewer {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.code-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.code-viewer-body {
+  margin: 0;
+  padding: 14px 16px;
+  max-height: 460px;
+  overflow: auto;
+  background: var(--panel);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+  color: var(--fg);
+}
+
 /* Task catalog: the prose a row carries, kept to two lines. */
 .task-snippet {
   color: var(--fg-faint);

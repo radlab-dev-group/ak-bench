@@ -139,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initCompareHelpers();
   initSortableTables();
+  initTaskCodeTree();
 });
 
 // ============================================================ Live Refresh
@@ -655,6 +656,59 @@ function getScoreColor(score) {
   return 'var(--red)';
 }
 
+
+// ============================================================ Task Code Tree
+// A task page lists the files recorded with the task. Clicking one asks the
+// API for its content and shows it in the viewer under the groups; the text is
+// inserted as text, never parsed as markup, because it is the task's own code.
+function initTaskCodeTree() {
+  const tree = document.querySelector('.task-code');
+  if (!tree) return;
+  const viewer = document.getElementById('codeViewer');
+  const pathLabel = document.getElementById('codeViewerPath');
+  const body = document.getElementById('codeViewerBody');
+  const close = document.getElementById('codeViewerClose');
+  if (!viewer || !body) return;
+
+  tree.addEventListener('click', async (event) => {
+    const button = event.target.closest('.tree-file');
+    if (!button) return;
+    event.preventDefault();
+    const taskUid = button.dataset.task;
+    const filePath = button.dataset.path;
+    if (!taskUid || !filePath) return;
+
+    const active = tree.querySelector('.tree-file.active');
+    if (active) active.classList.remove('active');
+    button.classList.add('active');
+
+    pathLabel.textContent = filePath;
+    body.textContent = 'Loading…';
+    viewer.hidden = false;
+    try {
+      const response = await fetch(
+        `/api/tasks/${encodeURIComponent(taskUid)}/files/${filePath
+          .split('/')
+          .map(encodeURIComponent)
+          .join('/')}`
+      );
+      if (!response.ok) throw new Error('not recorded');
+      const data = await response.json();
+      body.textContent = data.content;
+    } catch (error) {
+      body.textContent = 'This file was not recorded with the task.';
+    }
+  });
+
+  if (close) {
+    close.addEventListener('click', () => {
+      viewer.hidden = true;
+      body.textContent = '';
+      const active = tree.querySelector('.tree-file.active');
+      if (active) active.classList.remove('active');
+    });
+  }
+}
 
 // ============================================================ Sortable Tables
 // A header carrying `data-sortable` sorts its column on click: first click

@@ -1,3 +1,20 @@
+{% macro render_nodes(nodes, task_uid) %}
+  {% for node in nodes %}
+    <li class="tree-node">
+      {% if node.type == 'dir' %}
+      <details>
+        <summary class="tree-dir"><span class="tree-caret"></span>{{ node.name }}/</summary>
+        <ul class="file-tree mono">{{ render_nodes(node.children, task_uid) }}</ul>
+      </details>
+      {% else %}
+      <button class="tree-file" type="button" data-task="{{ task_uid }}" data-path="{{ node.path }}">
+        {{ node.name }}<span class="tree-size">{{ node.size_bytes }}</span>
+      </button>
+      {% endif %}
+    </li>
+  {% endfor %}
+{% endmacro %}
+
 {% extends "base.html" %}
 
 {% block title %}AK-Bench — Task: {{ task.uid }}{% endblock %}
@@ -204,6 +221,43 @@
     </summary>
     <pre class="task-prose">{{ definition.task_yaml }}</pre>
   </details>
+  {% endif %}
+
+  {% if files %}
+  <!-- The code of the task: repository, tests and mutation, as recorded -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Task Code
+        <span class="badge badge-neutral">
+          {{ files | map(attribute='tree') | map(attribute='children') | map('length') | sum }} entries
+        </span>
+      </div>
+      <span class="panel-subtitle">
+        Recorded with the task; click a file to read it
+      </span>
+    </div>
+    <div class="task-code">
+      {% for group in files %}
+      <details class="code-group" {% if group.kind == 'repository' %}open{% endif %}>
+        <summary>
+          <span class="code-group-name mono">{{ group.kind }}</span>
+          <span class="code-group-count">{{ group.tree.children | length }}</span>
+        </summary>
+        <ul class="file-tree mono">
+          {{ render_nodes(group.tree.children, task.uid) }}
+        </ul>
+      </details>
+      {% endfor %}
+      <div class="code-viewer" id="codeViewer" hidden>
+        <div class="code-viewer-header">
+          <span class="code-viewer-path mono" id="codeViewerPath"></span>
+          <button class="btn btn-sm" id="codeViewerClose" type="button">Close</button>
+        </div>
+        <pre class="code-viewer-body mono" id="codeViewerBody"></pre>
+      </div>
+    </div>
+  </div>
   {% endif %}
 
   <!-- Runs of this task -->

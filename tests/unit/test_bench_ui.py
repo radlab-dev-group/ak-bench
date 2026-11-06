@@ -521,3 +521,117 @@ def test_every_page_carries_the_page_load_indicator(database_url: str) -> None:
         assert 'id="pageLoader"' in body, page
         assert 'id="pageLoaderBar"' in body, page
         assert "initPageLoader" in client.get("/static/js/app.js").text
+
+
+def _task_with_files(store: HistoryStore, root):
+    """Record a task whose code — repository, tests, mutation — is on disk."""
+    from akbench.datasets.dataset import load_task
+
+    repository = root / "_sources" / "wordcount"
+    package = repository / "src" / "wordcount"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text(
+        "def count_words(text):\n    return len(text.split())\n", encoding="utf-8"
+    )
+    (repository / "README.md").write_text("# wordcount\n", encoding="utf-8")
+
+    task_dir = root / "bug_fix" / "wordcount-001"
+    (task_dir / "hidden_tests").mkdir(parents=True)
+    (task_dir / "hidden_tests" / "test_hidden.py").write_text(
+        "def test_repeated_whitespace():\n    assert True\n", encoding="utf-8"
+    )
+    (task_dir / "public_tests").mkdir(parents=True)
+    (task_dir / "public_tests" / "test_public.py").write_text(
+        "def test_counts_words():\n    assert True\n", encoding="utf-8"
+    )
+    (task_dir / "mutations").mkdir(parents=True)
+    (task_dir / "mutations" / "mutation-001.patch").write_text("--- a\n+++ b\n", encoding="utf-8")
+    (task_dir / "description.md").write_text("# Word counting\n", encoding="utf-8")
+    (task_dir / "task.yaml").write_text(
+        'schema_version: "1.0"\nid: wordcount-001\nversion: "1.0.0"\n'
+        "task:\n"
+        "  category: bug_fix\n"
+        "  difficulty: easy\n"
+        "  repository:\n"
+        "    source: _sources/wordcount\n"
+        "    ref: HEAD\n"
+        "  mutation:\n"
+        "    patch: mutations/mutation-001.patch\n"
+        '    version: "1.0.0"\n'
+        "  evaluator: pytest_evaluator\n"
+        "  hidden_tests: hidden_tests\n"
+        "  public_tests: public_tests\n",
+        encoding="utf-8",
+    )
+    loaded = load_task(task_dir)
+    store.record_run(
+        {
+            "run_uid": "run-code",
+            "task_uid": loaded.uid,
+            "agent_id": "codex",
+            "state": "completed",
+            "started_at": "2026-11-06T10:00:00+00:00",
+        },
+        task=loaded,
+    )
+    return loaded
+
+
+def test_the_task_detail_shows_its_code_as_a_tree(database_url: str, tmp_path) -> None:
+    """The files recorded with a task are listed, grouped by kind."""
+    store = _seeded_store(database_url)
+    _task_with_files(store, tmp_path)
+    client = TestClient(create_app(database_url=database_url))
+
+    response = client.get("/tasks/wordcount-001@1.0.0")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "Task Code" in body
+    for kind in ("repository", "public_tests", "hidden_tests", "mutation"):
+        assert kind in body
+    assert "__init__.py" in body
+    assert "test_hidden.py" in body
+
+
+def test_the_task_file_api_returns_one_file(database_url: str, tmp_path) -> None:
+    store = _seeded_store(database_url)
+    _task_with_files(store, tmp_path)
+    client = TestClient(create_app(database_url=database_url))
+
+    response = client.get("/api/tasks/wordcount-001@1.0.0/files/src/wordcount/__init__.py")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kind"] == "repository"
+    assert payload["content"].startswith("def count_words(text):")
+
+
+def test_the_task_files_api_lists_paths_without_content(database_url: str, tmp_path) -> None:
+    """A tree is a list of names; the text arrives when a file is opened."""
+    store = _seeded_store(database_url)
+    _task_with_files(store, tmp_path)
+    app = create_app(database_url=database_url)
+    client = TestClient(app)
+
+    response = client.get("/api/tasks/wordcount-001@1.0.0/files")
+
+    assert response.status_code == 200
+    groups = response.json()
+    kinds = [group["kind"] for group in groups]
+    assert kinds == ["repository", "public_tests", "hidden_tests", "mutation"]
+    repository = groups[0]["tree"]["children"]
+    names = {node["name"] for node in repository}
+    assert {"src", "README.md"} <= names
+
+
+def test_an_unrecorded_file_is_not_invented(database_url: str, tmp_path) -> None:
+    store = _seeded_store(database_url)
+    _task_with_files(store, tmp_path)
+    client = TestClient(create_app(database_url=database_url))
+
+    missing = client.get("/api/tasks/wordcount-001@1.0.0/files/src/nope.py")
+    unknown_task = client.get("/api/tasks/nope@1.0.0/files")
+
+    assert missing.status_code == 404
+    assert unknown_task.status_code == 404

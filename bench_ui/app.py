@@ -255,6 +255,7 @@ def create_app(
                 "summary": detail["summary"],
                 "definition": detail.get("definition"),
                 "runs": detail["runs"],
+                "files": service.get_task_files(task_uid),
                 "database": database,
             },
         )
@@ -383,6 +384,21 @@ def create_app(
     @app.get("/api/experiments")
     async def api_experiments():
         return service.get_experiments()
+
+    @app.get("/api/tasks/{task_uid}/files")
+    async def api_task_files(task_uid: str):
+        if service.get_task_detail(task_uid) is None:
+            raise HTTPException(status_code=404, detail=f"Task '{task_uid}' not found")
+        return service.get_task_files(task_uid)
+
+    @app.get("/api/tasks/{task_uid}/files/{path:path}")
+    async def api_task_file(task_uid: str, path: str):
+        if service.get_task_detail(task_uid) is None:
+            raise HTTPException(status_code=404, detail=f"Task '{task_uid}' not found")
+        row = service.get_task_file(task_uid, path)
+        if row is None:
+            raise HTTPException(status_code=404, detail="File not recorded for this task")
+        return row
 
     @app.get("/api/tasks")
     async def api_tasks():
