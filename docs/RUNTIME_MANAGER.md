@@ -171,6 +171,23 @@ What this buys, and what it means:
   or the vector engine; a separate prefix (declared in `managed.env`) keeps a
   benchmark from reading the shared instance's collections, but it does not
   create isolation by itself.
+- **A stateful plugin configures its connections on its own prefix.** The
+  knowledge plugin reads Redis settings from `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_*`
+  and nothing else — never from `LLM_ROUTER_REDIS_*` — so the managed instance
+  declares that block as well as the generic host, or the plugin loads, enables
+  and stays stateless: it reads, but caches nothing and publishes nothing. Two
+  of its values are not a detail:
+
+  | Value | Why it is pinned |
+  |---|---|
+  | `..._REDIS_PROTOCOL=2` | The plugin defaults to RESP3, the Redis here is 5.x and answers the RESP3 handshake with `unknown command HELLO`, after which every command fails and the layer fails open. The operator's own launch scripts pin 2 for the same reason. |
+  | `..._SSE_API_USERNAME`, `..._SSE_API_PASSWORD` | The vector engine authenticates by login. A username is not a credential and is declared in `managed.env`; the password is one, so it is exported by the operator and reaches the process through the ambient environment, which the launch environment starts from. A run record keeps the name with a masked value. |
+
+  Neither value fails a run when it is missing: a plugin whose engine cannot be
+  reached reads nothing and says so in its own log, which is why the knowledge
+  arm of `llm-router-selfhost-fast.yaml` is worth reading together with its
+  `router.log` before its `knowledge_enabled: true` is read as "knowledge was
+  used".
 - **No credential is needed.** The managed instance runs with
   `LLM_ROUTER_AUTH_ENABLED=false` (declared in `managed.env`), so the
   descriptor declares no `required_env` and the agent binding carries no
