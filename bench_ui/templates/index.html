@@ -18,6 +18,20 @@
     </div>
   </div>
 
+  {% if database and not database.reachable %}
+  <!-- The history is unreadable: say what is wrong instead of counting nothing. -->
+  <div style="margin-bottom:20px;padding:14px 16px;border:1px solid #b4544a;border-radius:10px;background:rgba(180,84,74,.08);">
+    <strong>No history to show.</strong>
+    <div style="color:var(--fg-dim);font-size:13.5px;margin-top:4px;">
+      {{ database.error }}
+      <br>
+      Backend <code>{{ database.backend }}</code>
+      {%- if database.dotenv_path %} &middot; configuration <code>{{ database.dotenv_path }}</code>{% endif %}
+      &middot; start PostgreSQL with <code>scripts/run-postgres.sh start</code>, then <code>akbench init</code>.
+    </div>
+  </div>
+  {% endif %}
+
   <!-- KPI Cards -->
   <div class="grid-cards">
     <div class="card card-mint">

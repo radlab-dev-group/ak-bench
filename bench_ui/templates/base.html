@@ -86,9 +86,15 @@
       <div>
         AK-Bench &copy; 2026 radlab.dev &middot; Agentic Knowledge Benchmark
       </div>
-      <div style="color:var(--fg-dim);">
-        Database: <code>{{ database_url }}</code>
+      {% if database and database.reachable %}
+      <div class="db-status db-status-live" title="History is readable">
+        <span class="db-status-dot"></span> LIVE DB
       </div>
+      {% else %}
+      <div class="db-status db-status-offline" title="{{ database.error if database else 'no database configured' }}">
+        <span class="db-status-dot"></span> DB OFFLINE
+      </div>
+      {% endif %}
     </div>
   </footer>
 

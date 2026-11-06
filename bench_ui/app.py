@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -16,7 +17,48 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
 
-def create_app(database_url: str | None = None, project_root: Path | None = None) -> FastAPI:
+def _empty_overview() -> dict[str, Any]:
+    """The dashboard's shape when the database cannot be read.
+
+    A dashboard that cannot reach its history says so, rather than showing a
+    zero-filled world: the numbers would be true of nothing.
+    """
+    return {
+        "summary": {
+            "runs": 0,
+            "evaluated": 0,
+            "passed": 0,
+            "not_passed": 0,
+            "success_rate": None,
+            "mean_score": None,
+            "scored_runs": 0,
+            "mean_duration_seconds": None,
+            "measured_durations": 0,
+            "total_tokens": 0,
+            "token_runs": 0,
+            "input_tokens": 0,
+            "input_token_runs": 0,
+            "output_tokens": 0,
+            "output_token_runs": 0,
+            "tool_calls": 0,
+            "tool_call_runs": 0,
+            "statuses": [],
+        },
+        "ranking": [],
+        "recent_runs": [],
+        "experiments_count": 0,
+        "tasks_count": 0,
+        "variants_count": 0,
+        "verdicts": {},
+        "statuses": [],
+    }
+
+
+def create_app(
+    database_url: str | None = None,
+    project_root: Path | None = None,
+    namespace: str | None = None,
+) -> FastAPI:
     app = FastAPI(
         title="AK-Bench UI",
         description="Real-time interactive dashboard and comparison studio for AK-Bench",
@@ -27,13 +69,24 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-    # Shared data service instance
+    # Shared data service instance. The connection comes from the project
+    # configuration (.env), so the UI and the CLI read the same database.
+    if namespace and not database_url:
+        import os
+
+        os.environ.setdefault("AKBENCH__DATABASE__POSTGRES__NAMESPACE", namespace)
     service = BenchDataService(database_url=database_url, project_root=project_root)
+    database = service.connectivity()
+    service.database_info = database
 
     # ------------------------------------------------------------- HTML Web Pages
+    @app.get("/api/database")
+    async def api_database():
+        return database
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard_page(request: Request):
-        overview = service.get_overview()
+        overview = _empty_overview() if service.connection_error else service.get_overview()
         return templates.TemplateResponse(
             request=request,
             name="index.html",
@@ -47,7 +100,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "variants_count": overview["variants_count"],
                 "verdicts": overview["verdicts"],
                 "statuses": overview["statuses"],
-                "database_url": service.display_database_url,
+                "database": database,
             },
         )
 
@@ -82,7 +135,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "runs": data["runs"],
                 "total": data["total"],
                 "filter_options": data["filter_options"],
-                "database_url": service.display_database_url,
+                "database": database,
             },
         )
 
@@ -91,7 +144,10 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
         return templates.TemplateResponse(
             request=request,
             name="analytics.html",
-            context={"active_page": "analytics", "database_url": service.database_url},
+            context={
+                "active_page": "analytics",
+                "database": database,
+            },
         )
 
     @app.get("/api/analytics/data")
@@ -119,7 +175,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "run_a_uid": run_a,
                 "run_b_uid": run_b,
                 "config_comparison": config_comparison,
-                "database_url": service.display_database_url,
+                "database": database,
             },
         )
 
@@ -132,7 +188,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
             context={
                 "active_page": "experiments",
                 "experiments": experiments,
-                "database_url": service.display_database_url,
+                "database": database,
             },
         )
 
@@ -153,7 +209,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "variant_summaries": detail["variant_summaries"],
                 "snapshots": detail["snapshots"],
                 "runs": detail["runs"],
-                "database_url": service.display_database_url,
+                "database": database,
             },
         )
 
@@ -166,7 +222,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
             context={
                 "active_page": "tasks",
                 "tasks": tasks,
-                "database_url": service.display_database_url,
+                "database": database,
             },
         )
 
@@ -184,7 +240,7 @@ def create_app(database_url: str | None = None, project_root: Path | None = None
                 "summary": detail["summary"],
                 "definition": detail.get("definition"),
                 "runs": detail["runs"],
-                "database_url": service.display_database_url,
+                "database": database,
             },
         )
 

@@ -10,7 +10,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
-from akbench.config.loader import load_settings, redact_database_url, resolve_database_url
+from akbench.config.loader import load_settings, resolve_database_url
+from akbench.core.errors import ConfigError, DatabaseError
 from akbench.datasets import Dataset, TaskLoadError
 from akbench.reporting.data import (
     HistoryData,
@@ -24,8 +25,14 @@ from akbench.reporting.data import (
     unverified_configurations,
     verdict_of,
 )
-from akbench.storage.db import create_db_engine, session_scope
+from akbench.storage.db import (
+    create_db_engine,
+    engine_is_reachable,
+    namespace_of_url,
+    session_scope,
+)
 from akbench.storage.history import HistoryStore
+from akbench.storage.migrator import schema_status
 from akbench.storage.models import (
     Artifact,
     EvaluationRecord,
@@ -45,32 +52,69 @@ def _safe_load_json(val: Any) -> Any:
 
 
 class BenchDataService:
-    """Provides high-level data querying, aggregation, filtering and comparisons for the UI."""
+    """Provides high-level data querying, aggregation, filtering and comparisons for the UI.
+
+    The connection comes from the project's configuration, so the UI and the
+    CLI read the same ``.env``: the backend, the PostgreSQL parameters and the
+    namespace are the ones the operator already set. A problem with that
+    configuration is reported, not hidden behind an empty dashboard.
+    """
 
     def __init__(self, database_url: str | None = None, project_root: Path | None = None) -> None:
-        self.project_root = project_root or Path.cwd()
-        self.settings = None
-        with contextlib.suppress(Exception):
-            loaded = load_settings(
-                self.project_root / "configs" / "defaults.yaml", project_root=self.project_root
-            )
+        self.project_root = Path(project_root) if project_root else Path.cwd()
+        self.config_error: str | None = None
+        self.dotenv_path: Path | None = None
+        self.source: str | None = None
+        self.settings: object | None = None
+        try:
+            loaded = load_settings(None, project_root=self.project_root)
             self.settings = loaded.settings
+            self.dotenv_path = loaded.dotenv_path
+            self.source = loaded.describe()
+        except ConfigError as exc:
+            self.config_error = str(exc)
 
         if database_url:
             self.database_url = database_url
-        elif self.settings:
+            self.namespace: str | None = None
+        elif self.settings is not None:
             self.database_url = resolve_database_url(self.settings)
+            namespace = (
+                self.settings.database.postgres.namespace
+                if self.settings.database.backend == "postgres"
+                else None
+            )
+            self.namespace = namespace_of_url(self.database_url) or namespace
         else:
             default_sqlite = (self.project_root / "data" / "akbench.sqlite").resolve()
             self.database_url = f"sqlite:///{default_sqlite}"
-
-        #: What the pages show: the same URL with the password hidden.
-        self.display_database_url = redact_database_url(self.database_url)
+            self.namespace = None
 
         self.engine: Engine = create_db_engine(self.database_url)
         self.store = HistoryStore(self.engine)
+        self.connection_error: str | None = None
+        try:
+            engine_is_reachable(self.engine)
+            self.revision = schema_status(self.database_url).current
+        except DatabaseError as exc:
+            self.connection_error = str(exc)
         self._dataset: Dataset | None = None
         self._dataset_loaded = False
+
+    def connectivity(self) -> dict[str, Any]:
+        """What the UI is looking at: the backend, the namespace, the error."""
+        return {
+            # The address of the database never reaches the UI: a status is
+            # what a reader can act on, and a URL is a credential in all but
+            # name.
+            "backend": (
+                self.settings.database.backend if self.settings is not None else "sqlite"
+            ),
+            "namespace": self.namespace,
+            "reachable": self.connection_error is None,
+            "revision": self.revision if not self.connection_error else None,
+            "error": self.connection_error,
+        }
 
     def get_dataset(self) -> Dataset | None:
         if not self._dataset_loaded:
@@ -143,7 +187,6 @@ class BenchDataService:
             "variants_count": sum(len(v) for v in history.variants.values()),
             "task_stats": task_stats,
             "unverified": unverified_configurations(history),
-            "database_url": self.display_database_url,
         }
 
     # -------------------------------------------------------- Filtered Runs

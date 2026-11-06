@@ -247,3 +247,72 @@ def test_overview_api(database_url: str) -> None:
     assert data["summary"]["passed"] == 1
     assert data["summary"]["success_rate"] == 0.5
     assert data["summary"]["mean_score"] == 0.95
+
+
+# ------------------------------------------------------------------ connection
+# The dashboard reads the database the same way the CLI does, so a `.env` that
+# configures PostgreSQL also configures the UI. Where the database lives is not
+# shown: a status is what a reader can act on, and an address is a credential
+# in all but name.
+
+
+def _project_without_env_overrides(monkeypatch, tmp_path):
+    import os
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "pyproject.toml").write_text('[project]\nname = "ak-bench"\n', encoding="utf-8")
+    for name in list(os.environ):
+        if name.startswith("AKBENCH"):
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AKBENCH_HOME", str(project))
+    return project
+
+
+def test_the_ui_reads_its_database_from_the_env_file(monkeypatch, tmp_path) -> None:
+    from bench_ui.service import BenchDataService
+
+    project = _project_without_env_overrides(monkeypatch, tmp_path)
+    (project / ".env").write_text(
+        "AKBENCH_PG_HOST=db.internal\n"
+        "AKBENCH_PG_PORT=6543\n"
+        "AKBENCH_PG_USER=akbench\n"
+        "AKBENCH_PG_PASSWORD=***\n"
+        "AKBENCH_PG_DB=akbench\n"
+        "AKBENCH_DB_BACKEND=postgres\n"
+        "AKBENCH__DATABASE__POSTGRES__NAMESPACE=knowledge_replay\n",
+        encoding="utf-8",
+    )
+
+    service = BenchDataService(project_root=project)
+    info = service.connectivity()
+    assert info["backend"] == "postgres"
+    assert info["namespace"] == "knowledge_replay"
+    assert info["reachable"] is False  # db.internal does not exist, and is reported as such
+    assert info["error"]
+
+
+def test_the_address_of_the_database_never_reaches_the_pages(monkeypatch, tmp_path) -> None:
+    from bench_ui.app import create_app
+
+    app = create_app(database_url="postgresql+psycopg://akbench:***@127.0.0.1:1/none")
+    client = TestClient(app)
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "secret" not in page.text
+    assert "postgresql+psycopg" not in page.text
+    assert "DB OFFLINE" in page.text
+    assert "database_url" not in client.get("/api/database").json()
+
+
+def test_a_live_database_shows_a_status(monkeypatch, tmp_path, database_url: str) -> None:
+    from bench_ui.app import create_app
+
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    page = client.get("/")
+    assert "LIVE DB" in page.text
+    assert "sqlite:///" not in page.text
+    assert client.get("/api/database").json()["reachable"] is True
