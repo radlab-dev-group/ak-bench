@@ -84,6 +84,15 @@ def verdict_of(run: dict[str, Any]) -> str | None:
     return None
 
 
+def score_of(run: dict[str, Any]) -> float | None:
+    evaluation = run.get("evaluation")
+    if isinstance(evaluation, dict):
+        score = evaluation.get("score")
+        if isinstance(score, (int, float)):
+            return float(score)
+    return None
+
+
 def _mean(values: list[float]) -> float | None:
     if not values:
         return None
@@ -166,6 +175,7 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
     """The same honest set of numbers for any set of runs."""
     evaluated = [run for run in runs if verdict_of(run) is not None]
     passed = [run for run in evaluated if verdict_of(run) == PASSED_VERDICT]
+    scores = [value for value in (score_of(run) for run in runs) if value is not None]
     durations = [value for value in (duration_seconds(run) for run in runs) if value is not None]
     tokens, token_runs = _sum_tokens(runs, "total_tokens")
     input_tokens, input_runs = _sum_tokens(runs, "input_tokens")
@@ -177,6 +187,8 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "passed": len(passed),
         "not_passed": len(runs) - len(passed),
         "success_rate": _rate(len(passed), len(runs)) if evaluated else None,
+        "mean_score": _mean(scores),
+        "scored_runs": len(scores),
         "mean_duration_seconds": _mean(durations),
         "measured_durations": len(durations),
         "total_tokens": tokens,
@@ -295,6 +307,7 @@ def _rank_key(row: dict[str, Any], token_field: str = "total_tokens") -> tuple:
     """
     return (
         -(row.get("success_rate") if row.get("success_rate") is not None else -1.0),
+        -(row.get("mean_score") if row.get("mean_score") is not None else -1.0),
         row.get("mean_duration_seconds")
         if row.get("mean_duration_seconds") is not None
         else float("inf"),
@@ -323,7 +336,11 @@ def _place_rows(rows: list[dict[str, Any]], token_field: str = "total_tokens") -
     it as a failure would rank a measured one above an unmeasured one.
     """
     ranked = sorted(
-        (row for row in rows if row.get("success_rate") is not None),
+        (
+            row
+            for row in rows
+            if row.get("success_rate") is not None or row.get("mean_score") is not None
+        ),
         key=lambda row: _rank_key(row, token_field),
     )
     for position, row in enumerate(ranked, start=1):
@@ -457,6 +474,12 @@ def _vs_baseline(
         parts.append("success " + (f"{difference:+.0%}" if difference else "level"))
     elif rate is None or base_rate is None:
         parts.append("success not comparable")
+    score, base_score = row.get("mean_score"), baseline.get("mean_score")
+    if score is not None and base_score is not None:
+        score_diff = round(score - base_score, 4)
+        parts.append("score " + (f"{score_diff:+.3f}" if score_diff else "level"))
+    elif (score is not None) != (base_score is not None):
+        parts.append("score not comparable")
     seconds, base_seconds = row.get("mean_duration_seconds"), baseline.get(
         "mean_duration_seconds"
     )
