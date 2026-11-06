@@ -279,7 +279,7 @@ async function fetchFilteredRuns() {
     if (tbody) {
       tbody.innerHTML = '';
       if (data.runs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
       } else {
         data.runs.forEach(run => {
           tbody.appendChild(createRunTableRow(run));
@@ -317,6 +317,8 @@ function createRunTableRow(run) {
         ${escapeHtml(run.task_uid || '—')}
       </a>
     </td>
+    <td class="mono" style="font-size:11.5px;">${escapeHtml(run.agent || '—')}</td>
+    <td class="mono" style="font-size:11.5px;">${escapeHtml(run.runtime_id || '—')}</td>
     <td>
       <span class="badge ${verdictClass}">
         ${escapeHtml(run.verdict || 'unverified')}

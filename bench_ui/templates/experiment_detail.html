@@ -55,6 +55,125 @@
     </div>
   </div>
 
+  <!-- What the experiment asked for, from its own file -->
+  {% set config = experiment_config %}
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Experiment Definition
+        {% if experiment.experiment_yaml %}
+          <span class="badge badge-passed">recorded with the plan</span>
+        {% else %}
+          <span class="badge badge-neutral">not recorded</span>
+        {% endif %}
+      </div>
+    </div>
+    {% if config %}
+    <div class="panel-body">
+      {% if config.description %}
+      <p style="margin:0 0 16px; color:var(--fg-dim);">{{ config.description }}</p>
+      {% endif %}
+      <div class="task-meta">
+        <div class="task-meta-item">
+          <div class="task-meta-label">Type</div>
+          <div class="task-meta-value">{{ config.type or experiment.type or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Agent</div>
+          <div class="task-meta-value mono">
+            <a href="/agents/{{ config.agent_id }}">{{ config.agent_id or "—" }}</a>
+            {% if config.agent_version %}<span style="color:var(--fg-faint);">@{{ config.agent_version }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Execution mode</div>
+          <div class="task-meta-value mono">{{ config.execution_mode or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Runtime</div>
+          <div class="task-meta-value mono">
+            {% if config.runtime_id %}<a href="/runtimes/{{ config.runtime_id }}">{{ config.runtime_id }}</a>{% else %}—{% endif %}
+            {% if config.runtime_version %}<span style="color:var(--fg-faint);">@{{ config.runtime_version }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Strategy</div>
+          <div class="task-meta-value mono">{{ config.strategy or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Repetitions</div>
+          <div class="task-meta-value mono">{{ config.repetitions if config.repetitions is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Concurrency</div>
+          <div class="task-meta-value mono">{{ config.concurrency if config.concurrency is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Timeout</div>
+          <div class="task-meta-value mono">{{ config.timeout_seconds if config.timeout_seconds is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Max runs</div>
+          <div class="task-meta-value mono">{{ config.max_runs if config.max_runs is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Workspace per run</div>
+          <div class="task-meta-value">{{ config.workspace_per_run if config.workspace_per_run is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Fresh agent session</div>
+          <div class="task-meta-value">{{ config.fresh_agent_session if config.fresh_agent_session is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Retries on infrastructure errors</div>
+          <div class="task-meta-value mono">{{ config.retry_infrastructure_errors if config.retry_infrastructure_errors is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Tasks selected</div>
+          <div class="task-meta-value">
+            {% if config.task_ids %}
+              {% for task_id in config.task_ids %}<a class="chip" href="/runs?task_uid={{ task_id }}">{{ task_id }}</a>{% endfor %}
+            {% else %}—{% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Categories</div>
+          <div class="task-meta-value">
+            {% for category in config.categories %}<span class="chip">{{ category }}</span>{% else %}—{% endfor %}
+          </div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Evaluators</div>
+          <div class="task-meta-value">
+            {% for evaluator in config.evaluators %}<span class="chip mono">{{ evaluator }}</span>{% else %}—{% endfor %}
+          </div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Metrics</div>
+          <div class="task-meta-value">
+            {% for metric in config.metrics %}<span class="chip mono">{{ metric }}</span>{% else %}—{% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="panel-body" style="color:var(--fg-dim);">
+      This experiment was planned before its file was recorded. Plan it again with
+      <span class="mono">--store</span>, or backfill it with
+      <span class="mono">scripts/update_task_info.py</span>.
+    </div>
+    {% endif %}
+  </div>
+
+  {% if experiment.experiment_yaml %}
+  <details class="panel raw-descriptor">
+    <summary class="panel-header">
+      <span class="panel-title">Experiment file <span class="badge badge-neutral">YAML</span></span>
+    </summary>
+    <pre class="task-prose">{{ experiment.experiment_yaml }}</pre>
+  </details>
+  {% endif %}
+
   <!-- Variants Table -->
   <div class="panel">
     <div class="panel-header">

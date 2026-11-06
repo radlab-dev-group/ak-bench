@@ -206,6 +206,117 @@ def test_experiments_and_tasks_pages(database_url: str) -> None:
     assert "wordcount-001@1.0.0" in r_task_detail.text
 
 
+def _components(store: HistoryStore) -> None:
+    """An agent, a runtime and an experiment file, as a real run would store them."""
+    store.record_plan(
+        experiment_uid="test-exp@1.0.0",
+        experiment_yaml=(
+            'id: test-exp\nversion: "1.0.0"\n'
+            "title: Test Matrix Experiment\n"
+            "description: Comparing baseline with knowledge arm\n"
+            "experiment:\n  type: configuration\n"
+            "  agent: {id: codex, version: '1.0.0'}\n"
+            "  execution: {mode: router, runtime: {id: llm-router-ak-bench, version: '1.0.0'}}\n"
+            "  execution_policy: {repetitions: 2, concurrency: 1, timeout_seconds: 600}\n"
+            "  metrics: [task_success_rate, total_tokens]\n"
+        ),
+    )
+    store.record_run(
+        {
+            "run_uid": "run-comp",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "runtime_id": "llm-router-ak-bench",
+            "state": "completed",
+            "evaluation": {"verdict": "passed", "score": 1.0, "passed": 1, "failed": 0, "total": 1},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+        agent_descriptor={
+            "id": "codex",
+            "version": "1.0.0",
+            "title": "Codex CLI",
+            "description": "Codex driven non-interactively.",
+            "descriptor_yaml": (
+                "id: codex\nversion: \"1.0.0\"\ntitle: Codex CLI\n"
+                "agent:\n  adapter: codex_cli\n  execution_type: process\n"
+                "  capabilities: {token_usage: verified, cost_usage: unsupported}\n"
+                "  configuration_schema:\n    model: {type: string, controllable: true}\n"
+                "  notes: isolation recipe verified in phase 0\n"
+            ),
+        },
+        runtime_descriptor={
+            "id": "llm-router-ak-bench",
+            "version": "1.0.0",
+            "title": "LLM Router (managed instance)",
+            "descriptor_yaml": (
+                "id: llm-router-ak-bench\nversion: \"1.0.0\"\n"
+                "runtime:\n  adapter: llm_router\n"
+                "  execution_modes: [router, runtime, direct]\n"
+                "  supported_lifecycles: [managed]\n"
+                "  base_url: http://127.0.0.1:8085\n"
+                "  managed:\n    factor_env: {knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED}\n"
+            ),
+        },
+    )
+
+
+def test_the_experiment_page_shows_its_own_file(database_url: str) -> None:
+    _seeded_store(database_url)
+    _components(_store(database_url))
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/experiments/test-exp@1.0.0").text
+    assert "Experiment Definition" in body
+    assert "recorded with the plan" in body
+    assert "Comparing baseline with knowledge arm" in body
+    assert "llm-router-ak-bench" in body
+    assert "task_success_rate" in body
+    assert "Experiment file" in body
+
+
+def test_agent_and_runtime_pages_show_their_descriptors(database_url: str) -> None:
+    _seeded_store(database_url)
+    _components(_store(database_url))
+    client = TestClient(create_app(database_url=database_url))
+
+    listed = client.get("/agents").text
+    assert "codex" in listed and "Codex CLI" in listed
+    runtime_list = client.get("/runtimes").text
+    assert "llm-router-ak-bench" in runtime_list
+
+    agent = client.get("/agents/codex").text
+    assert "Codex CLI" in agent
+    assert "codex_cli" in agent
+    assert "token_usage" in agent and "verified" in agent
+    assert "id: codex" in agent
+
+    runtime = client.get("/runtimes/llm-router-ak-bench").text
+    assert "LLM Router (managed instance)" in runtime
+    assert "http://127.0.0.1:8085" in runtime
+    assert "LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED" in runtime
+
+    assert client.get("/agents/nope").status_code == 404
+    assert client.get("/runtimes/nope").status_code == 404
+
+
+def test_runs_can_be_filtered_by_agent_and_runtime(database_url: str) -> None:
+    _seeded_store(database_url)
+    _components(_store(database_url))
+    client = TestClient(create_app(database_url=database_url))
+
+    by_agent = client.get("/api/runs?agent=codex@1.0").json()
+    assert "run-comp" in [run["uid"] for run in by_agent["runs"]]
+
+    api = client.get("/api/runs?runtime=llm-router-ak-bench").json()
+    assert [run["uid"] for run in api["runs"]] == ["run-comp"]
+    assert api["runs"][0]["runtime_id"] == "llm-router-ak-bench"
+
+    assert client.get("/api/runs?runtime=some-other-runtime").json()["runs"] == []
+
+
 def test_the_footer_links_the_projects_on_every_page(database_url: str) -> None:
     _seeded_store(database_url)
     client = TestClient(create_app(database_url=database_url))
@@ -390,6 +501,15 @@ def test_a_live_database_shows_a_status(monkeypatch, tmp_path, database_url: str
 
 
 # --------------------------------------------------------------------- loader
+def test_the_catalog_pages_are_reachable_from_the_navigation(database_url: str) -> None:
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/").text
+    for href in ("/tasks", "/agents", "/runtimes", "/experiments", "/runs", "/analytics"):
+        assert f'href="{href}"' in body, href
+
+
 def test_every_page_carries_the_page_load_indicator(database_url: str) -> None:
     """One markup in the base template: the ramp belongs to the shell, not a page."""
     from bench_ui.app import create_app

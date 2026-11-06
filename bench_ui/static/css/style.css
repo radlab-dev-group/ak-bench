@@ -671,6 +671,27 @@ th[data-sortable]:focus-visible {
   outline-offset: -1px;
 }
 
+/* A quiet link beside a filter label: the catalog of what the filter offers. */
+.filter-link {
+  margin-left: 6px;
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.filter-link:hover {
+  color: var(--mint);
+}
+
+/* A table with nothing in it says why, in the body rather than nowhere. */
+.empty-row {
+  text-align: center;
+  padding: 28px 14px;
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
 /* ============================================================ Tables */
 .table-responsive {
   width: 100%;

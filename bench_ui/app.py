@@ -113,6 +113,7 @@ def create_app(
         verdict: str | None = None,
         status: str | None = None,
         agent: str | None = None,
+        runtime: str | None = None,
         model: str | None = None,
         search: str | None = None,
     ):
@@ -123,6 +124,7 @@ def create_app(
             verdict=verdict,
             status=status,
             agent=agent,
+            runtime=runtime,
             model=model,
             search=search,
             limit=200,
@@ -135,6 +137,19 @@ def create_app(
                 "runs": data["runs"],
                 "total": data["total"],
                 "filter_options": data["filter_options"],
+                # The filters the page was asked for, so a link from an agent
+                # or runtime page shows which slice of the history it opened.
+                "filters": {
+                    "experiment_uid": experiment_uid,
+                    "task_uid": task_uid,
+                    "variant_uid": variant_uid,
+                    "verdict": verdict,
+                    "status": status,
+                    "agent": agent,
+                    "runtime": runtime,
+                    "model": model,
+                    "search": search,
+                },
                 "database": database,
             },
         )
@@ -244,6 +259,62 @@ def create_app(
             },
         )
 
+    @app.get("/agents", response_class=HTMLResponse)
+    async def agents_page(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="agents.html",
+            context={
+                "active_page": "agents",
+                "agents": service.get_agents(),
+                "database": database,
+            },
+        )
+
+    @app.get("/agents/{agent_id}", response_class=HTMLResponse)
+    async def agent_detail_page(request: Request, agent_id: str):
+        agents = [row for row in service.get_agents() if row["id"] == agent_id]
+        if not agents:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not recorded")
+        return templates.TemplateResponse(
+            request=request,
+            name="agent_detail.html",
+            context={
+                "active_page": "agents",
+                "agent_id": agent_id,
+                "agents": agents,
+                "database": database,
+            },
+        )
+
+    @app.get("/runtimes", response_class=HTMLResponse)
+    async def runtimes_page(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="runtimes.html",
+            context={
+                "active_page": "runtimes",
+                "runtimes": service.get_runtimes(),
+                "database": database,
+            },
+        )
+
+    @app.get("/runtimes/{runtime_id}", response_class=HTMLResponse)
+    async def runtime_detail_page(request: Request, runtime_id: str):
+        runtimes = [row for row in service.get_runtimes() if row["id"] == runtime_id]
+        if not runtimes:
+            raise HTTPException(status_code=404, detail=f"Runtime '{runtime_id}' not recorded")
+        return templates.TemplateResponse(
+            request=request,
+            name="runtime_detail.html",
+            context={
+                "active_page": "runtimes",
+                "runtime_id": runtime_id,
+                "runtimes": runtimes,
+                "database": database,
+            },
+        )
+
     # ------------------------------------------------------------- REST JSON API
     @app.get("/api/overview")
     async def api_overview():
@@ -257,6 +328,7 @@ def create_app(
         verdict: str | None = None,
         status: str | None = None,
         agent: str | None = None,
+        runtime: str | None = None,
         model: str | None = None,
         search: str | None = None,
         sort_by: str = "started_at",
@@ -271,6 +343,7 @@ def create_app(
             verdict=verdict,
             status=status,
             agent=agent,
+            runtime=runtime,
             model=model,
             search=search,
             sort_by=sort_by,

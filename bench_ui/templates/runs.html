@@ -24,7 +24,7 @@
   <form id="runsFilterForm" class="filter-bar" onsubmit="return false;">
     <div class="filter-group" style="flex:1; min-width:200px;">
       <label for="filterSearch">Search:</label>
-      <input type="text" id="filterSearch" name="search" class="input" style="width:100%;" placeholder="UID, task, model, status...">
+      <input type="text" id="filterSearch" name="search" class="input" style="width:100%;" placeholder="UID, task, model, status..." value="{% if filters and filters.search %}{{ filters.search }}{% endif %}">
     </div>
 
     <div class="filter-group">
@@ -32,7 +32,7 @@
       <select id="filterExperiment" name="experiment_uid" class="select">
         <option value="">All Experiments</option>
         {% for exp in filter_options.experiments %}
-          <option value="{{ exp }}">{{ exp }}</option>
+          <option value="{{ exp }}" {% if filters and filters.experiment_uid == exp %}selected{% endif %}>{{ exp }}</option>
         {% endfor %}
       </select>
     </div>
@@ -42,7 +42,7 @@
       <select id="filterTask" name="task_uid" class="select">
         <option value="">All Tasks</option>
         {% for t in filter_options.tasks %}
-          <option value="{{ t }}">{{ t }}</option>
+          <option value="{{ t }}" {% if filters and filters.task_uid == t %}selected{% endif %}>{{ t }}</option>
         {% endfor %}
       </select>
     </div>
@@ -51,11 +51,9 @@
       <label for="filterVerdict">Verdict:</label>
       <select id="filterVerdict" name="verdict" class="select">
         <option value="">All Verdicts</option>
-        <option value="passed">passed</option>
-        <option value="partial">partial</option>
-        <option value="failed">failed</option>
-        <option value="error">error</option>
-        <option value="unverified">unverified</option>
+        {% for v in ["passed", "partial", "failed", "error", "unverified"] %}
+          <option value="{{ v }}" {% if filters and filters.verdict == v %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
       </select>
     </div>
 
@@ -64,7 +62,7 @@
       <select id="filterStatus" name="status" class="select">
         <option value="">All Statuses</option>
         {% for st in filter_options.statuses %}
-          <option value="{{ st }}">{{ st }}</option>
+          <option value="{{ st }}" {% if filters and filters.status == st %}selected{% endif %}>{{ st }}</option>
         {% endfor %}
       </select>
     </div>
@@ -74,7 +72,33 @@
       <select id="filterModel" name="model" class="select">
         <option value="">All Models</option>
         {% for m in filter_options.models %}
-          <option value="{{ m }}">{{ m }}</option>
+          <option value="{{ m }}" {% if filters and filters.model == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filterAgent">
+        Agent:
+        {% if filter_options.agents %}<a href="/agents" class="filter-link">catalog</a>{% endif %}
+      </label>
+      <select id="filterAgent" name="agent" class="select">
+        <option value="">All Agents</option>
+        {% for a in filter_options.agents %}
+          <option value="{{ a }}" {% if filters and filters.agent == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filterRuntime">
+        Runtime:
+        {% if filter_options.runtimes %}<a href="/runtimes" class="filter-link">catalog</a>{% endif %}
+      </label>
+      <select id="filterRuntime" name="runtime" class="select">
+        <option value="">All Runtimes</option>
+        {% for r in filter_options.runtimes %}
+          <option value="{{ r }}" {% if filters and filters.runtime == r %}selected{% endif %}>{{ r }}</option>
         {% endfor %}
       </select>
     </div>
@@ -102,6 +126,8 @@
             <th style="width:30px;"></th>
             <th data-sortable>Run UID & Config</th>
             <th data-sortable>Task</th>
+            <th data-sortable>Agent</th>
+            <th data-sortable>Runtime</th>
             <th data-sortable>Verdict</th>
             <th data-sortable class="num">Score</th>
             <th data-sortable class="num">Duration</th>
@@ -128,6 +154,8 @@
               <td>
                 <a href="/tasks/{{ run.task_uid }}" class="mono">{{ run.task_uid or "—" }}</a>
               </td>
+              <td class="mono" style="font-size:11.5px;">{{ run.agent or "—" }}</td>
+              <td class="mono" style="font-size:11.5px;">{{ run.runtime_id or "—" }}</td>
               <td>
                 <span class="badge {% if run.verdict == 'passed' %}badge-passed{% elif run.verdict == 'partial' %}badge-partial{% elif run.verdict == 'failed' %}badge-failed{% else %}badge-neutral{% endif %}">
                   {{ run.verdict or "unverified" }}

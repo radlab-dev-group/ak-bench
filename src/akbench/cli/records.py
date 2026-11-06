@@ -8,6 +8,7 @@ is what makes the two paths agree about what a stored run is.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -151,10 +152,8 @@ def _descriptor_payload(
     payload = dict(entry.snapshot.payload)
     payload["kind"] = kind.value
     if entry.source is not None:
-        try:
+        with contextlib.suppress(OSError):
             payload["descriptor_yaml"] = Path(entry.source).read_text(encoding="utf-8")
-        except OSError:
-            pass
     return payload
 
 

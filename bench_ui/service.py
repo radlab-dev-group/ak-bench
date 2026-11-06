@@ -166,6 +166,51 @@ def _definition_from_disk(dataset: Any, uid: str) -> dict[str, Any] | None:
     }
 
 
+def _experiment_config(parsed: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The flat shape the experiment page renders, from a parsed descriptor.
+
+    ``None`` in, ``None`` out: an experiment recorded before its file was
+    stored has nothing to explain, and the page says so instead of
+    reconstructing a configuration nobody asked for.
+    """
+    if parsed is None:
+        return None
+    body = parsed.get("experiment") or {}
+    agent = body.get("agent") or {}
+    execution = body.get("execution") or {}
+    runtime = execution.get("runtime") or {}
+    dataset = body.get("dataset") or {}
+    filters = dataset.get("filters") or {}
+    policy = body.get("execution_policy") or {}
+    isolation = body.get("isolation") or {}
+    limits = body.get("limits") or {}
+    return {
+        "uid": f"{parsed.get('id')}@{parsed.get('version')}",
+        "title": parsed.get("title"),
+        "description": parsed.get("description"),
+        "type": body.get("type"),
+        "agent_id": agent.get("id"),
+        "agent_version": agent.get("version"),
+        "agent_config": agent.get("config") or {},
+        "execution_mode": execution.get("mode"),
+        "runtime_id": runtime.get("id"),
+        "runtime_version": runtime.get("version"),
+        "task_ids": list(filters.get("task_ids") or []),
+        "categories": list(filters.get("categories") or []),
+        "strategy": (body.get("factors") or {}).get("strategy"),
+        "factors": list((body.get("factors") or {}).get("dimensions") or []),
+        "repetitions": policy.get("repetitions"),
+        "concurrency": policy.get("concurrency"),
+        "timeout_seconds": policy.get("timeout_seconds"),
+        "retry_infrastructure_errors": policy.get("retry_infrastructure_errors"),
+        "workspace_per_run": isolation.get("workspace_per_run"),
+        "fresh_agent_session": isolation.get("fresh_agent_session"),
+        "evaluators": list(body.get("evaluation", {}).get("evaluators") or []),
+        "metrics": list(body.get("metrics") or []),
+        "max_runs": limits.get("max_runs"),
+    }
+
+
 def _recorded_definition(
     task_row: dict[str, Any] | None, on_disk: dict[str, Any] | None
 ) -> dict[str, Any] | None:
@@ -365,6 +410,7 @@ class BenchDataService:
         verdict: str | None = None,
         status: str | None = None,
         agent: str | None = None,
+        runtime: str | None = None,
         model: str | None = None,
         search: str | None = None,
         sort_by: str = "started_at",
@@ -398,6 +444,9 @@ class BenchDataService:
                 continue
             # Agent filter
             if agent and r.get("agent") != agent:
+                continue
+            # Runtime filter
+            if runtime and r.get("runtime_id") != runtime:
                 continue
             # Model filter
             if model:
@@ -460,6 +509,7 @@ class BenchDataService:
             }
         )
         all_agents = sorted({str(r.get("agent")) for r in runs if r.get("agent")})
+        all_runtimes = sorted({str(r.get("runtime_id")) for r in runs if r.get("runtime_id")})
 
         # Summary of the filtered subset
         filtered_summary = summarize_runs(filtered) if filtered else summarize_runs([])
@@ -477,6 +527,7 @@ class BenchDataService:
                 "statuses": all_statuses,
                 "models": all_models,
                 "agents": all_agents,
+                "runtimes": all_runtimes,
             },
         }
 
@@ -602,6 +653,7 @@ class BenchDataService:
                     "uid": exp_uid,
                     "title": exp.get("title") or exp_uid,
                     "description": exp.get("description"),
+                    "experiment_yaml": exp.get("experiment_yaml"),
                     "type": exp.get("type"),
                     "descriptor": exp.get("descriptor"),
                     "validity": exp.get("validity"),
@@ -627,6 +679,8 @@ class BenchDataService:
         variants = history.variants.get(experiment_uid, [])
         snapshots = self.store.snapshots(experiment_uid)
         ranking = configuration_ranking(report.runs, {experiment_uid: variants})
+        experiment_yaml = report.experiment.get("experiment_yaml")
+        parsed_experiment = _experiment_config(_task_yaml(experiment_yaml))
 
         # Per-variant summary breakdown
         variant_summaries = []
@@ -644,6 +698,7 @@ class BenchDataService:
 
         return {
             "experiment": report.experiment,
+            "experiment_config": parsed_experiment,
             "summary": report.summary,
             "ranking": ranking,
             "variants": variants,
@@ -720,6 +775,51 @@ class BenchDataService:
             "variants": report.variants,
             "runs": [self._format_run_summary(r, history) for r in report.runs],
         }
+
+    def get_agents(self) -> list[dict[str, Any]]:
+        """Every recorded agent version, with how often its runs happened.
+
+        ``descriptor`` is the agent's own body — capabilities, controllable
+        configuration, observability — parsed from the stored file, so the page
+        can show what the instrument claimed rather than a summary of it.
+        """
+        history = self.get_history()
+        counts: dict[str, int] = {}
+        for run in history.runs:
+            agent = run.get("agent")
+            if agent:
+                counts[str(agent)] = counts.get(str(agent), 0) + 1
+        agents = []
+        for row in self.store.agents():
+            parsed = _task_yaml(row.get("agent_yaml"))
+            agents.append(
+                {
+                    **row,
+                    "descriptor": (parsed or {}).get("agent"),
+                    "runs_count": counts.get(row["uid"], 0),
+                }
+            )
+        return agents
+
+    def get_runtimes(self) -> list[dict[str, Any]]:
+        """Every recorded runtime version, with how often runs used it."""
+        history = self.get_history()
+        counts: dict[str, int] = {}
+        for run in history.runs:
+            runtime = run.get("runtime_id")
+            if runtime:
+                counts[str(runtime)] = counts.get(str(runtime), 0) + 1
+        runtimes = []
+        for row in self.store.runtimes():
+            parsed = _task_yaml(row.get("runtime_yaml"))
+            runtimes.append(
+                {
+                    **row,
+                    "descriptor": (parsed or {}).get("runtime"),
+                    "runs_count": counts.get(row["id"], 0),
+                }
+            )
+        return runtimes
 
     # ------------------------------------------------ Cross-Comparison Matrix
     def compare_configurations(self, config_keys: list[str]) -> dict[str, Any]:
@@ -875,6 +975,7 @@ class BenchDataService:
             "config_str": config_str,
             "task_uid": r.get("task_uid"),
             "agent": r.get("agent"),
+            "runtime_id": r.get("runtime_id"),
             "model": r.get("observed_model") or r.get("requested_model"),
             "status": r.get("status"),
             "verdict": verdict,
