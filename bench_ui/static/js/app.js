@@ -476,6 +476,43 @@ function renderRunTests(tests) {
   `;
 }
 
+// How much a run paid, and how the payment split: input, of it cached, output,
+// and reasoning. The headline is the cache hit ratio — the one number that
+// tells whether the input the run was charged for was already on the shelf.
+function renderTokenBreakdown(obs) {
+  const parts = [
+    { key: 'input', label: 'input', color: 'var(--blue, #5aa9ff)', value: obs.input_tokens || 0 },
+    { key: 'cached', label: 'cached', color: 'var(--mint, #00e59b)', value: obs.cached_input_tokens || 0 },
+    { key: 'output', label: 'output', color: 'var(--amber, #ffb44a)', value: obs.output_tokens || 0 },
+    { key: 'reasoning', label: 'reasoning', color: '#c792ea', value: obs.reasoning_output_tokens || 0 },
+  ];
+  const stated = parts.filter(part => part.value > 0);
+  const total = parts.reduce((sum, part) => sum + part.value, 0);
+  const cacheHit = obs.input_tokens
+    ? ((obs.cached_input_tokens || 0) / obs.input_tokens * 100).toFixed(1) + '%'
+    : '—';
+
+  const bar = total
+    ? `<div class="token-bar">
+        ${stated.map(part => `<div class="token-seg" style="width:${(part.value / total * 100).toFixed(2)}%; background:${part.color};" title="${part.label}: ${part.value.toLocaleString()}"></div>`).join('')}
+      </div>`
+    : '';
+  const legend = parts.map(part => `
+    <div class="token-legend-item">
+      <span class="token-swatch" style="background:${part.color};"></span>
+      <span class="token-legend-label">${part.label}</span>
+      <span class="token-legend-value mono">${part.value ? part.value.toLocaleString() : '—'}</span>
+    </div>`).join('');
+
+  return `
+    <div class="token-headline">
+      <span class="token-cache mono">cache hit ${cacheHit}</span>
+    </div>
+    ${bar}
+    <div class="token-legend">${legend}</div>
+  `;
+}
+
 function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyArtifacts, bodyJson }) {
   const run = data.run;
   const score = data.score !== null ? Number(data.score).toFixed(3) : '—';
@@ -496,9 +533,9 @@ function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyA
           <div class="card-sub">${run.status || 'unknown'}</div>
         </div>
         <div class="card card-amber">
-          <div class="card-title">Total Tokens</div>
+          <div class="card-title">Token Split</div>
           <div class="card-value">${obs.total_tokens ? Number(obs.total_tokens).toLocaleString() : '—'}</div>
-          <div class="card-sub">In: ${(obs.input_tokens || 0).toLocaleString()} | Out: ${(obs.output_tokens || 0).toLocaleString()}</div>
+          ${renderTokenBreakdown(obs)}
         </div>
       </div>
 

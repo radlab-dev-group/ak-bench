@@ -1144,3 +1144,48 @@ def test_each_run_row_carries_its_own_score_history(database_url: str) -> None:
 
     script = client.get("/static/js/app.js").text
     assert "initSparklines" in script and "renderSparkline" in script
+
+
+def test_the_run_inspector_splits_what_a_run_paid_in(database_url: str) -> None:
+    """One number is not a cost: the split across input, cache, output, reasoning is.
+
+    The inspector's token card breaks a run's tokens into the four things they
+    were spent on and leads with the cache hit ratio, because that is the
+    number that says whether the input was paid for twice.
+    """
+    store = _seeded_store(database_url)
+    store.record_run(
+        {
+            "run_uid": "run-tokens",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "state": "completed",
+            "started_at": "2026-11-06T14:00:00+00:00",
+            "observations": {
+                "input_tokens": 1000,
+                "cached_input_tokens": 250,
+                "output_tokens": 200,
+                "reasoning_output_tokens": 50,
+                "total_tokens": 1200,
+            },
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+    client = TestClient(create_app(database_url=database_url))
+
+    detail = client.get("/api/runs/run-tokens").json()
+    obs = detail["run"]["observations"]
+    assert obs["cached_input_tokens"] == 250
+    assert obs["reasoning_output_tokens"] == 50
+
+    script = client.get("/static/js/app.js").text
+    assert "renderTokenBreakdown" in script
+    # the headline the card leads with, and all four parts of the split
+    for token in ("cache hit", "'input'", "'cached'", "'output'", "'reasoning'"):
+        assert token in script
+
+    css = client.get("/static/css/style.css").text
+    assert ".token-bar" in css and ".token-legend" in css
