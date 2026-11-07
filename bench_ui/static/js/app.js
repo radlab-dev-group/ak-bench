@@ -310,7 +310,7 @@ async function fetchFilteredRuns() {
 
 function createRunTableRow(run) {
   const tr = document.createElement('tr');
-  const verdictClass = run.verdict ? `badge-${run.verdict}` : 'badge-neutral';
+  const verdictClass = badgeClass(run.verdict);
   const scoreFormatted = run.score !== null && run.score !== undefined ? Number(run.score).toFixed(3) : '—';
   const durationFormatted = formatDuration(run.duration_seconds);
   const totalTokensFormatted = run.total_tokens ? Number(run.total_tokens).toLocaleString() : '—';
@@ -330,7 +330,7 @@ function createRunTableRow(run) {
         ${escapeHtml(run.config_str || '—')}
       </div>
     </td>
-    <td class="num mono" data-sort-value="${run.repetition === null || run.repetition === undefined ? '' : run.repetition}">
+    <td class="num mono" data-sort-value="${escapeHtml(run.repetition === null || run.repetition === undefined ? '' : run.repetition)}">
       ${run.repetition === null || run.repetition === undefined ? '—' : run.repetition}
     </td>
     <td>
@@ -351,9 +351,9 @@ function createRunTableRow(run) {
       </span>
     </td>
     <td class="spark-cell">${sparkCell(run)}</td>
-    <td class="num mono" data-sort-value="${run.duration_seconds === null || run.duration_seconds === undefined ? '' : run.duration_seconds}">${durationFormatted}</td>
+    <td class="num mono" data-sort-value="${escapeHtml(run.duration_seconds === null || run.duration_seconds === undefined ? '' : run.duration_seconds)}">${durationFormatted}</td>
     <td class="num mono">${totalTokensFormatted}</td>
-    <td class="num mono" data-sort-value="${run.tool_call_count === null || run.tool_call_count === undefined ? '' : run.tool_call_count}">${toolCallsFormatted}</td>
+    <td class="num mono" data-sort-value="${escapeHtml(run.tool_call_count === null || run.tool_call_count === undefined ? '' : run.tool_call_count)}">${toolCallsFormatted}</td>
     <td>
       <span class="badge badge-neutral" style="font-size:11px;">
         ${escapeHtml(run.status || 'unknown')}
@@ -537,7 +537,7 @@ function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyA
         <div class="card card-blue">
           <div class="card-title">Wall-Clock Duration</div>
           <div class="card-value">${formatDuration(data.duration_seconds)}</div>
-          <div class="card-sub">${run.status || 'unknown'}</div>
+          <div class="card-sub">${escapeHtml(run.status || 'unknown')}</div>
         </div>
         <div class="card card-amber">
           <div class="card-title">Token Split</div>
@@ -574,7 +574,7 @@ function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyA
     bodyEval.innerHTML = `
       <div style="margin-bottom:16px;">
         <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
-          <span class="badge ${data.verdict ? 'badge-' + data.verdict : 'badge-neutral'}" style="font-size:14px; padding:4px 10px;">
+          <span class="badge ${badgeClass(data.verdict)}" style="font-size:14px; padding:4px 10px;">
             Verdict: ${escapeHtml(data.verdict || 'unverified')}
           </span>
           <span class="mono" style="font-size:14px; font-weight:600; color:${getScoreColor(data.score)};">
@@ -765,6 +765,19 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// A class name cannot be escaped into safety the way text can: it is built by
+// concatenation into an attribute, and a stored value with a quote in it would
+// close the attribute and open another. So the vocabulary is a fixed list, and
+// anything outside it gets the neutral badge. The server's templates have always
+// chosen the class this way; this is the same rule on the JS side.
+const BADGE_CLASSES = new Set([
+  'passed', 'failed', 'error', 'skipped', 'unverified', 'info', 'neutral',
+]);
+
+function badgeClass(value) {
+  return BADGE_CLASSES.has(String(value ?? '')) ? `badge-${value}` : 'badge-neutral';
 }
 
 function formatDuration(seconds) {

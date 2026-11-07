@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
+import os
+import re
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -11,25 +16,18 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
-from bench_ui.pricing import (
-    PriceTable,
-    estimate_run_cost,
-    format_cost,
-    load_price_table,
-)
-
 from akbench.config.loader import load_settings, resolve_database_url
 from akbench.core.errors import ConfigError, DatabaseError
 from akbench.datasets import Dataset, TaskLoadError
 from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE
 from akbench.reporting.data import (
     HistoryData,
-    mean_per_run,
     build_experiment_report,
     build_task_report,
     collect_history,
     configuration_ranking,
     duration_seconds,
+    mean_per_run,
     score_of,
     summarize_runs,
     unverified_configurations,
@@ -48,6 +46,39 @@ from akbench.storage.models import (
     EvaluationRecord,
     TaskRun,
 )
+from bench_ui.pricing import (
+    PriceTable,
+    estimate_run_cost,
+    format_cost,
+    load_price_table,
+)
+from bench_ui.security import GROUND_TRUTH_KINDS
+
+log = logging.getLogger(__name__)
+
+#: How long one collected history stays fresh, in seconds.
+#:
+#: Every page asks the store for the whole history, several times per request:
+#: the dashboard collects it for the summary, again for the model comparison and
+#: a third time for the ledger. That was affordable while it was one developer
+#: refreshing a laptop tab; on a shared deployment it was five seconds of
+#: database per page view, and the pages were identical for anyone who looked in
+#: the same breath. A short window collapses the repeats without showing anyone
+#: a number that has stopped moving.
+HISTORY_CACHE_SECONDS = 5.0
+
+#: The bounds of one page of runs. ``limit`` is capped because an unbounded one
+#: asks the server to format every run it has for a reader who will see a screen
+#: full; ``offset`` cannot be negative because a negative slice silently means
+#: "from the end", which reads as a bug even when it is only a mistyped URL.
+MAX_PAGE_SIZE = 1000
+
+#: A document type declaration in a JUnit report is not a test result. ElementTree
+#: does not resolve external entities, but it does expand internal ones, and the
+#: quadratic or exponential blowup that buys is a denial of service bought with
+#: one file. Reports this project's evaluators write never carry a DOCTYPE, so
+#: refusing one costs nothing and closes the whole class.
+_XML_FORBIDDEN = re.compile(r"<!DOCTYPE|<!ENTITY", re.IGNORECASE)
 
 
 def _read_text(path: Path) -> str | None:
@@ -58,6 +89,68 @@ def _read_text(path: Path) -> str | None:
 
 
 _FILE_TREE_ORDER = ["repository", "public_tests", "hidden_tests", "mutation"]
+
+#: The definition fields that are the answer key: where the hidden tests live,
+#: and the defect that was planted for the agent to find.
+_GROUND_TRUTH_FIELDS = (
+    "hidden_tests",
+    "mutation",
+    "mutation_version",
+    "mutation_verification",
+    "mutation_notes",
+)
+
+
+def _redact_task_yaml(text: Any) -> str | None:
+    """The recorded descriptor with the answer key taken out of it.
+
+    The whole ``task.yaml`` is shown to a reader because a task is worth reading
+    whole, and the same file carries the mutation patch. Parsing and re-emitting
+    keeps the prose while removing the two keys that matter. Text that will not
+    parse is dropped rather than shown: an unreadable descriptor cannot be
+    promised to be clean of them.
+    """
+    if not text:
+        return None
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    sections = [parsed]
+    body = parsed.get("task")
+    if isinstance(body, dict):
+        sections.append(body)
+    removed = False
+    for section in sections:
+        for key in ("hidden_tests", "mutation"):
+            if section.pop(key, None) is not None:
+                removed = True
+    if not removed:
+        return text
+    try:
+        return yaml.safe_dump(parsed, sort_keys=False, allow_unicode=True)
+    except yaml.YAMLError:
+        return None
+
+
+def scrub_ground_truth(definition: dict[str, Any] | None) -> dict[str, Any] | None:
+    """One task definition, safe to show someone who is grading nothing.
+
+    The task description and the metadata stay: a reader of a leaderboard should
+    be able to see what a task asked. What goes is the hidden test location, the
+    planted defect, and those same two keys inside the recorded descriptor.
+    """
+    if not definition:
+        return definition
+    clean = {
+        key: value for key, value in definition.items() if key not in _GROUND_TRUTH_FIELDS
+    }
+    if "task_yaml" in clean:
+        clean["task_yaml"] = _redact_task_yaml(definition.get("task_yaml"))
+    clean["ground_truth_withheld"] = True
+    return clean
 
 
 def _file_tree(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -408,6 +501,11 @@ def _parse_junit(xml_text: str | None) -> list[dict[str, Any]]:
 
     if not xml_text:
         return []
+    if _XML_FORBIDDEN.search(xml_text):
+        # A report that declares entities is not a test report; say so by
+        # returning nothing rather than by expanding it.
+        log.warning("refusing a JUnit report that declares a DOCTYPE or ENTITY")
+        return []
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
@@ -441,7 +539,7 @@ def _format_duration(seconds: float | None) -> str:
     """A wall-clock total the reader can place: ``18 h 9 m``, ``6 m 59 s``, ``42 s``."""
     if seconds is None:
         return "—"
-    total = int(round(seconds))
+    total = round(seconds)
     if total < 60:
         return f"{total} s"
     minutes, sec = divmod(total, 60)
@@ -449,6 +547,17 @@ def _format_duration(seconds: float | None) -> str:
         return f"{minutes} m {sec} s"
     hours, minutes = divmod(minutes, 60)
     return f"{hours} h {minutes} m"
+
+
+def _count(value: int | None) -> str:
+    """A tally, or the absence of one.
+
+    A history in which no run reported tokens has nothing to total, and the
+    summariser says so with ``None`` rather than with zero. Formatting that
+    directly raised, which meant a freshly initialised database -- reachable,
+    correct, merely empty -- answered its first visitor with a server error.
+    """
+    return "—" if value is None else f"{value:,}"
 
 
 class BenchDataService:
@@ -502,9 +611,20 @@ class BenchDataService:
             engine_is_reachable(self.engine)
             self.revision = schema_status(self.database_url).current
         except DatabaseError as exc:
+            # Kept here, in the server's log, because it is not something a page
+            # should repeat to whoever is reading it: a driver's failure text
+            # names the host, the port and the user it could not reach.
             self.connection_error = str(exc)
+            log.warning("the history is unreachable: %s", exc)
         self._dataset: Dataset | None = None
         self._dataset_loaded = False
+        # The pages now run in worker threads, so the two lazily built values
+        # need a lock each: without one, the first concurrent requests build the
+        # dataset twice and one of them wins by whoever writes last.
+        self._lock = threading.Lock()
+        self._history_cache: HistoryData | None = None
+        self._history_cached_at = 0.0
+        self._roots_cache: tuple[Path, ...] | None = None
 
     def connectivity(self) -> dict[str, Any]:
         """What the UI is looking at: the backend, the namespace, the error."""
@@ -521,19 +641,73 @@ class BenchDataService:
             "error": self.connection_error,
         }
 
+    def connectivity_public(self) -> dict[str, Any]:
+        """What a reader may be told about the database, and no more.
+
+        :meth:`connectivity` is the operator's view and carries the driver's own
+        words, the schema, the revision and the path of the ``.env`` it read. All
+        four are useful to whoever runs this and useful to a stranger for
+        orienting an attack: a connection failure names the host, the port and
+        the user, and a ``.env`` path names the installation. A page needs one
+        fact from this -- is there history to show or not -- plus what to do when
+        there is not.
+        """
+        return {
+            "backend": (
+                self.settings.database.backend if self.settings is not None else "sqlite"
+            ),
+            "reachable": self.connection_error is None,
+            "hint": (
+                None
+                if self.connection_error is None
+                else (
+                    "start PostgreSQL with scripts/run-postgres.sh start, "
+                    "then run akbench init"
+                )
+            ),
+        }
+
     def get_dataset(self) -> Dataset | None:
         if not self._dataset_loaded:
-            self._dataset_loaded = True
-            datasets_dir = self.project_root / "datasets"
-            if datasets_dir.is_dir():
-                try:
-                    self._dataset = Dataset.load(datasets_dir, base_dir=self.project_root)
-                except TaskLoadError:
-                    self._dataset = None
+            with self._lock:
+                # Checked again inside: two threads arriving here together
+                # should load the dataset once, not twice.
+                if not self._dataset_loaded:
+                    datasets_dir = self.project_root / "datasets"
+                    if datasets_dir.is_dir():
+                        try:
+                            self._dataset = Dataset.load(
+                                datasets_dir, base_dir=self.project_root
+                            )
+                        except TaskLoadError:
+                            self._dataset = None
+                    self._dataset_loaded = True
         return self._dataset
 
     def get_history(self) -> HistoryData:
-        return collect_history(self.store)
+        """The whole recorded history, collected at most once per few seconds.
+
+        Cached deliberately briefly: the dashboards read it several times per
+        request and a reader should not have to restart anything to see a run
+        that finished a moment ago.
+        """
+        cached = self._history_cache
+        if (
+            cached is not None
+            and (time.monotonic() - self._history_cached_at) < HISTORY_CACHE_SECONDS
+        ):
+            return cached
+        history = collect_history(self.store)
+        with self._lock:
+            self._history_cache = history
+            self._history_cached_at = time.monotonic()
+        return history
+
+    def invalidate_history(self) -> None:
+        """Drop the cached history, so the next read goes to the database."""
+        with self._lock:
+            self._history_cache = None
+            self._history_cached_at = 0.0
 
     # ------------------------------------------------------------- Overview
     def get_model_comparison(self) -> list[dict[str, Any]]:
@@ -619,10 +793,10 @@ class BenchDataService:
             {"label": "tasks", "value": f"{len(history.tasks):,}"},
             {"label": "total time", "value": _format_duration(total_duration)},
             {"label": "mean time", "value": _format_duration(summary["mean_duration_seconds"])},
-            {"label": "input tokens", "value": f"{summary['input_tokens']:,}"},
-            {"label": "generated tokens", "value": f"{summary['output_tokens']:,}"},
-            {"label": "tokens", "value": f"{summary['total_tokens']:,}"},
-            {"label": "tool calls", "value": f"{summary['tool_calls']:,}"},
+            {"label": "input tokens", "value": _count(summary["input_tokens"])},
+            {"label": "generated tokens", "value": _count(summary["output_tokens"])},
+            {"label": "tokens", "value": _count(summary["total_tokens"])},
+            {"label": "tool calls", "value": _count(summary["tool_calls"])},
             {
                 "label": "cost",
                 "value": cost,
@@ -746,6 +920,12 @@ class BenchDataService:
         limit: int = 100,
         offset: int = 0,
     ) -> dict[str, Any]:
+        # Bounded here rather than only at the endpoint, so every caller -- the
+        # JSON API, the pages, anything written later -- gets the same ceiling.
+        # A negative limit used to mean "the entire history", which is a way for
+        # one request to ask for the whole database.
+        limit = max(1, min(int(limit), MAX_PAGE_SIZE))
+        offset = max(0, int(offset))
         history = self.get_history()
         runs = history.runs
 
@@ -879,7 +1059,7 @@ class BenchDataService:
         for artifact in run.get("artifacts") or []:
             if artifact.get("kind") != "junit":
                 continue
-            tests = _parse_junit(_read_artifact_text(artifact.get("path")))
+            tests = _parse_junit(self._read_artifact_file(artifact.get("path")))
             if tests:
                 return tests
         return []
@@ -958,6 +1138,82 @@ class BenchDataService:
         }
 
     # ----------------------------------------------------- Artifact Content
+    def _artifact_roots(self) -> tuple[Path, ...]:
+        """The directories an artifact's recorded path may live inside.
+
+        A row in ``artifacts`` names a file by path, and that path used to be
+        opened as given: one writable row was a read of anything the dashboard's
+        own user could read, ``.env`` and SSH keys among them. The recorded paths
+        are all under the configured data and reports directories, so staying
+        inside them costs nothing.
+        """
+        if self._roots_cache is not None:
+            return self._roots_cache
+        candidates: list[Path] = []
+        # An explicit list wins as well as adding: a deployment whose artifacts
+        # are not under the configured data directory needs a way to say so, and
+        # saying it explicitly is the point -- the alternative is trusting any
+        # path a row happens to name.
+        extra = os.environ.get("AKBENCH_UI_ARTIFACT_ROOTS", "")
+        for part in re.split(r"[,:]", extra):
+            if part.strip():
+                candidates.append(Path(part.strip()))
+        if self.settings is not None and not os.environ.get("AKBENCH_UI_ARTIFACT_ROOTS_ONLY"):
+            from akbench.config.loader import build_app_paths
+
+            with contextlib.suppress(Exception):
+                paths = build_app_paths(self.settings)
+                candidates.extend(
+                    [
+                        paths.data_dir,
+                        paths.artifacts_dir,
+                        paths.reports_dir,
+                        paths.runtime_instances_dir,
+                    ]
+                )
+        roots: list[Path] = []
+        for candidate in candidates:
+            try:
+                roots.append(Path(candidate).expanduser().resolve())
+            except OSError:  # pragma: no cover - an unreadable configured path
+                continue
+        self._roots_cache = tuple(roots)
+        return self._roots_cache
+
+    def _readable_artifact_path(self, path: str | None) -> Path | None:
+        """The recorded path, when it is a readable file inside a permitted root."""
+        if not path:
+            return None
+        roots = self._artifact_roots()
+        if not roots:
+            # Nothing configured to point at: the blob in the database is all
+            # this dashboard will read, rather than a guess at the filesystem.
+            return None
+        try:
+            resolved = Path(path).expanduser().resolve()
+        except OSError:
+            return None
+        for root in roots:
+            with contextlib.suppress(ValueError):
+                resolved.relative_to(root)
+                if resolved.is_file():
+                    return resolved
+        log.warning("refused to read an artifact recorded outside the data dirs")
+        return None
+
+    def _read_artifact_file(self, path: str | None) -> str | None:
+        """The text behind a recorded path, or ``None`` when it will not be read."""
+        readable = self._readable_artifact_path(path)
+        if readable is None:
+            return None
+        try:
+            return readable.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            # The exception text names paths on this host; the reader is told
+            # only that the file the row pointed at could not be read.
+            log.warning("cannot read the artifact at the recorded path")
+            return "<the recorded file could not be read>"
+
     def get_artifact_content(self, run_uid: str, artifact_kind: str) -> dict[str, Any] | None:
         with session_scope(self.engine) as session:
             task_run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
@@ -977,11 +1233,10 @@ class BenchDataService:
                     content_text = artifact.data.decode("utf-8")
                 except UnicodeDecodeError:
                     content_text = f"<Binary data, size: {len(artifact.data)} bytes>"
-            elif artifact.path and Path(artifact.path).is_file():
-                try:
-                    content_text = Path(artifact.path).read_text(encoding="utf-8", errors="replace")
-                except Exception as ex:
-                    content_text = f"<Error reading file: {ex}>"
+            elif artifact.path:
+                read = self._read_artifact_file(artifact.path)
+                if read is not None:
+                    content_text = read
 
             return {
                 "kind": artifact.kind,
@@ -1175,7 +1430,9 @@ class BenchDataService:
             )
         return results
 
-    def get_task_detail(self, task_uid: str) -> dict[str, Any] | None:
+    def get_task_detail(
+        self, task_uid: str, include_ground_truth: bool = True
+    ) -> dict[str, Any] | None:
         history = self.get_history()
         if history.task(task_uid) is None:
             return None
@@ -1189,22 +1446,33 @@ class BenchDataService:
         return {
             "task": report.task,
             "summary": report.summary,
-            "definition": definition,
+            "definition": scrub_ground_truth(definition)
+            if not include_ground_truth
+            else definition,
             "variants": report.variants,
             "runs": [
                 self._format_run_summary(r, history, trends, baselines) for r in report.runs
             ],
         }
 
-    def get_task_files(self, task_uid: str) -> list[dict[str, Any]]:
+    def get_task_files(
+        self, task_uid: str, include_ground_truth: bool = True
+    ) -> list[dict[str, Any]]:
         """A task's recorded code, grouped by kind into a renderable tree.
 
         One entry per kind that has files; each carries a nested tree of
         directories and files so the page can open a file straight from the
         structure. Kinds are in the order a reader expects: the code first,
         then the tests that grade it, then the defect that was planted.
+
+        ``include_ground_truth`` off drops the kinds that would let someone pass
+        a task without doing it -- the hidden tests and the mutation patch --
+        because a dashboard reachable from a network shows the scoreboard to
+        people who should not be holding the answer key.
         """
         rows = self.store.task_files(task_uid)
+        if not include_ground_truth:
+            rows = [row for row in rows if row["kind"] not in GROUND_TRUTH_KINDS]
         if not rows:
             return []
         order = _FILE_TREE_ORDER
@@ -1221,11 +1489,25 @@ class BenchDataService:
                 groups.append({"kind": kind, "tree": _file_tree(rows_)})
         return groups
 
-    def get_task_file(self, task_uid: str, path: str) -> dict[str, Any] | None:
-        """The content of one recorded file, or ``None`` when it was not stored."""
-        return self.store.task_file(task_uid, path)
+    def get_task_file(
+        self, task_uid: str, path: str, include_ground_truth: bool = True
+    ) -> dict[str, Any] | None:
+        """The content of one recorded file, or ``None`` when it was not stored.
 
-    def get_task_code_zip(self, task_uid: str) -> tuple[bytes, str] | None:
+        A withheld file answers ``None`` rather than ``403``: the difference
+        between "not recorded" and "not for you" is itself a hint about where
+        the answer key is.
+        """
+        row = self.store.task_file(task_uid, path)
+        if row is None:
+            return None
+        if not include_ground_truth and row.get("kind") in GROUND_TRUTH_KINDS:
+            return None
+        return row
+
+    def get_task_code_zip(
+        self, task_uid: str, include_ground_truth: bool = True
+    ) -> tuple[bytes, str] | None:
         """The task's recorded code as a ``{id}__{version}.zip`` download.
 
         A reader who wants to work the task themselves wants the files, not a
@@ -1240,6 +1522,8 @@ class BenchDataService:
         if task is None:
             return None
         rows = self.store.task_files(task_uid)
+        if not include_ground_truth:
+            rows = [row for row in rows if row["kind"] not in GROUND_TRUTH_KINDS]
         if not rows:
             return None
         buffer = io.BytesIO()

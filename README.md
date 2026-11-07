@@ -285,6 +285,59 @@ Where a recorded benchmark lives is chosen by `database.backend`:
 The URL is shown with the password redacted (`akbench config show`, the UI
 footer); the connection itself is never printed.
 
+Two things about it are deliberate:
+
+- **`AKBENCH_PG_PASSWORD` has no default.** Building a connection without one
+  raises rather than inventing one, because a credential that ships with the
+  repository is a credential every installation shares. The field is a
+  `SecretStr`, so dumping the settings object does not carry it either.
+- **`scripts/run-postgres.sh` publishes on loopback.** `AKBENCH_PG_BIND` is
+  separate from `AKBENCH_PG_HOST` because publishing a port on `0.0.0.0` while
+  naming `127.0.0.1` as the host is how a database ends up reachable from a
+  network its operator meant to exclude. Set `AKBENCH_PG_APP_USER` and the
+  script provisions a role that is not a cluster superuser; AK-Bench needs to
+  read and write its own tables and nothing more, and connecting as the
+  bootstrap superuser turns any SQL access into access to the host.
+
+## Serving the dashboard
+
+`akbench ui` binds `127.0.0.1` and trusts whoever reaches it. That is right for
+a laptop and wrong for anything else, so the dashboard reads its posture from
+the environment:
+
+| variable | default | what it decides |
+| --- | --- | --- |
+| `AKBENCH_UI_AUTH` | `auto` | `on`, `off`, or `auto` — authenticate unless the bind address is loopback. An unset address counts as exposed, not as private. |
+| `AKBENCH_UI_USERS` | — | `name:secret[:role],…`, roles `viewer` (default) and `judge`. |
+| `AKBENCH_UI_USERS_FILE` | — | the same entries, one per line, for a secret that should not sit in `ps` or a shell history |
+| `AKBENCH_UI_JUDGE_USERS` | — | names that are judges, when the proxy supplies them |
+| `AKBENCH_UI_USER_HEADER` | — | trust a proxy's header (e.g. `X-Forwarded-User`) instead of HTTP Basic |
+| `AKBENCH_UI_CSP` | a same-origin policy | the `Content-Security-Policy` sent with every response |
+| `AKBENCH_UI_SHOW_GROUND_TRUTH` | `auto` | who may see a task's hidden tests and planted defect: `auto` (judges only when authenticated), `always`, `never` |
+| `AKBENCH_UI_ARTIFACT_ROOTS` | the configured data dirs | the only directories an artifact's recorded path may be read from |
+
+Authentication on with nobody configured is a startup error on the command line
+and a 503 from a served app: a gate with nobody behind it lets nobody through,
+and saying so beats a login box that can never be satisfied.
+
+The dashboard shows the history a benchmark exists to keep honest about, which
+includes each task's hidden tests and the defect planted in it. Those are the
+answer key, so they are a separate privilege from the scoreboard: a `viewer`
+gets the runs, the scores and the task prose, and neither the files, nor the
+task descriptor's mutation section, nor the download archive.
+
+To put it on a network:
+
+```bash
+export AKBENCH_UI_USERS="analyst:$(python -c 'import secrets;print(secrets.token_urlsafe(18))'):viewer,judge:$(python -c 'import secrets;print(secrets.token_urlsafe(18))'):judge"
+akbench ui --host 0.0.0.0 --port 8000
+```
+
+…behind TLS. HTTP Basic sends its password in the clear, and the command warns
+when the bind address is not loopback. `/docs`, `/redoc` and `/openapi.json`
+are off unless the app is built with `api_docs=True`.
+
+
 ## Layout
 
 ```text
