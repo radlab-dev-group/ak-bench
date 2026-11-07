@@ -1242,42 +1242,6 @@ def test_the_experiment_page_scores_tasks_against_configurations(database_url: s
     assert 'class="matrix-chip matrix-low"' in body
 
 
-def test_the_dashboard_shows_which_runs_are_still_going(database_url: str) -> None:
-    """A dashboard that only counts finished runs cannot say what is happening.
-
-    A run in a non-terminal state is listed with its state and its age, and the
-    set of terminal states is read from the lifecycle, so a state added there
-    needs no change here. An empty list is a good answer, not an error.
-    """
-    store = _seeded_store(database_url)
-    store.record_run(
-        {
-            "run_uid": "run-running",
-            "task_uid": "wordcount-001@1.0.0",
-            "agent_id": "codex",
-            "agent_version": "1.0",
-            "state": "executing",
-            "started_at": "2026-11-06T18:00:00+00:00",
-        },
-        experiment_uid="test-exp@1.0.0",
-        variant_uid="v-base",
-        task=_task_stub(),
-    )
-    client = TestClient(create_app(database_url=database_url))
-
-    active = client.get("/api/active-runs").json()
-    # only the run that has not reached a terminal state is listed
-    assert [run["uid"] for run in active] == ["run-running"]
-    assert active[0]["status"] == "executing"
-    assert active[0]["task_uid"] == "wordcount-001@1.0.0"
-
-    body = client.get("/").text
-    assert 'id="liveStrip"' in body and 'id="liveBody"' in body
-
-    script = client.get("/static/js/app.js").text
-    assert "fetchActiveRuns" in script and "tickLiveElapsed" in script
-
-
 _LOG_EVIDENCE = {
     "available": True,
     "log": "router.log",

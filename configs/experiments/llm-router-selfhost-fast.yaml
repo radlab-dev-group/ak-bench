@@ -64,11 +64,7 @@ experiment:
     filters:
       categories: [ bug_fix, new_feature ]
       task_ids:
-        - bookshop-stock-002
-        - bookshop-tiers-001
-        - cadence-catchup-001
-        - freight-shop-001
-
+        - wordcount-001
   factors:
     strategy: custom_matrix
     dimensions:

@@ -350,10 +350,6 @@ def create_app(
     async def api_overview():
         return service.get_overview()
 
-    @app.get("/api/active-runs")
-    async def api_active_runs():
-        return service.get_active_runs()
-
     @app.get("/api/runs")
     async def api_runs(
         experiment_uid: str | None = None,

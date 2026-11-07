@@ -586,36 +586,6 @@ class BenchDataService:
             )
         return rows
 
-    def get_active_runs(self) -> list[dict[str, Any]]:
-        """The runs that have not finished yet, with where they are.
-
-        A dashboard that only counts the dead cannot say what is happening now.
-        The terminal states come from the lifecycle, so a new state added there
-        needs no change here; each live run carries its state and how long it
-        has been going, so a run that is stuck is visible as one that has been
-        going for a very long time.
-        """
-        from akbench.orchestration.lifecycle import TERMINAL_STATES
-
-        history = self.get_history()
-        active = []
-        for run in history.runs:
-            status = str(run.get("status") or "")
-            if status in TERMINAL_STATES:
-                continue
-            active.append(
-                {
-                    "uid": run.get("uid"),
-                    "task_uid": run.get("task_uid"),
-                    "status": status,
-                    "started_at": run.get("started_at"),
-                    "agent": run.get("agent"),
-                    "model": run.get("observed_model") or run.get("requested_model"),
-                }
-            )
-        active.sort(key=lambda item: str(item.get("started_at") or ""))
-        return active
-
     def get_dashboard_stats(self) -> list[dict[str, str]]:
         """The whole history in one ledger, for the top of the dashboard.
 
