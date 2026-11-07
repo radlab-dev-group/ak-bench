@@ -6,6 +6,17 @@
   <title>{% block title %}AK-Bench — Real-Time Benchmark Analytics{% endblock %}</title>
   <meta name="description" content="AK-Bench: repeatable evaluation of coding agents, LLM routers and plugins. Real-time dashboard and comparison studio.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2305070a'/%3E%3Cpath d='M8 22V10M8 16h9M17 10v12M17 13h7M17 19h7' stroke='%2300e59b' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+  <script>
+    // The theme is read and applied before the stylesheet paints, so a reader
+    // who chose the light theme never sees a dark frame first. Dark is the
+    // default: no stored choice, no swap.
+    (function () {
+      try {
+        var theme = localStorage.getItem('akbench_theme');
+        if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+      } catch (err) { /* a blocked storage leaves the default, which is dark */ }
+    })();
+  </script>
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -39,6 +50,11 @@
       </nav>
 
       <div class="nav-right">
+        <button id="themeToggle" class="theme-toggle"
+                title="Switch between the dark and the light palette">
+          <span class="theme-toggle-icon" aria-hidden="true">&#9681;</span>
+          <span class="theme-toggle-label">Dark</span>
+        </button>
         <span class="chip chip-live">
           <span class="pulse-dot"></span>
           <span>LIVE DB</span>

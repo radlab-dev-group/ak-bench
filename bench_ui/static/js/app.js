@@ -147,6 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const copyMarkdown = document.getElementById('btnCopyMarkdown');
   if (copyMarkdown) copyMarkdown.addEventListener('click', () => copyRunsTable('markdown'));
   initRunsKeyNav();
+  initThemeToggle();
 
   if (document.getElementById('liveStrip')) {
     fetchActiveRuns();
@@ -1067,6 +1068,63 @@ function runsKeyNavOnKeydown(event) {
 
 function initRunsKeyNav() {
   document.addEventListener('keydown', runsKeyNavOnKeydown);
+}
+
+// ============================================================ Theme
+// The palette is a list of variables the pages already read, so switching the
+// theme is a swap of that list and not a repaint of anything: the attribute on
+// the root element decides which block of values wins. The choice is stored
+// under one key and read back before the sheet paints (base.html), so a page
+// never opens in the wrong palette. Charts are the one exception — they draw
+// into a canvas and cannot read a variable — so they are asked to redraw.
+const THEME_KEY = 'akbench_theme';
+
+function currentTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+function themeColors() {
+  const style = getComputedStyle(document.documentElement);
+  const read = (name, fallback) => (style.getPropertyValue(name) || fallback).trim();
+  return {
+    text: read('--chart-tx', '#c6d3df'),
+    dim: read('--chart-dim', '#8d9daf'),
+    grid: read('--chart-grid', 'rgba(255,255,255,0.06)'),
+  };
+}
+
+window.akbenchThemeColors = themeColors;
+
+function paintThemeToggle(button) {
+  if (!button) return;
+  const light = currentTheme() === 'light';
+  const label = button.querySelector('.theme-toggle-label');
+  const icon = button.querySelector('.theme-toggle-icon');
+  if (label) label.textContent = light ? 'Light' : 'Dark';
+  if (icon) icon.textContent = light ? '\u2600' : '\u263d';
+}
+
+function setTheme(theme) {
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch (err) { /* nowhere to remember it; the theme still switches for this page */ }
+  paintThemeToggle(document.getElementById('themeToggle'));
+  // canvases keep the colours they were drawn with, so they are rebuilt
+  document.dispatchEvent(new CustomEvent('akbench:theme'));
+}
+
+function initThemeToggle() {
+  const button = document.getElementById('themeToggle');
+  if (!button) return;
+  paintThemeToggle(button);
+  button.addEventListener('click', () => {
+    setTheme(currentTheme() === 'light' ? 'dark' : 'light');
+  });
 }
 
 // ============================================================ Run score sparkline

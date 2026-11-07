@@ -305,6 +305,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (typeof Chart !== 'undefined' && models.length > 0) {
     const mono = { family: 'ui-monospace', size: 11 };
+    // A canvas keeps the ink it was drawn with, so the palette is read each
+    // time a chart is built and the charts are rebuilt when it is switched.
+    const ink = () => (window.akbenchThemeColors ? window.akbenchThemeColors()
+      : { text: '#c6d3df', dim: '#8d9daf', grid: 'rgba(255,255,255,0.06)' });
     const labels = models.map(m => m.model);
     const perf = {
       successRate: models.map(m => m.success_rate !== null ? (m.success_rate * 100).toFixed(1) : 0),
@@ -315,6 +319,7 @@ document.addEventListener('DOMContentLoaded', () => {
       tokensK: models.map(m => m.mean_total_tokens !== null ? Math.round(m.mean_total_tokens / 1000) : 0),
     };
 
+    const drawModelCharts = () => {
     const ctx1 = document.getElementById('chartModelPerformance');
     if (ctx1) {
       new Chart(ctx1, {
@@ -344,10 +349,12 @@ document.addEventListener('DOMContentLoaded', () => {
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: '#c6d3df', font: mono } } },
+          plugins: { legend: { labels: { color: ink().text, font: mono } } },
           scales: {
-            x: { min: 0, max: 100, ticks: { color: '#8d9daf', font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { ticks: { color: '#c6d3df', autoSkip: false, font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            x: {
+              min: 0, max: 100, ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+            },
+            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
           }
         }
       });
@@ -384,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { labels: { color: '#c6d3df', font: mono } },
+            legend: { labels: { color: ink().text, font: mono } },
             // the bill is an estimate from the price table, so it is named as
             // one in the tooltip rather than shown as a measured quantity
             tooltip: {
@@ -399,13 +406,20 @@ document.addEventListener('DOMContentLoaded', () => {
             },
           },
           scales: {
-            x: { ticks: { color: '#c6d3df', autoSkip: false, font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { type: 'linear', position: 'left', ticks: { color: '#ffb44a', font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            x: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } },
+            y: {
+              type: 'linear', position: 'left',
+              ticks: { color: '#ffb44a', font: mono }, grid: { color: ink().grid },
+            },
             y1: { type: 'linear', position: 'right', ticks: { color: '#c792ea', font: mono }, grid: { drawOnChartArea: false } }
           }
         }
       });
     }
+    };
+
+    drawModelCharts();
+    document.addEventListener('akbench:theme', drawModelCharts);
   }
 });
 </script>

@@ -1391,6 +1391,34 @@ def test_two_runs_without_change_artifacts_have_no_diff(database_url: str) -> No
     comparison = service.compare_runs_side_by_side("run-001", "run-002")
     assert comparison["artifact_diff"] is None
 
+def test_the_palette_switches_between_dark_and_light(database_url: str) -> None:
+    """A reader watching a wall display and a reader on a laptop want different palettes.
+
+    The theme is one swap of the variables the pages already read, so the test
+    does not check colours, it checks the seam: a button in the navigation, the
+    stored choice applied before the sheet paints (so no dark frame flashes in
+    front of a light page), one palette defined as a block of variables, and the
+    charts told to redraw because a canvas cannot follow a variable.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/").text
+    assert 'id="themeToggle"' in body
+    # the choice is applied before the stylesheet paints
+    assert body.index("akbench_theme") < body.index("style.css")
+    assert 'data-theme' in body
+
+    css = client.get("/static/css/style.css").text
+    assert '[data-theme="light"]' in css
+
+    script = client.get("/static/js/app.js").text
+    assert "initThemeToggle" in script
+    assert "akbench:theme" in script
+    # charts read their ink from the theme instead of fixing it
+    assert "akbenchThemeColors" in script
+
+
 def test_the_runs_table_is_driven_from_the_keyboard(database_url: str) -> None:
     """A reader who lives at the keyboard should not have to reach for the mouse.
 
