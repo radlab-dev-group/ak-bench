@@ -9,7 +9,6 @@ dataset, and they report.
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import time
 from datetime import UTC, datetime
@@ -49,12 +48,7 @@ from akbench.experiments import (
 )
 from akbench.experiments.validation import ValidationReport
 from akbench.metrics.catalog import MetricCatalog
-from akbench.orchestration import (
-    OrchestrationConfig,
-    RunOrchestrator,
-    RunState,
-    new_run_uid,
-)
+from akbench.orchestration import OrchestrationConfig, RunOrchestrator, RunState
 from akbench.runtime import build_runtime_registry
 from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
@@ -434,42 +428,6 @@ def _run_experiment(
                 # no other output to watch.
                 clock = StepClock(f"[{index}/{plan.counts.runs}]")
                 started_at = datetime.now(UTC)
-                # The uid is minted here rather than by the orchestrator,
-                # because announcing the run requires naming it first. The
-                # stored row is written again under this uid when the run ends,
-                # which updates it instead of adding a second one.
-                run_uid = new_run_uid()
-                if store:
-                    store_history.record_run(
-                        {
-                            "run_uid": run_uid,
-                            "task_uid": task.uid,
-                            "agent_id": variant.agent_id,
-                            "mode": plan.mode,
-                            "runtime_id": plan.runtime_id,
-                            "state": RunState.PENDING.value,
-                            "started_at": started_at.isoformat(),
-                        },
-                        experiment_uid=experiment.identity,
-                        variant_uid=variant.variant_id,
-                        task=loaded,
-                        repetition=repetition + 1,
-                    )
-
-                def report_phase(
-                    state: str,
-                    _clock: StepClock = clock,
-                    _uid: str = run_uid,
-                ) -> None:
-                    # The clock tells the terminal where the wait is, the stored
-                    # row tells the dashboard; neither may break the run. The
-                    # two are bound as defaults so this callback keeps naming the
-                    # run it was made for, not the next one round the loop.
-                    _clock.report_phase(state)
-                    if store:
-                        with contextlib.suppress(Exception):
-                            store_history.set_run_state(_uid, state)
-
                 config = OrchestrationConfig(
                     task=dataset.materialize(loaded),
                     agent_id=variant.agent_id,
@@ -491,21 +449,10 @@ def _run_experiment(
                     apply_mutation=True,
                     cleanup_workspace=False,
                     task_text=None,
-                    run_uid=run_uid,
-                    on_transition=report_phase,
+                    on_transition=clock.report_phase,
                 )
-                try:
-                    with clock.running(console, enabled=not silent):
-                        outcome = orchestrator.run(config)
-                except BaseException:
-                    # A run stopped between its announcement and its record has
-                    # ended too, and leaving it open would show a run in flight
-                    # forever. The state is written, not invented: the operator
-                    # stopped it, so it is cancelled.
-                    if store:
-                        with contextlib.suppress(Exception):
-                            store_history.set_run_state(run_uid, RunState.CANCELLED.value)
-                    raise
+                with clock.running(console, enabled=not silent):
+                    outcome = orchestrator.run(config)
                 record = outcome.record or {}
                 write_record(artifacts_dir / "run_record.json", record)
                 if store:

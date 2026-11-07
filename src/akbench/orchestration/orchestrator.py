@@ -75,10 +75,6 @@ class OrchestrationConfig:
     apply_mutation: bool = True
     cleanup_workspace: bool = False
     task_text: str | None = None
-    #: The identifier of this run. A caller that announces the run before it
-    #: starts -- so a dashboard can see it in flight -- mints it here and passes
-    #: it in; left empty, the orchestrator mints one at the start of ``run``.
-    run_uid: str | None = None
     #: Called with the state value on every transition of this run. The CLI
     #: shows the phase behind its elapsed-time counter; it observes the run and
     #: changes nothing about it, and it is not recorded.
@@ -114,7 +110,7 @@ class RunOrchestrator:
     def run(self, config: OrchestrationConfig) -> RunOutcome:
         """Run once through the lifecycle; never raises for a normal failure."""
         context = RunContext(
-            run_uid=config.run_uid or _run_uid(),
+            run_uid=_run_uid(),
             task_uid=config.task.uid,
             agent_id=config.agent_id,
             mode=config.mode,
@@ -532,13 +528,8 @@ def _first_line(text: str | None) -> str | None:
     return text.strip().splitlines()[0] if text.strip() else None
 
 
-def new_run_uid() -> str:
-    """The identifier of a run, minted by whoever decides to start one."""
-    return f"run-{utc_now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
-
-
 def _run_uid() -> str:
-    return new_run_uid()
+    return f"run-{utc_now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
 
 
 def _requested_model(agent_parameters: dict[str, Any]) -> str | None:
