@@ -251,3 +251,58 @@ def test_a_failed_run_carries_its_reason_into_the_json_result(
     run = payload["runs"][0]
     assert run["state"] == "invalid_configuration"
     assert "AKBENCH_TEST_CREDENTIAL" in str(run["detail"])
+
+
+def test_a_run_is_visible_in_the_history_while_it_is_running(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The in-flight strip of the dashboard reads the history, so a run must be
+    recorded when it starts, not only when it ends.
+
+    The orchestrator is intercepted at its first transition, which is the run
+    really in flight: the history must already hold its row in a non-terminal
+    state, which is what the dashboard lists as active. When the run ends, the
+    record of the end updates the same row instead of forking a second one.
+    """
+    from sqlalchemy import select
+
+    from akbench.cli import experiments as experiment_cli
+    from akbench.config.loader import load_settings, resolve_database_url
+    from akbench.orchestration.lifecycle import TERMINAL_STATES, RunState
+    from akbench.storage.db import create_db_engine, session_scope
+    from akbench.storage.history import HistoryStore
+    from akbench.storage.models import TaskRun
+
+    def history(project_root: Path) -> HistoryStore:
+        return HistoryStore(
+            create_db_engine(resolve_database_url(load_settings(project_root=project_root).settings))
+        )
+
+    real_run = experiment_cli.RunOrchestrator.run
+    seen: list[dict] = []
+
+    def watch(self, config):
+        # The first transition is the first state after the announcement; the
+        # row the CLI wrote when the run started must be readable right now.
+        config.on_transition(RunState.EXECUTING.value)
+        store = history(project)
+        row = store.run(config.run_uid)
+        assert row is not None, "the run is not in the history while it runs"
+        assert row["status"] not in TERMINAL_STATES
+        seen.append(dict(row))
+        return real_run(self, config)
+
+    monkeypatch.setattr(experiment_cli.RunOrchestrator, "run", watch)
+
+    experiment = EXPERIMENTS / "wordcount-direct-sanity.yaml"
+    result = runner.invoke(app, ["experiment", "run", str(experiment), "--store", "--only", "1"])
+
+    assert result.exit_code == 0, result.output
+    assert len(seen) == 1
+    assert seen[0]["status"] == "executing"
+
+    with session_scope(history(project).engine) as session:
+        rows = session.scalars(select(TaskRun)).all()
+    assert len(rows) == 1
+    assert rows[0].status in TERMINAL_STATES
+    assert history(project).runs()[0]["uid"] == seen[0]["uid"]

@@ -17,7 +17,11 @@ from akbench.orchestration.lifecycle import (
     RunState,
     transition_allowed,
 )
-from akbench.orchestration.orchestrator import OrchestrationConfig, RunOrchestrator
+from akbench.orchestration.orchestrator import (
+    OrchestrationConfig,
+    RunOrchestrator,
+    new_run_uid,
+)
 
 __all__ = [
     "OrchestrationConfig",
@@ -25,5 +29,6 @@ __all__ = [
     "RunOrchestrator",
     "RunOutcome",
     "RunState",
+    "new_run_uid",
     "transition_allowed",
 ]

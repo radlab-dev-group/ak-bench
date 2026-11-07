@@ -18,6 +18,7 @@ release tagged as `v<version>`.
 - **The analytics explorer spins while it loads.** Every chart shows a loader until its data has been drawn, so an empty chart is not mistaken for a broken one.
 
 ### Changed
+- **A run is in the history while it is running, not only after.** The dashboard's in-flight strip could never show anything, because a run was recorded only when it finished — every stored row was born terminal, and the strip lists only what is not finished yet. The CLI now records a run the moment it starts and keeps its phase current as the run moves, so the strip says where the wait is; the record at the end of the run updates the same row, so a run is one row from its start to its end. A run stopped before its record is written is closed as cancelled, so it cannot stay in flight forever.
 - **The dashboard's recent-runs and leaderboard tables repeat the run's repetition number** beside the other run columns, and every table that lists runs shows it.
 - **Code viewers offer a copy button beside close** in the task code viewer and the run modal, so the text shown can be taken without selecting it.
 - **YAML in the UI is coloured.** The recorded descriptors (task, experiment, agent, runtime) and the task's `description.md` get a light syntax highlight for keys, values and comments.

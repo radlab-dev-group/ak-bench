@@ -44,6 +44,7 @@ from akbench.storage.models import (
     ModelObservation,
     PluginObservation,
     Repository,
+    RunStatus,
     Runtime,
     Task,
     TaskFile,
@@ -290,6 +291,24 @@ class HistoryStore:
 
             session.flush()
             return {"run_uid": run_uid, "run_id": run.id, "status": run.status}
+
+    def set_run_state(self, run_uid: str, state: str) -> bool:
+        """Move a stored run to ``state`` and nothing else.
+
+        A run is recorded when it starts, so a reader can see what is happening
+        now rather than only what finished, and each phase of the run is worth
+        one narrow write. Nothing else on the row moves: the phase of a run is
+        not its result, and the result is written once, by ``record_run``, when
+        the run ends. A row that has already reached a terminal state is left
+        alone, so a late or duplicate phase can never re-open a finished run.
+        """
+        with session_scope(self.engine) as session:
+            run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
+            if run is None or RunStatus(str(run.status)) in RunStatus.terminal():
+                return False
+            run.status = str(state)
+            run.updated_at = utc_now()
+            return True
 
     # -------------------------------------------------------------- plugins
 
