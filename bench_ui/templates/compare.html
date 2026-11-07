@@ -161,6 +161,30 @@
             </table>
           </div>
         </div>
+
+        {% if run_diff.artifact_diff %}
+        <!-- The two runs' changes to the task, compared line by line: a
+             comparison of two answers is not complete until the answers are
+             diffed. A line the first run had and the second dropped reads red;
+             one the second added reads green; unchanged context reads as is. -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              Change Diff
+              <span class="badge badge-neutral">A {{ run_diff.artifact_diff.path_a or "—" }}</span>
+              <span class="badge badge-info">B {{ run_diff.artifact_diff.path_b or "—" }}</span>
+            </div>
+            <button class="btn btn-sm" type="button" data-copy-target="#artifactDiffBody">Copy</button>
+          </div>
+          <pre class="artifact-diff" id="artifactDiffBody">
+{% if not run_diff.artifact_diff.present_a %}--- A: no change artifact recorded
+{% endif %}{% if not run_diff.artifact_diff.present_b %}+++ B: no change artifact recorded
+{% endif %}{% for row in run_diff.artifact_diff.rows %}{% if row.type == 'removed' %}- {{ row.text }}
+{% elif row.type == 'added' %}+ {{ row.text }}
+{% else %}  {{ row.text }}
+{% endif %}{% endfor %}</pre>
+        </div>
+        {% endif %}
         {% endif %}
       </div>
     </div>

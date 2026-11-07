@@ -312,6 +312,33 @@ def _safe_load_json(val: Any) -> Any:
         return val
 
 
+def _line_diff(left: str | None, right: str | None) -> list[dict[str, Any]]:
+    """Two texts as a unified view of the lines that differ.
+
+    A run that produced two artifacts that look the same can still differ by
+    one line, and a reader needs the lines, not a checksum. The view keeps
+    context on both sides, marks what each side changed, and is empty when the
+    texts are identical — an empty diff is a true statement, so it is shown as
+    one.
+    """
+    import difflib
+
+    left_lines = (left or "").splitlines()
+    right_lines = (right or "").splitlines()
+    rows: list[dict[str, Any]] = []
+    matcher = difflib.SequenceMatcher(a=left_lines, b=right_lines)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for k in range(i2 - i1):
+                rows.append({"type": "same", "text": left_lines[i1 + k]})
+        else:
+            for k in range(i1, i2):
+                rows.append({"type": "removed", "text": left_lines[k]})
+            for k in range(j1, j2):
+                rows.append({"type": "added", "text": right_lines[k]})
+    return rows
+
+
 def _score_trends(history: HistoryData) -> dict[tuple, list[dict[str, Any]]]:
     """The score history of each (task, configuration), in the order runs started.
 
@@ -1395,6 +1422,11 @@ class BenchDataService:
         tok_b = (detail_b.get("run", {}).get("observations") or {}).get("total_tokens")
         token_ratio = round(tok_b / tok_a, 2) if (tok_a and tok_b and tok_a > 0) else None
 
+        # The two artifacts that say what each run actually did, diffed: a
+        # comparison of two runs that produced two files is not complete until
+        # the files are compared.
+        diff = self._artifact_diff(detail_a, detail_b)
+
         return {
             "run_a": detail_a,
             "run_b": detail_b,
@@ -1403,6 +1435,37 @@ class BenchDataService:
                 "time_ratio": time_ratio,
                 "token_ratio": token_ratio,
             },
+            "artifact_diff": diff,
+        }
+
+    def _artifact_diff(self, detail_a: dict[str, Any], detail_b: dict[str, Any]) -> dict[str, Any] | None:
+        """The diff of the two runs' change artifacts, when either recorded one.
+
+        The diff artifact is what a run changed in the task; comparing two runs
+        that both recorded it shows where their answers differ. A run without
+        the artifact is reported as missing, not diffed against nothing, and a
+        pair where neither recorded it is no diff at all, so it is left out.
+        """
+        def change(detail: dict[str, Any]) -> tuple[bool, str | None, str | None]:
+            """One run's change artifact: whether it exists, where, and its text."""
+            run_uid = (detail.get("run") or {}).get("uid")
+            for artifact in detail.get("artifacts") or []:
+                if artifact.get("kind") != "diff":
+                    continue
+                content = self.get_artifact_content(str(run_uid), "diff")
+                return True, artifact.get("path"), (content or {}).get("content")
+            return False, None, None
+
+        present_a, path_a, a = change(detail_a)
+        present_b, path_b, b = change(detail_b)
+        if not present_a and not present_b:
+            return None
+        return {
+            "present_a": present_a,
+            "present_b": present_b,
+            "path_a": path_a,
+            "path_b": path_b,
+            "rows": _line_diff(a, b),
         }
 
     def get_run_options(self) -> list[dict[str, Any]]:

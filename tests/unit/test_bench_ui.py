@@ -1349,3 +1349,44 @@ def test_the_dashboard_estimates_cost_from_the_price_table(database_url: str, tm
     bare_ledger = {row["label"]: row for row in bare.get_dashboard_stats()}
     assert bare_ledger["cost"]["value"] == "not recorded"
     assert bare_ledger["cost"]["hint"] is None
+
+
+def test_two_runs_compare_their_changes_line_by_line(database_url: str, tmp_path) -> None:
+    """Two answers are not compared until the answers themselves are diffed.
+
+    Each run's change artifact is read and shown as the lines each side added
+    or dropped; a run that recorded no change is reported as missing rather
+    than diffed against nothing, and a pair where neither recorded one is no
+    diff at all.
+    """
+    store = _seeded_store(database_url)
+    first = tmp_path / "first.patch"
+    first.write_text("--- a\n+++ b\n context line\n-removed by second\n+added by first\n", encoding="utf-8")
+    second = tmp_path / "second.patch"
+    second.write_text("--- a\n+++ b\n context line\n+added by second\n", encoding="utf-8")
+    store.register_artifacts("run-001", [first])
+    store.register_artifacts("run-002", [second])
+
+    client = TestClient(create_app(database_url=database_url))
+    comparison = client.get("/api/compare/runs?run_a=run-001&run_b=run-002").json()
+    diff = comparison["artifact_diff"]
+    assert diff["present_a"] and diff["present_b"]
+
+    kinds = [(row["type"], row["text"]) for row in diff["rows"]]
+    assert ("same", " context line") in kinds
+    assert ("removed", "-removed by second") in kinds or any(
+        kind == "removed" and "removed by second" in text for kind, text in kinds
+    )
+    assert any(kind == "added" and "added by second" in text for kind, text in kinds)
+
+    body = client.get("/compare?run_a=run-001&run_b=run-002").text
+    assert "Change Diff" in body
+    assert "added by second" in body
+
+
+def test_two_runs_without_change_artifacts_have_no_diff(database_url: str) -> None:
+    """No artifact on either side is not an empty diff; it is no comparison."""
+    _seeded_store(database_url)
+    service = BenchDataService(database_url=database_url)
+    comparison = service.compare_runs_side_by_side("run-001", "run-002")
+    assert comparison["artifact_diff"] is None

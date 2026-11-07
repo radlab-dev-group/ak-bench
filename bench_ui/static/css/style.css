@@ -388,6 +388,22 @@ h3 { font-size: 1.1rem; }
 /* ============================================================ Cards & Grid */
 /** The whole history in one ledger: a row of small cells the reader scans in one
     pass — how much there is, how it fared, how long it took, what it cost. */
+/** Two runs' changes to the task, compared line by line: a line one run dropped
+    reads red, one the other added reads green, and unchanged context reads as
+    it is, so the difference is found by looking rather than by counting. */
+pre.artifact-diff {
+  margin: 0;
+  padding: 12px 14px;
+  max-height: 380px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--fg-dim);
+  background: rgba(0, 0, 0, 0.25);
+  white-space: pre;
+}
+
 /** What is running now: a strip that says whether anything is happening, and
     if so how long each run has been going — the age is the interesting part,
     because a run that started a minute ago and one stuck for an hour look the
