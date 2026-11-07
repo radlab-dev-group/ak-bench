@@ -28,7 +28,7 @@
   --mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --r: 8px;
-  --wrap: 1380px;
+  --wrap: 1760px;
   --nav-h: 60px;
 }
 
@@ -836,6 +836,9 @@ th[data-sortable]:focus-visible {
 }
 
 /* ============================================================ Tables */
+/* A table keeps a minimum readable width and its wrapper scrolls horizontally
+   when the viewport is narrower, so a wide table stops tearing the page apart;
+   on a normal desktop the page itself is wide enough to show it whole. */
 .table-responsive {
   width: 100%;
   overflow-x: auto;
@@ -847,6 +850,13 @@ table {
   border-collapse: collapse;
   text-align: left;
   font-size: 13px;
+}
+
+/* Wide tables (run explorer, task catalog, leaderboard) keep a minimum
+   readable width; on a narrow viewport their wrapper scrolls horizontally
+   instead of letting the columns tear the page apart. */
+table.table-wide {
+  min-width: 1080px;
 }
 
 th {
@@ -865,6 +875,7 @@ td {
   border-bottom: 1px solid var(--line-soft);
   color: var(--fg);
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 
 tr:last-child td {
