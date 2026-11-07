@@ -142,6 +142,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initCopyButtons();
   initYamlHighlighting();
   initSparklines();
+  if (document.getElementById('liveStrip')) {
+    fetchActiveRuns();
+    setInterval(tickLiveElapsed, 1000);
+  }
   initTaskCodeTree();
   initRunDiffPicker();
   initRunSelectionLimit();
@@ -189,7 +193,50 @@ function triggerLiveUpdate() {
   const isDashboard = document.getElementById('dashboardRoot');
   if (isDashboard) {
     fetchOverviewData();
+    fetchActiveRuns();
   }
+}
+
+// A run that has not finished is a run the reader can watch, and one stuck for
+// an hour should not look like one that started two minutes ago. The strip is
+// repainted from the API on the same interval as everything else; an empty
+// list is a good answer, not an error, so it says so plainly.
+async function fetchActiveRuns() {
+  const body = document.getElementById('liveBody');
+  const count = document.getElementById('liveCount');
+  if (!body) return;
+  try {
+    const res = await fetch('/api/active-runs', { loader: false });
+    if (!res.ok) return;
+    const runs = await res.json();
+    count.textContent = String(runs.length);
+    if (!runs.length) {
+      body.innerHTML = '<div class="live-none">All runs are finished.</div>';
+      return;
+    }
+    body.innerHTML = runs.map(run => `
+      <div class="live-run">
+        <span class="live-state mono">${escapeHtml(run.status || 'running')}</span>
+        <a href="/tasks/${encodeURIComponent(run.task_uid || '')}" class="mono">${escapeHtml(run.task_uid || '—')}</a>
+        <span class="live-uid mono">${escapeHtml(run.uid || '')}</span>
+        <span class="live-elapsed mono" data-since="${escapeHtml(run.started_at || '')}">—</span>
+      </div>
+    `).join('');
+    tickLiveElapsed();
+  } catch (err) {
+    console.error('Failed to fetch active runs:', err);
+  }
+}
+
+// Elapsed time is read from the clock, not from the server, so a run's age
+// grows between refreshes without asking the database again.
+function tickLiveElapsed() {
+  document.querySelectorAll('.live-elapsed[data-since]').forEach((element) => {
+    const since = element.dataset.since;
+    if (!since) return;
+    const seconds = Math.max(0, Math.round((Date.now() - new Date(since).getTime()) / 1000));
+    element.textContent = formatDuration(seconds);
+  });
 }
 
 async function fetchOverviewData() {

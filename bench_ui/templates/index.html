@@ -32,6 +32,20 @@
   </div>
   {% endif %}
 
+  <!-- What is happening right now: a run that has not finished is a run the
+       reader can watch, and a run stuck for an hour reads differently from one
+       that started two minutes ago. -->
+  <div class="live-strip" id="liveStrip">
+    <div class="live-strip-head">
+      <span class="pulse-dot"></span>
+      <span>In flight</span>
+      <span class="live-count mono" id="liveCount">0</span>
+    </div>
+    <div class="live-strip-body" id="liveBody">
+      <div class="live-none">All runs are finished.</div>
+    </div>
+  </div>
+
   {% if stats %}
   <!-- The whole history in one ledger: how much there is, how it fared, how long
        it took, what it cost — before the reader asks the charts a question -->

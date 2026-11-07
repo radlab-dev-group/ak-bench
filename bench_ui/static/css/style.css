@@ -388,6 +388,45 @@ h3 { font-size: 1.1rem; }
 /* ============================================================ Cards & Grid */
 /** The whole history in one ledger: a row of small cells the reader scans in one
     pass — how much there is, how it fared, how long it took, what it cost. */
+/** What is running now: a strip that says whether anything is happening, and
+    if so how long each run has been going — the age is the interesting part,
+    because a run that started a minute ago and one stuck for an hour look the
+    same in a list of finished runs. */
+.live-strip {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+.live-strip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.live-count { color: var(--mint, #00e59b); font-size: 13px; font-weight: 700; }
+.live-strip-body { margin-top: 10px; display: grid; gap: 6px; }
+.live-run {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.live-state { color: var(--amber, #ffb44a); }
+.live-uid { color: var(--fg-faint); font-size: 11px; }
+.live-elapsed { color: #fff; min-width: 64px; text-align: right; }
+.live-none { color: var(--fg-faint); font-size: 12px; }
+@media (max-width: 720px) {
+  .live-run { grid-template-columns: 1fr auto; }
+  .live-uid { display: none; }
+}
+
 /** A grid of tasks against configurations: the colour is the score, so the
     weak cell is found by looking rather than by reading a number column. */
 .matrix-scroll { overflow-x: auto; }
