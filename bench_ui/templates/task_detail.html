@@ -167,10 +167,12 @@
           <div class="task-meta-label">Pinned ref</div>
           <div class="task-meta-value mono">{{ definition.ref or task.base_commit or "—" }}</div>
         </div>
+        {% if shows_ground_truth %}
         <div class="task-meta-item">
           <div class="task-meta-label">Hidden tests</div>
           <div class="task-meta-value mono">{{ definition.hidden_tests or "—" }}</div>
         </div>
+        {% endif %}
         <div class="task-meta-item">
           <div class="task-meta-label">Public tests</div>
           <div class="task-meta-value mono">{{ definition.public_tests or "—" }}</div>
@@ -260,7 +262,12 @@
         </span>
       </span>
       <span class="panel-subtitle">
+        {%- if shows_ground_truth %}
         Recorded with the task; click a file to read it
+        {%- else %}
+        Recorded with the task; the hidden tests and the planted defect are
+        withheld from this view
+        {%- endif %}
       </span>
       <a class="btn btn-sm" href="/api/tasks/{{ task.uid }}/download.zip"
          onclick="event.stopPropagation()" title="Download every recorded file">Download zip</a>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +11,15 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from bench_ui.service import BenchDataService
+from bench_ui.middleware import SecurityMiddleware
+from bench_ui.security import (
+    SecuritySettings,
+    load_security_settings,
+    request_shows_ground_truth,
+)
+from bench_ui.service import MAX_PAGE_SIZE, BenchDataService
+
+log = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -58,12 +67,36 @@ def create_app(
     database_url: str | None = None,
     project_root: Path | None = None,
     namespace: str | None = None,
+    security: SecuritySettings | None = None,
+    *,
+    api_docs: bool = False,
 ) -> FastAPI:
+    """Build the dashboard.
+
+    ``security`` off the shelf comes from the ``AKBENCH_UI_*`` environment, which
+    is what the command line sets from its own options; pass it directly to
+    embed the app with a posture of your own.
+
+    ``api_docs`` is off because an interactive map of every endpoint, served to
+    anyone who guesses the path, is a convenience for the operator and a
+    reconnaissance shortcut for everyone else.
+    """
+    settings = security if security is not None else load_security_settings()
     app = FastAPI(
         title="AK-Bench UI",
         description="Real-time interactive dashboard and comparison studio for AK-Bench",
         version="0.1.0",
+        docs_url="/docs" if api_docs else None,
+        redoc_url="/redoc" if api_docs else None,
+        openapi_url="/openapi.json" if api_docs else None,
     )
+    app.state.security = settings
+    if settings.misconfiguration:
+        log.error("the dashboard will refuse every request: %s", settings.misconfiguration)
+
+    # Credentials and the security headers, before any of the routes below and
+    # before the 404 Starlette produces for a path that is not there.
+    app.add_middleware(SecurityMiddleware, settings=settings)
 
     # Static files & templates
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -76,16 +109,18 @@ def create_app(
 
         os.environ.setdefault("AKBENCH__DATABASE__POSTGRES__NAMESPACE", namespace)
     service = BenchDataService(database_url=database_url, project_root=project_root)
-    database = service.connectivity()
+    # The reader's view of the connection: is there history, and what to do if
+    # not. The operator's fuller view stays in the service and the log.
+    database = service.connectivity_public()
     service.database_info = database
 
     # ------------------------------------------------------------- HTML Web Pages
     @app.get("/api/database")
-    async def api_database():
+    def api_database():
         return database
 
     @app.get("/", response_class=HTMLResponse)
-    async def dashboard_page(request: Request):
+    def dashboard_page(request: Request):
         overview = _empty_overview() if service.connection_error else service.get_overview()
         model_comparison = [] if service.connection_error else service.get_model_comparison()
         stats = [] if service.connection_error else service.get_dashboard_stats()
@@ -109,7 +144,7 @@ def create_app(
         )
 
     @app.get("/runs", response_class=HTMLResponse)
-    async def runs_page(
+    def runs_page(
         request: Request,
         experiment_uid: str | None = None,
         task_uid: str | None = None,
@@ -159,7 +194,7 @@ def create_app(
         )
 
     @app.get("/analytics", response_class=HTMLResponse)
-    async def analytics_page(request: Request):
+    def analytics_page(request: Request):
         return templates.TemplateResponse(
             request=request,
             name="analytics.html",
@@ -170,11 +205,11 @@ def create_app(
         )
 
     @app.get("/api/analytics/data")
-    async def api_analytics_data():
+    def api_analytics_data():
         return service.get_analytics_dataset()
 
     @app.get("/compare", response_class=HTMLResponse)
-    async def compare_page(
+    def compare_page(
         request: Request,
         run_a: str | None = None,
         run_b: str | None = None,
@@ -211,7 +246,7 @@ def create_app(
         )
 
     @app.get("/experiments", response_class=HTMLResponse)
-    async def experiments_page(request: Request):
+    def experiments_page(request: Request):
         experiments = service.get_experiments()
         return templates.TemplateResponse(
             request=request,
@@ -224,7 +259,7 @@ def create_app(
         )
 
     @app.get("/experiments/{experiment_uid}", response_class=HTMLResponse)
-    async def experiment_detail_page(request: Request, experiment_uid: str):
+    def experiment_detail_page(request: Request, experiment_uid: str):
         detail = service.get_experiment_detail(experiment_uid)
         if not detail:
             raise HTTPException(status_code=404, detail=f"Experiment '{experiment_uid}' not found")
@@ -246,7 +281,7 @@ def create_app(
         )
 
     @app.get("/tasks", response_class=HTMLResponse)
-    async def tasks_page(request: Request):
+    def tasks_page(request: Request):
         tasks = service.get_tasks()
         return templates.TemplateResponse(
             request=request,
@@ -259,8 +294,9 @@ def create_app(
         )
 
     @app.get("/tasks/{task_uid}", response_class=HTMLResponse)
-    async def task_detail_page(request: Request, task_uid: str):
-        detail = service.get_task_detail(task_uid)
+    def task_detail_page(request: Request, task_uid: str):
+        see_key = request_shows_ground_truth(request, settings)
+        detail = service.get_task_detail(task_uid, include_ground_truth=see_key)
         if not detail:
             raise HTTPException(status_code=404, detail=f"Task '{task_uid}' not found")
         return templates.TemplateResponse(
@@ -272,13 +308,14 @@ def create_app(
                 "summary": detail["summary"],
                 "definition": detail.get("definition"),
                 "runs": detail["runs"],
-                "files": service.get_task_files(task_uid),
+                "files": service.get_task_files(task_uid, include_ground_truth=see_key),
+                "shows_ground_truth": see_key,
                 "database": database,
             },
         )
 
     @app.get("/agents", response_class=HTMLResponse)
-    async def agents_page(request: Request):
+    def agents_page(request: Request):
         return templates.TemplateResponse(
             request=request,
             name="agents.html",
@@ -291,7 +328,7 @@ def create_app(
 
     @app.get("/agents/{agent_id}", response_class=HTMLResponse)
     @app.get("/agents/{agent_id}/{version}", response_class=HTMLResponse)
-    async def agent_detail_page(request: Request, agent_id: str, version: str | None = None):
+    def agent_detail_page(request: Request, agent_id: str, version: str | None = None):
         agents = [row for row in service.get_agents() if row["id"] == agent_id]
         if not agents:
             raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not recorded")
@@ -312,7 +349,7 @@ def create_app(
         )
 
     @app.get("/runtimes", response_class=HTMLResponse)
-    async def runtimes_page(request: Request):
+    def runtimes_page(request: Request):
         return templates.TemplateResponse(
             request=request,
             name="runtimes.html",
@@ -325,7 +362,7 @@ def create_app(
 
     @app.get("/runtimes/{runtime_id}", response_class=HTMLResponse)
     @app.get("/runtimes/{runtime_id}/{version}", response_class=HTMLResponse)
-    async def runtime_detail_page(request: Request, runtime_id: str, version: str | None = None):
+    def runtime_detail_page(request: Request, runtime_id: str, version: str | None = None):
         runtimes = [row for row in service.get_runtimes() if row["id"] == runtime_id]
         if not runtimes:
             raise HTTPException(status_code=404, detail=f"Runtime '{runtime_id}' not recorded")
@@ -347,11 +384,11 @@ def create_app(
 
     # ------------------------------------------------------------- REST JSON API
     @app.get("/api/overview")
-    async def api_overview():
+    def api_overview():
         return service.get_overview()
 
     @app.get("/api/runs")
-    async def api_runs(
+    def api_runs(
         experiment_uid: str | None = None,
         task_uid: str | None = None,
         variant_uid: str | None = None,
@@ -363,8 +400,8 @@ def create_app(
         search: str | None = None,
         sort_by: str = "started_at",
         sort_order: str = "desc",
-        limit: int = 100,
-        offset: int = 0,
+        limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
+        offset: int = Query(0, ge=0),
     ):
         return service.get_filtered_runs(
             experiment_uid=experiment_uid,
@@ -383,14 +420,14 @@ def create_app(
         )
 
     @app.get("/api/runs/{run_uid}")
-    async def api_run_detail(run_uid: str):
+    def api_run_detail(run_uid: str):
         detail = service.get_run_detail(run_uid)
         if not detail:
             raise HTTPException(status_code=404, detail=f"Run '{run_uid}' not found")
         return detail
 
     @app.get("/api/artifacts/{run_uid}/{artifact_kind}")
-    async def api_artifact_content(run_uid: str, artifact_kind: str):
+    def api_artifact_content(run_uid: str, artifact_kind: str):
         artifact = service.get_artifact_content(run_uid, artifact_kind)
         if not artifact:
             raise HTTPException(
@@ -400,39 +437,47 @@ def create_app(
         return artifact
 
     @app.get("/api/compare/configurations")
-    async def api_compare_configurations(configs: list[str] = Query(default=[])):
+    def api_compare_configurations(configs: list[str] = Query(default=[])):
         return service.compare_configurations(configs)
 
     @app.get("/api/compare/runs")
-    async def api_compare_runs(run_a: str, run_b: str):
+    def api_compare_runs(run_a: str, run_b: str):
         result = service.compare_runs_side_by_side(run_a, run_b)
         if not result:
             raise HTTPException(status_code=404, detail="One or both runs were not found")
         return result
 
     @app.get("/api/experiments")
-    async def api_experiments():
+    def api_experiments():
         return service.get_experiments()
 
     @app.get("/api/tasks/{task_uid}/files")
-    async def api_task_files(task_uid: str):
-        if service.get_task_detail(task_uid) is None:
+    def api_task_files(request: Request, task_uid: str):
+        see_key = request_shows_ground_truth(request, settings)
+        if service.get_task_detail(task_uid, include_ground_truth=see_key) is None:
             raise HTTPException(status_code=404, detail=f"Task '{task_uid}' not found")
-        return service.get_task_files(task_uid)
+        return service.get_task_files(task_uid, include_ground_truth=see_key)
 
     @app.get("/api/tasks/{task_uid}/files/{path:path}")
-    async def api_task_file(task_uid: str, path: str):
-        if service.get_task_detail(task_uid) is None:
+    def api_task_file(request: Request, task_uid: str, path: str):
+        see_key = request_shows_ground_truth(request, settings)
+        if service.get_task_detail(task_uid, include_ground_truth=see_key) is None:
             raise HTTPException(status_code=404, detail=f"Task '{task_uid}' not found")
-        row = service.get_task_file(task_uid, path)
+        row = service.get_task_file(task_uid, path, include_ground_truth=see_key)
         if row is None:
             raise HTTPException(status_code=404, detail="File not recorded for this task")
         return row
 
     @app.get("/api/tasks/{task_uid}/download.zip")
-    async def api_task_code_zip(task_uid: str):
-        """The task's recorded code as one archive, named after the task."""
-        packed = service.get_task_code_zip(task_uid)
+    def api_task_code_zip(request: Request, task_uid: str):
+        """The task's recorded code as one archive, named after the task.
+
+        The archive is the task as it was recorded, which for a reader who is not
+        grading it means without the hidden tests and the planted defect: a zip of
+        the answer key is the same leak as showing it on the page, only easier.
+        """
+        see_key = request_shows_ground_truth(request, settings)
+        packed = service.get_task_code_zip(task_uid, include_ground_truth=see_key)
         if packed is None:
             raise HTTPException(status_code=404, detail="No task code recorded")
         payload, filename = packed
@@ -443,7 +488,7 @@ def create_app(
         )
 
     @app.get("/api/tasks")
-    async def api_tasks():
+    def api_tasks():
         return service.get_tasks()
 
     return app

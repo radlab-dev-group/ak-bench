@@ -13,6 +13,28 @@ from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
 from akbench.storage.migrator import upgrade
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _local_dashboard(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Declare these dashboards local, and point its artifacts at the test.
+
+    Two settings, both about things the app cannot see for itself:
+
+    Authentication decides whether to engage from the bind address, and an
+    in-process ``TestClient`` has no bind address to declare -- undeclared means
+    "unknown", and unknown counts as exposed, so every request below would be
+    answered with a 401 for a gate that is not what these tests are about
+    (``test_bench_ui_security.py`` covers the gate itself).
+
+    An artifact's recorded path is read only inside a directory the installation
+    declared, and a test's temporary directory is not one of them. Naming it is
+    what a deployment keeping its artifacts elsewhere would have to do too.
+    """
+    monkeypatch.setenv("AKBENCH_UI_BIND_HOST", "127.0.0.1")
+    monkeypatch.setenv("AKBENCH_UI_ARTIFACT_ROOTS", str(tmp_path))
+
 
 def _store(database_url: str) -> HistoryStore:
     upgrade(database_url)

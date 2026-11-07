@@ -18,7 +18,15 @@
     })();
   </script>
   <link rel="stylesheet" href="/static/css/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Chart.js is served from this origin, not from a CDN. A library this page
+       hands its run data is not something a third party should be able to
+       substitute, and on a plain-HTTP deployment a man in the middle could do
+       exactly that; the hash below is checked against the copy served here, so
+       a truncated or edited file will not run.
+       sha384 of the vendored file:
+       sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4 -->
+  <script src="/static/vendor/chart.umd.min.js"
+          integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4"></script>
 </head>
 <body>
 
@@ -120,7 +128,7 @@
         <span class="db-status-dot"></span> LIVE DB
       </div>
       {% else %}
-      <div class="db-status db-status-offline" title="{{ database.error if database else 'no database configured' }}">
+      <div class="db-status db-status-offline" title="The history is unreadable; the server log says why">
         <span class="db-status-dot"></span> DB OFFLINE
       </div>
       {% endif %}
