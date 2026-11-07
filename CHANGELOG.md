@@ -7,6 +7,7 @@ release tagged as `v<version>`.
 ## [Unreleased]
 
 ### Added
+- **The runs explorer copies its filtered rows out as CSV or Markdown.** Two buttons in the runs panel header take the rows the current filters match — refetched from the API, so a filter that has not repainted cannot export a stale answer — into the clipboard as a CSV for a notebook or a Markdown table for a message. The export carries the numbers the API holds (raw score, seconds, tokens), not the strings the page prettifies, and skips the columns that only drive the page (the comparison checkbox, the inspect button).
 - **The UI shows what a run cost in calls, not only in tokens.** Every table that lists runs or configurations — the dashboard leaderboard and recent runs, the runs explorer, the task and experiment pages — carries a tool-calls column, with the raw number beside it so it sorts. The dashboard charts compare the models against each other on the same measures (success rate and score, duration and tokens) instead of one model against itself across metrics.
 - **The dashboard opens with the overall picture.** Experiments, runs, evaluated, success rate, tasks, total and mean time, input/generated/total tokens and tool calls in one block, cost shown as "not recorded" until the history carries it.
 - **A task's code is downloadable.** `GET /api/tasks/{uid}/download.zip` packs every recorded file under its kind, named `{task-id}__{version}.zip`.

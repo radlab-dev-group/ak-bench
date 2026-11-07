@@ -936,6 +936,16 @@ details[open] > .tree-dir > .tree-caret::before {
   cursor: not-allowed;
 }
 
+/* The export buttons and the selection note share the right-hand side of the
+   runs panel header: two ways out of the table, and one reminder of it. */
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .selection-hint {
   font-size: 12px;
   color: var(--fg-faint);

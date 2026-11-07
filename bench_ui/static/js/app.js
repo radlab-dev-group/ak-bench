@@ -142,6 +142,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initCopyButtons();
   initYamlHighlighting();
   initSparklines();
+  const copyCsv = document.getElementById('btnCopyCsv');
+  if (copyCsv) copyCsv.addEventListener('click', () => copyRunsTable('csv'));
+  const copyMarkdown = document.getElementById('btnCopyMarkdown');
+  if (copyMarkdown) copyMarkdown.addEventListener('click', () => copyRunsTable('markdown'));
+
   if (document.getElementById('liveStrip')) {
     fetchActiveRuns();
     setInterval(tickLiveElapsed, 1000);
@@ -864,6 +869,112 @@ function initRunDiffPicker() {
   selects.forEach((select) => {
     select.addEventListener('change', () => form.submit());
   });
+}
+
+// ============================================================ Copy a table out
+// A filtered table is an answer to a question, and the reader often wants it
+// elsewhere: in a notebook as CSV, in a message as Markdown. The exporter reads
+// the table that is on screen, so it exports what the filter selected rather
+// than a server-side superset, and skips the columns that only exist to drive
+// the page (the comparison checkbox, the Inspect button).
+const EXPORT_COLUMNS = [
+  { key: 'uid', label: 'run' },
+  { key: 'task_uid', label: 'task' },
+  { key: 'config_str', label: 'configuration' },
+  { key: 'repetition', label: 'repetition' },
+  { key: 'verdict', label: 'verdict' },
+  { key: 'score', label: 'score' },
+  { key: 'duration_seconds', label: 'duration_s' },
+  { key: 'total_tokens', label: 'tokens' },
+  { key: 'tool_call_count', label: 'tool_calls' },
+  { key: 'status', label: 'status' },
+  { key: 'started_at', label: 'started_at' },
+];
+
+function csvField(value) {
+  const text = String(value ?? '');
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function markdownField(value) {
+  return String(value ?? '').replace(/\|/g, '\\|');
+}
+
+function tableToCsv(columns, rows) {
+  const head = columns.map(column => csvField(column.label)).join(',');
+  const body = rows.map(row => columns.map(column => csvField(row[column.key])).join(','));
+  return [head, ...body].join('\n');
+}
+
+function tableToMarkdown(columns, rows) {
+  const head = `| ${columns.map(column => markdownField(column.label)).join(' | ')} |`;
+  const rule = `| ${columns.map(() => '---').join(' | ')} |`;
+  const body = rows.map(row => `| ${columns.map(column => markdownField(row[column.key])).join(' | ')} |`);
+  return [head, rule, ...body].join('\n');
+}
+
+// The rows come from the page's own data, not from the rendered cells: a cell
+// that shows "1m 30s" would export as that string, and a reader taking the
+// table to a notebook wants the numbers behind it.
+async function copyRunsTable(format) {
+  const runs = await currentRunsForExport();
+  const columns = EXPORT_COLUMNS;
+  const text = format === 'markdown' ? tableToMarkdown(columns, runs) : tableToCsv(columns, runs);
+  copyText(text, format);
+}
+
+let exportCache = null;
+
+async function currentRunsForExport() {
+  // the same rows the table shows, refetched so a filter that has not been
+  // repainted yet cannot export a stale answer
+  const form = document.getElementById('runsFilterForm');
+  const params = new URLSearchParams();
+  if (form) {
+    for (const [key, val] of new FormData(form).entries()) {
+      if (val) params.append(key, val);
+    }
+  }
+  params.set('limit', '0');
+  try {
+    const res = await fetch(`/api/runs?${params.toString()}`, { loader: false });
+    if (!res.ok) return [];
+    const data = await res.json();
+    exportCache = data.runs;
+    return data.runs;
+  } catch (err) {
+    console.error('Export failed:', err);
+    return exportCache || [];
+  }
+}
+
+function copyText(text, format) {
+  const ok = () => flashCopied(format);
+  const fail = () => flashCopied('failed');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(ok, fail);
+    return;
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  let copied = false;
+  try { copied = document.execCommand('copy'); } catch { copied = false; }
+  area.remove();
+  copied ? ok() : fail();
+}
+
+function flashCopied(format) {
+  const hint = document.getElementById('runsSelectionHint');
+  if (!hint) return;
+  const original = hint.textContent;
+  hint.textContent = format === 'failed'
+    ? 'Copy failed — select the table and copy manually'
+    : `Copied ${format === 'markdown' ? 'Markdown' : 'CSV'} to clipboard`;
+  setTimeout(() => { hint.textContent = original; }, 1800);
 }
 
 // ============================================================ Run score sparkline

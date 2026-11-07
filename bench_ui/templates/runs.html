@@ -115,8 +115,12 @@
         <span>Execution Runs</span>
         <span id="runsMatchedCount" class="chip" style="font-size:11px;">{{ total }} runs</span>
       </div>
-      <div id="runsSelectionHint" class="selection-hint">
-        Tip: select 2 runs to compare side by side
+      <div class="export-actions">
+        <button id="btnCopyCsv" class="btn btn-sm">Copy CSV</button>
+        <button id="btnCopyMarkdown" class="btn btn-sm">Copy Markdown</button>
+        <span id="runsSelectionHint" class="selection-hint">
+          Tip: select 2 runs to compare side by side
+        </span>
       </div>
     </div>
     <div class="table-responsive">
