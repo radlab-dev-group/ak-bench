@@ -11,6 +11,13 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
+from bench_ui.pricing import (
+    PriceTable,
+    estimate_run_cost,
+    format_cost,
+    load_price_table,
+)
+
 from akbench.config.loader import load_settings, resolve_database_url
 from akbench.core.errors import ConfigError, DatabaseError
 from akbench.datasets import Dataset, TaskLoadError
@@ -305,6 +312,82 @@ def _safe_load_json(val: Any) -> Any:
         return val
 
 
+def _line_diff(left: str | None, right: str | None) -> list[dict[str, Any]]:
+    """Two texts as a unified view of the lines that differ.
+
+    A run that produced two artifacts that look the same can still differ by
+    one line, and a reader needs the lines, not a checksum. The view keeps
+    context on both sides, marks what each side changed, and is empty when the
+    texts are identical — an empty diff is a true statement, so it is shown as
+    one.
+    """
+    import difflib
+
+    left_lines = (left or "").splitlines()
+    right_lines = (right or "").splitlines()
+    rows: list[dict[str, Any]] = []
+    matcher = difflib.SequenceMatcher(a=left_lines, b=right_lines)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for k in range(i2 - i1):
+                rows.append({"type": "same", "text": left_lines[i1 + k]})
+        else:
+            for k in range(i1, i2):
+                rows.append({"type": "removed", "text": left_lines[k]})
+            for k in range(j1, j2):
+                rows.append({"type": "added", "text": right_lines[k]})
+    return rows
+
+
+def _score_trends(history: HistoryData) -> dict[tuple, list[dict[str, Any]]]:
+    """The score history of each (task, configuration), in the order runs started.
+
+    One score says little; the same task under the same configuration run
+    several times says whether the number is steady or a fluke. A table row is
+    one run in one of these series, so it carries the whole series and its own
+    place in it.
+    """
+    series: dict[tuple, list[dict[str, Any]]] = {}
+    for run in history.runs:
+        key = (run.get("task_uid"), run.get("variant_uid"))
+        series.setdefault(key, []).append(
+            {
+                "uid": run.get("uid"),
+                "score": score_of(run),
+                "started_at": run.get("started_at"),
+            }
+        )
+    for points in series.values():
+        points.sort(key=lambda point: str(point.get("started_at") or ""))
+    return series
+
+
+def _baseline_scores(history: HistoryData) -> dict[str, float | None]:
+    """The mean score each task's declared baseline reached, when it scored at all.
+
+    A configuration's number is only a number against the baseline; the
+    sparkline draws it as a line, and a run above or below it can then be read
+    at a glance.
+    """
+    baseline_variants = set()
+    for exp_uid, variants in history.variants.items():
+        for variant in variants:
+            if variant.get("is_baseline"):
+                baseline_variants.add((exp_uid, variant.get("uid")))
+    per_task: dict[str, list[float]] = {}
+    for run in history.runs:
+        if (run.get("experiment_uid"), run.get("variant_uid")) not in baseline_variants:
+            continue
+        value = score_of(run)
+        if value is None:
+            continue
+        per_task.setdefault(str(run.get("task_uid")), []).append(value)
+    return {
+        task: (sum(values) / len(values) if values else None)
+        for task, values in per_task.items()
+    }
+
+
 def _read_artifact_text(path: str | None) -> str | None:
     """The text of an artifact kept on disk, or ``None`` when it is not there."""
     if not path:
@@ -407,6 +490,11 @@ class BenchDataService:
             self.database_url = f"sqlite:///{default_sqlite}"
             self.namespace = None
 
+        # What a run costs is not recorded by the agent; it is estimated against
+        # a price table the operator may or may not have written. No table is a
+        # normal state, and the pages then say "not recorded".
+        self.price_table: PriceTable = load_price_table(self.project_root)
+
         self.engine: Engine = create_db_engine(self.database_url)
         self.store = HistoryStore(self.engine)
         self.connection_error: str | None = None
@@ -455,7 +543,9 @@ class BenchDataService:
         so a chart of them cannot say which model a bar belongs to. Grouping
         by the model instead asks the question a reader can act on: on the
         same set of tasks, how did each model do, and at what cost in time and
-        tokens.
+        tokens. A model a run only asked for is not the same evidence as one
+        the instance's log confirmed it served, so each row also carries how
+        many of its runs the log verified.
         """
         history = self.get_history()
         by_model: dict[str, list[dict[str, Any]]] = {}
@@ -467,10 +557,14 @@ class BenchDataService:
         rows = []
         for model, group in sorted(by_model.items()):
             summary = summarize_runs(group)
+            verified = sum(
+                1 for run in group if run.get("model_verification") == "verified"
+            )
             rows.append(
                 {
                     "model": model,
                     "runs": summary["runs"],
+                    "verified_runs": verified,
                     "evaluated": summary["evaluated"],
                     "success_rate": summary["success_rate"],
                     "mean_score": summary["mean_score"],
@@ -487,6 +581,7 @@ class BenchDataService:
                     "mean_tool_calls": mean_per_run(
                         summary["tool_calls"], summary["tool_call_runs"]
                     ),
+                    "estimated_cost": self.estimate_total_cost(group)["total"],
                 }
             )
         return rows
@@ -507,7 +602,8 @@ class BenchDataService:
             if summary["mean_duration_seconds"] is not None
             else None
         )
-        cost = "not recorded"
+        estimated = self.estimate_total_cost(runs)
+        cost = format_cost(estimated["total"], estimated["currency"])
         return [
             {"label": "experiments", "value": f"{len(history.experiments):,}"},
             {"label": "runs", "value": f"{summary['runs']:,}"},
@@ -527,8 +623,46 @@ class BenchDataService:
             {"label": "generated tokens", "value": f"{summary['output_tokens']:,}"},
             {"label": "tokens", "value": f"{summary['total_tokens']:,}"},
             {"label": "tool calls", "value": f"{summary['tool_calls']:,}"},
-            {"label": "cost", "value": cost},
+            {
+                "label": "cost",
+                "value": cost,
+                # an estimate says what it is estimated from, so the number can
+                # be checked rather than believed
+                "hint": (
+                    f"estimated from {estimated['source']}"
+                    f" · {estimated['priced_runs']} run(s) priced"
+                    if estimated["total"] is not None
+                    else None
+                ),
+            },
         ]
+
+    def estimate_total_cost(self, runs: list[dict[str, Any]]) -> dict[str, Any]:
+        """The estimated bill for a set of runs, and what it is an estimate of.
+
+        A run whose model the table does not price is left out and counted, so
+        the page can say how much of the history the number covers: an estimate
+        that silently ignores a third of the runs would be a smaller bill than
+        the truth, which is worse than no number.
+        """
+        total = 0.0
+        priced = 0
+        unpriced = 0
+        for run in runs:
+            model = run.get("observed_model") or run.get("requested_model")
+            amount = estimate_run_cost(self.price_table, model, run.get("observations"))
+            if amount is None:
+                unpriced += 1
+            else:
+                total += amount
+                priced += 1
+        return {
+            "total": total if priced else None,
+            "currency": self.price_table.currency,
+            "priced_runs": priced,
+            "unpriced_runs": unpriced,
+            "source": str(self.price_table.source) if self.price_table.source else None,
+        }
 
     def get_overview(self) -> dict[str, Any]:
         history = self.get_history()
@@ -552,7 +686,11 @@ class BenchDataService:
 
         # Recent runs (last 15 ordered by start descending)
         ordered_runs = sorted(runs, key=lambda r: str(r.get("started_at") or ""), reverse=True)
-        recent_runs = [self._format_run_summary(r, history) for r in ordered_runs[:15]]
+        trends, baselines = _score_trends(history), _baseline_scores(history)
+        recent_runs = [
+            self._format_run_summary(r, history, trends, baselines)
+            for r in ordered_runs[:15]
+        ]
 
         # Aggregate task performance
         task_stats = []
@@ -682,7 +820,10 @@ class BenchDataService:
 
         paginated = filtered[offset : offset + limit] if limit > 0 else filtered
 
-        formatted_runs = [self._format_run_summary(r, history) for r in paginated]
+        trends, baselines = _score_trends(history), _baseline_scores(history)
+        formatted_runs = [
+            self._format_run_summary(r, history, trends, baselines) for r in paginated
+        ]
 
         # Available filter options for UI dropdowns
         all_experiments = sorted(
@@ -891,6 +1032,7 @@ class BenchDataService:
         report = build_experiment_report(history, experiment_uid)
         variants = history.variants.get(experiment_uid, [])
         snapshots = self.store.snapshots(experiment_uid)
+        trends, baselines = _score_trends(history), _baseline_scores(history)
         ranking = configuration_ranking(report.runs, {experiment_uid: variants})
         experiment_yaml = report.experiment.get("experiment_yaml")
         parsed_experiment = _experiment_config(_task_yaml(experiment_yaml))
@@ -905,9 +1047,19 @@ class BenchDataService:
                 {
                     "variant": v,
                     "summary": v_summary,
-                    "runs": [self._format_run_summary(r, history) for r in v_runs],
+                    "runs": [
+                        self._format_run_summary(r, history, trends, baselines)
+                        for r in v_runs
+                    ],
                 }
             )
+
+        # One cell per (task, configuration): the mean score its runs earned.
+        # The page colours the cell, because a weak task under a strong
+        # configuration is the thing worth opening.
+        task_matrix = self._task_score_matrix(
+            report.runs, variant_summaries
+        )
 
         return {
             "experiment": report.experiment,
@@ -916,9 +1068,58 @@ class BenchDataService:
             "ranking": ranking,
             "variants": variants,
             "variant_summaries": variant_summaries,
+            "score_matrix": task_matrix,
             "snapshots": snapshots,
-            "runs": [self._format_run_summary(r, history) for r in report.runs],
+            "runs": [
+                self._format_run_summary(r, history, trends, baselines) for r in report.runs
+            ],
         }
+
+    @staticmethod
+    def _task_score_matrix(
+        runs: list[dict[str, Any]],
+        variant_summaries: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """The mean score of each task under each configuration.
+
+        A configuration is only interesting relative to the task it is applied
+        to, and a task relative to the configurations it is tried under, so the
+        page reads a grid rather than two lists. A cell with no scored runs is
+        ``None`` — a task a configuration never ran is missing, not zero.
+        """
+        columns = [
+            {"uid": v["variant"]["uid"], "config": v["variant"].get("values")}
+            for v in variant_summaries
+        ]
+        by_cell: dict[tuple, list[float]] = {}
+        for run in runs:
+            score = score_of(run)
+            if score is None:
+                continue
+            by_cell.setdefault(
+                (run.get("task_uid"), run.get("variant_uid")), []
+            ).append(score)
+        rows = []
+        seen: list[str] = []
+        for run in runs:
+            t_uid = run.get("task_uid")
+            if not t_uid or t_uid in seen:
+                continue
+            seen.append(t_uid)
+            rows.append(
+                {
+                    "task_uid": t_uid,
+                    "cells": {
+                        c["uid"]: (
+                            sum(vals) / len(vals)
+                            if (vals := by_cell.get((t_uid, c["uid"])))
+                            else None
+                        )
+                        for c in columns
+                    },
+                }
+            )
+        return {"columns": columns, "rows": rows}
 
     def get_tasks(self) -> list[dict[str, Any]]:
         history = self.get_history()
@@ -981,6 +1182,7 @@ class BenchDataService:
 
         dataset = self.get_dataset()
         report = build_task_report(history, task_uid, dataset=dataset)
+        trends, baselines = _score_trends(history), _baseline_scores(history)
         definition = _recorded_definition(
             history.task(task_uid), _definition_from_disk(dataset, task_uid)
         )
@@ -989,7 +1191,9 @@ class BenchDataService:
             "summary": report.summary,
             "definition": definition,
             "variants": report.variants,
-            "runs": [self._format_run_summary(r, history) for r in report.runs],
+            "runs": [
+                self._format_run_summary(r, history, trends, baselines) for r in report.runs
+            ],
         }
 
     def get_task_files(self, task_uid: str) -> list[dict[str, Any]]:
@@ -1194,6 +1398,11 @@ class BenchDataService:
         tok_b = (detail_b.get("run", {}).get("observations") or {}).get("total_tokens")
         token_ratio = round(tok_b / tok_a, 2) if (tok_a and tok_b and tok_a > 0) else None
 
+        # The two artifacts that say what each run actually did, diffed: a
+        # comparison of two runs that produced two files is not complete until
+        # the files are compared.
+        diff = self._artifact_diff(detail_a, detail_b)
+
         return {
             "run_a": detail_a,
             "run_b": detail_b,
@@ -1202,6 +1411,37 @@ class BenchDataService:
                 "time_ratio": time_ratio,
                 "token_ratio": token_ratio,
             },
+            "artifact_diff": diff,
+        }
+
+    def _artifact_diff(self, detail_a: dict[str, Any], detail_b: dict[str, Any]) -> dict[str, Any] | None:
+        """The diff of the two runs' change artifacts, when either recorded one.
+
+        The diff artifact is what a run changed in the task; comparing two runs
+        that both recorded it shows where their answers differ. A run without
+        the artifact is reported as missing, not diffed against nothing, and a
+        pair where neither recorded it is no diff at all, so it is left out.
+        """
+        def change(detail: dict[str, Any]) -> tuple[bool, str | None, str | None]:
+            """One run's change artifact: whether it exists, where, and its text."""
+            run_uid = (detail.get("run") or {}).get("uid")
+            for artifact in detail.get("artifacts") or []:
+                if artifact.get("kind") != "diff":
+                    continue
+                content = self.get_artifact_content(str(run_uid), "diff")
+                return True, artifact.get("path"), (content or {}).get("content")
+            return False, None, None
+
+        present_a, path_a, a = change(detail_a)
+        present_b, path_b, b = change(detail_b)
+        if not present_a and not present_b:
+            return None
+        return {
+            "present_a": present_a,
+            "present_b": present_b,
+            "path_a": path_a,
+            "path_b": path_b,
+            "rows": _line_diff(a, b),
         }
 
     def get_run_options(self) -> list[dict[str, Any]]:
@@ -1249,12 +1489,31 @@ class BenchDataService:
             rows.append(row)
         return {"rows": rows, "param_keys": sorted(param_keys)}
 
-    def _format_run_summary(self, r: dict[str, Any], history: HistoryData) -> dict[str, Any]:
+    def _format_run_summary(
+        self,
+        r: dict[str, Any],
+        history: HistoryData,
+        trends: dict[tuple, list[dict[str, Any]]] | None = None,
+        baselines: dict[str, float | None] | None = None,
+    ) -> dict[str, Any]:
         duration = duration_seconds(r)
         score = score_of(r)
         verdict = verdict_of(r)
         obs = r.get("observations") or {}
         eval_dict = r.get("evaluation") or {}
+
+        # Where this run sits in its own history: the same task under the same
+        # configuration, scored in the order the runs started, with the task's
+        # declared baseline beside it.
+        if trends is None:
+            trends = _score_trends(history)
+        if baselines is None:
+            baselines = _baseline_scores(history)
+        series = trends.get((r.get("task_uid"), r.get("variant_uid"))) or []
+        trend_index = next(
+            (i for i, point in enumerate(series) if point["uid"] == r.get("uid")),
+            None,
+        )
 
         # Get variant configuration string
         var_uid = r.get("variant_uid")
@@ -1291,4 +1550,12 @@ class BenchDataService:
             "tool_call_count": obs.get("tool_call_count"),
             "started_at": r.get("started_at"),
             "finished_at": r.get("finished_at"),
+            "trend_points": [point["score"] for point in series],
+            # the same series as text, for a template that draws it without JS
+            "trend_csv": ",".join(
+                "" if point["score"] is None else f"{point['score']:.4f}"
+                for point in series
+            ),
+            "trend_index": trend_index,
+            "baseline_score": baselines.get(str(r.get("task_uid"))),
         }

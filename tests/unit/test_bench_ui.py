@@ -1093,3 +1093,409 @@ def test_run_tables_carry_the_repetition_number(database_url: str) -> None:
         assert ">Rep</th>" in client.get(path).text, path
     assert ">Rep</th>" in client.get("/runs").text
     assert 'data-sort-value="2"' in client.get("/runs").text
+
+
+def test_each_run_row_carries_its_own_score_history(database_url: str) -> None:
+    """A score is only readable against the runs it came out of.
+
+    A row now carries the history of its own task under its own configuration,
+    in the order the runs started, plus the mean the task's declared baseline
+    reached — so an outlier run is visible without opening it.
+    """
+    store = _seeded_store(database_url)
+    for index, (uid, score) in enumerate(
+        [("run-late-1", 0.4), ("run-late-2", 1.0)], start=1
+    ):
+        store.record_run(
+            {
+                "run_uid": uid,
+                "task_uid": "wordcount-001@1.0.0",
+                "agent_id": "codex",
+                "agent_version": "1.0",
+                "state": "completed",
+                "started_at": f"2026-11-06T1{index}:00:00+00:00",
+                "evaluation": {
+                    "verdict": "partial" if score < 1 else "passed",
+                    "score": score,
+                    "passed": int(score * 10),
+                    "failed": 10 - int(score * 10),
+                    "total": 10,
+                },
+            },
+            experiment_uid="test-exp@1.0.0",
+            variant_uid="v-opt",
+            task=_task_stub(),
+        )
+    client = TestClient(create_app(database_url=database_url))
+
+    runs = {run["uid"]: run for run in client.get("/api/runs").json()["runs"]}
+    late = runs["run-late-2"]
+    # the v-opt series in the order it ran: the seeded partial, then 0.4, then 1.0
+    assert late["trend_points"] == [0.9, 0.4, 1.0]
+    assert late["trend_index"] == 2
+    assert late["trend_csv"] == "0.9000,0.4000,1.0000"
+    # the baseline of this task is v-base, which scored 1.0
+    assert late["baseline_score"] == 1.0
+
+    body = client.get("/runs").text
+    assert ">Trend</th>" in body
+    assert 'data-points="0.9000,0.4000,1.0000"' in body
+    assert 'data-baseline="1.0"' in body
+
+    script = client.get("/static/js/app.js").text
+    assert "initSparklines" in script and "renderSparkline" in script
+
+
+def test_the_run_inspector_splits_what_a_run_paid_in(database_url: str) -> None:
+    """One number is not a cost: the split across input, cache, output, reasoning is.
+
+    The inspector's token card breaks a run's tokens into the four things they
+    were spent on and leads with the cache hit ratio, because that is the
+    number that says whether the input was paid for twice.
+    """
+    store = _seeded_store(database_url)
+    store.record_run(
+        {
+            "run_uid": "run-tokens",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "state": "completed",
+            "started_at": "2026-11-06T14:00:00+00:00",
+            "observations": {
+                "input_tokens": 1000,
+                "cached_input_tokens": 250,
+                "output_tokens": 200,
+                "reasoning_output_tokens": 50,
+                "total_tokens": 1200,
+            },
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+    client = TestClient(create_app(database_url=database_url))
+
+    detail = client.get("/api/runs/run-tokens").json()
+    obs = detail["run"]["observations"]
+    assert obs["cached_input_tokens"] == 250
+    assert obs["reasoning_output_tokens"] == 50
+
+    script = client.get("/static/js/app.js").text
+    assert "renderTokenBreakdown" in script
+    # the headline the card leads with, and all four parts of the split
+    for token in ("cache hit", "'input'", "'cached'", "'output'", "'reasoning'"):
+        assert token in script
+
+    css = client.get("/static/css/style.css").text
+    assert ".token-bar" in css and ".token-legend" in css
+
+
+def test_the_experiment_page_scores_tasks_against_configurations(database_url: str) -> None:
+    """A configuration is only interesting relative to the task it is applied to.
+
+    The page therefore reads a grid — one cell per task and configuration,
+    coloured by the mean score it earned — and a cell with no runs is a
+    missing cell, not a zero.
+    """
+    store = _seeded_store(database_url)
+    # a second task, scored under both variants, so a weak cell exists
+    from types import SimpleNamespace
+    from datetime import datetime
+
+    stub = SimpleNamespace(
+        uid="second-001@1.0.0",
+        digest="sha256:second",
+        path=None,
+        task=SimpleNamespace(
+            id="second-001", version="1.0.0", category="bug_fix", difficulty="easy",
+            evaluator="pytest", created_at=datetime(2026, 11, 1, 12, 0, 0), authors=["Alice"],
+            title="Second", description="d", task=SimpleNamespace(repository=SimpleNamespace(source="s", ref="r")),
+        ),
+    )
+    store.record_run(
+        {"run_uid": "r-second-base", "task_uid": "second-001@1.0.0", "agent_id": "codex",
+         "agent_version": "1.0", "state": "completed", "started_at": "2026-11-06T15:00:00+00:00",
+         "evaluation": {"verdict": "passed", "score": 1.0, "passed": 10, "failed": 0, "total": 10}},
+        experiment_uid="test-exp@1.0.0", variant_uid="v-base", task=stub,
+    )
+    store.record_run(
+        {"run_uid": "r-second-opt", "task_uid": "second-001@1.0.0", "agent_id": "codex",
+         "agent_version": "1.0", "state": "completed", "started_at": "2026-11-06T15:10:00+00:00",
+         "evaluation": {"verdict": "failed", "score": 0.2, "passed": 2, "failed": 8, "total": 10}},
+        experiment_uid="test-exp@1.0.0", variant_uid="v-opt", task=stub,
+    )
+    client = TestClient(create_app(database_url=database_url))
+    service = BenchDataService(database_url=database_url)
+    matrix = service.get_experiment_detail("test-exp@1.0.0")["score_matrix"]
+    by_task = {row["task_uid"]: row for row in matrix["rows"]}
+    # wordcount passed on baseline, partially on opt; second passed on baseline,
+    # failed on opt — the weak cell is (second, v-opt)
+    assert by_task["wordcount-001@1.0.0"]["cells"]["v-base"] == 1.0
+    assert by_task["wordcount-001@1.0.0"]["cells"]["v-opt"] == 0.9
+    assert by_task["second-001@1.0.0"]["cells"]["v-opt"] == 0.2
+    assert by_task["second-001@1.0.0"]["cells"]["v-base"] == 1.0
+
+    body = client.get("/experiments/test-exp@1.0.0").text
+    assert "Task &times; Configuration Matrix" in body
+    assert 'data-score="0.2"' in body
+    assert 'class="matrix-chip matrix-low"' in body
+
+
+_LOG_EVIDENCE = {
+    "available": True,
+    "log": "router.log",
+    "served_models": ["qwen/confirmed"],
+    "routing_decisions": ["qwen/confirmed"],
+    "received_models": ["auto_codex"],
+}
+
+
+def test_a_model_is_verified_only_when_the_log_says_so(database_url: str) -> None:
+    """A bar for a model says little if nothing confirmed that model was served.
+
+    The runs explorer groups by the model a run ended up on, but the model a
+    run only asked for is weaker evidence than one the instance's own log named.
+    The comparison counts how many of a model's runs the log verified, and the
+    dashboard marks that beside the model rather than letting an unverified bar
+    read as a measured fact.
+    """
+    store = _seeded_store(database_url)
+    store.record_run(
+        {
+            "run_uid": "run-verified",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "runtime_id": "llm-router-ak-bench",
+            "requested_model": "qwen/confirmed",
+            "model_evidence": _LOG_EVIDENCE,
+            "state": "completed",
+            "started_at": "2026-11-06T12:00:00+00:00",
+            "finished_at": "2026-11-06T12:03:00+00:00",
+            "evaluation": {"verdict": "passed", "score": 1.0, "passed": 4, "failed": 0, "total": 4},
+            "observations": {"total_tokens": 900, "observed_model": "qwen/confirmed"},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+    # a second run asked for a model and nothing confirmed it was served
+    store.record_run(
+        {
+            "run_uid": "run-asked",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "runtime_id": "llm-router-ak-bench",
+            "requested_model": "qwen/asked-only",
+            "state": "completed",
+            "started_at": "2026-11-06T12:30:00+00:00",
+            "finished_at": "2026-11-06T12:33:00+00:00",
+            "evaluation": {"verdict": "passed", "score": 1.0, "passed": 4, "failed": 0, "total": 4},
+            "observations": {"total_tokens": 900},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+
+    rows = {
+        row["model"]: row
+        for row in BenchDataService(database_url=database_url).get_model_comparison()
+    }
+    confirmed = rows["qwen/confirmed"]
+    assert confirmed["runs"] == 1 and confirmed["verified_runs"] == 1
+
+    # a run that only asked for a model verified nothing
+    asked = rows["qwen/asked-only"]
+    assert asked["runs"] == 1 and asked["verified_runs"] == 0
+
+    body = TestClient(create_app(database_url=database_url)).get("/").text
+    assert "modelVerificationSummary" in body
+
+
+def test_the_price_table_is_read_from_the_project(tmp_path) -> None:
+    """A cost is estimated from a table the operator wrote, never invented.
+
+    Without the table there is no number and the pages say so; with it, a model
+    is priced by name or by the default, and an unlisted model is left unpriced
+    rather than guessed at.
+    """
+    from bench_ui.pricing import estimate_run_cost, format_cost, load_price_table
+
+    empty = load_price_table(tmp_path)
+    assert not empty
+    assert format_cost(None) == "not recorded"
+
+    (tmp_path / "pricing.yaml").write_text(
+        "currency: USD\n"
+        "models:\n"
+        '  "*": {input: 1.0, output: 4.0}\n'
+        "  qwen/cheap: {input: 0.10, output: 0.40}\n",
+        encoding="utf-8",
+    )
+    table = load_price_table(tmp_path)
+    assert table
+    assert table.source.name == "pricing.yaml"
+
+    # a named model uses its own price, not the default
+    priced = estimate_run_cost(table, "qwen/cheap", {"input_tokens": 1_000_000, "output_tokens": 1_000_000})
+    assert priced == 0.5
+    # an unlisted model falls back to the default
+    default = estimate_run_cost(table, "other/model", {"input_tokens": 1_000_000, "output_tokens": 0})
+    assert default == 1.0
+    # a run that stated no tokens has no cost
+    assert estimate_run_cost(table, "qwen/cheap", {}) is None
+    assert format_cost(0.5) == "≈ $0.50"
+
+
+def test_a_table_without_prices_is_no_table(tmp_path) -> None:
+    """Half a file is not an estimate: a broken table reads as no table at all."""
+    from bench_ui.pricing import load_price_table
+
+    (tmp_path / "pricing.yaml").write_text("models: [not, a, mapping]\n", encoding="utf-8")
+    assert not load_price_table(tmp_path)
+
+    (tmp_path / "pricing.yaml").write_text("currency: USD\n", encoding="utf-8")
+    assert not load_price_table(tmp_path)
+
+
+def test_the_dashboard_estimates_cost_from_the_price_table(database_url: str, tmp_path) -> None:
+    """The ledger's cost line names the file the estimate came from."""
+    # the seeded runs record no model, so only a default price can reach them;
+    # a table that names only a model nobody ran would price nothing, which is
+    # the correct answer for that table, not a bug in the estimate
+    (tmp_path / "pricing.yaml").write_text(
+        "currency: USD\nmodels:\n  \"*\": {input: 1.0, output: 4.0}\n",
+        encoding="utf-8",
+    )
+    _seeded_store(database_url)
+    service = BenchDataService(database_url=database_url, project_root=tmp_path)
+    estimate = service.estimate_total_cost(service.get_history().runs)
+    assert estimate["total"] is not None
+    assert estimate["priced_runs"] == 2
+    assert estimate["unpriced_runs"] == 0
+
+    ledger = {row["label"]: row for row in service.get_dashboard_stats()}
+    assert ledger["cost"]["value"].startswith("≈ $")
+    assert "pricing.yaml" in ledger["cost"]["hint"]
+
+    # without a table the same line says it is not recorded
+    bare = BenchDataService(database_url=database_url, project_root=tmp_path / "nowhere")
+    bare_ledger = {row["label"]: row for row in bare.get_dashboard_stats()}
+    assert bare_ledger["cost"]["value"] == "not recorded"
+    assert bare_ledger["cost"]["hint"] is None
+
+
+def test_two_runs_compare_their_changes_line_by_line(database_url: str, tmp_path) -> None:
+    """Two answers are not compared until the answers themselves are diffed.
+
+    Each run's change artifact is read and shown as the lines each side added
+    or dropped; a run that recorded no change is reported as missing rather
+    than diffed against nothing, and a pair where neither recorded one is no
+    diff at all.
+    """
+    store = _seeded_store(database_url)
+    first = tmp_path / "first.patch"
+    first.write_text("--- a\n+++ b\n context line\n-removed by second\n+added by first\n", encoding="utf-8")
+    second = tmp_path / "second.patch"
+    second.write_text("--- a\n+++ b\n context line\n+added by second\n", encoding="utf-8")
+    store.register_artifacts("run-001", [first])
+    store.register_artifacts("run-002", [second])
+
+    client = TestClient(create_app(database_url=database_url))
+    comparison = client.get("/api/compare/runs?run_a=run-001&run_b=run-002").json()
+    diff = comparison["artifact_diff"]
+    assert diff["present_a"] and diff["present_b"]
+
+    kinds = [(row["type"], row["text"]) for row in diff["rows"]]
+    assert ("same", " context line") in kinds
+    assert ("removed", "-removed by second") in kinds or any(
+        kind == "removed" and "removed by second" in text for kind, text in kinds
+    )
+    assert any(kind == "added" and "added by second" in text for kind, text in kinds)
+
+    body = client.get("/compare?run_a=run-001&run_b=run-002").text
+    assert "Change Diff" in body
+    assert "added by second" in body
+
+
+def test_two_runs_without_change_artifacts_have_no_diff(database_url: str) -> None:
+    """No artifact on either side is not an empty diff; it is no comparison."""
+    _seeded_store(database_url)
+    service = BenchDataService(database_url=database_url)
+    comparison = service.compare_runs_side_by_side("run-001", "run-002")
+    assert comparison["artifact_diff"] is None
+
+def test_the_palette_switches_between_dark_and_light(database_url: str) -> None:
+    """A reader watching a wall display and a reader on a laptop want different palettes.
+
+    The theme is one swap of the variables the pages already read, so the test
+    does not check colours, it checks the seam: a button in the navigation, the
+    stored choice applied before the sheet paints (so no dark frame flashes in
+    front of a light page), one palette defined as a block of variables, and the
+    charts told to redraw because a canvas cannot follow a variable.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/").text
+    assert 'id="themeToggle"' in body
+    # the choice is applied before the stylesheet paints
+    assert body.index("akbench_theme") < body.index("style.css")
+    assert 'data-theme' in body
+
+    css = client.get("/static/css/style.css").text
+    assert '[data-theme="light"]' in css
+
+    script = client.get("/static/js/app.js").text
+    assert "initThemeToggle" in script
+    assert "akbench:theme" in script
+    # charts read their ink from the theme instead of fixing it
+    assert "akbenchThemeColors" in script
+
+
+def test_the_runs_table_is_driven_from_the_keyboard(database_url: str) -> None:
+    """A reader who lives at the keyboard should not have to reach for the mouse.
+
+    The runs page says how it is driven, and the script behind it moves a cursor
+    with the arrow keys, opens the run under the cursor on Enter, and drops into
+    the filter search on "/". The keys belong to whatever is being typed into,
+    so the script guards against stealing them from an input or an open modal.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/runs").text
+    assert "kbd-hint" in body
+    assert "<kbd>" in body
+
+    script = client.get("/static/js/app.js").text
+    assert "initRunsKeyNav" in script
+    assert "runsKeyNavFocus" in script
+    assert "row-focused" in script
+    assert "filterSearch" in script
+
+
+def test_the_runs_page_exports_its_filtered_rows(database_url: str) -> None:
+    """A filtered table is an answer to a question; the reader should be able to take it.
+
+    The runs page offers the rows the filters match as CSV and as Markdown, so
+    the same answer can be dropped into a notebook or a message. The exporter
+    reads the numbers the API holds, not the strings the page prettified.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/runs").text
+    assert 'id="btnCopyCsv"' in body
+    assert 'id="btnCopyMarkdown"' in body
+
+    script = client.get("/static/js/app.js").text
+    assert "copyRunsTable" in script
+    assert "tableToCsv" in script
+    assert "tableToMarkdown" in script
+    # the export comes from the API, so the filter state is the live one
+    assert "currentRunsForExport" in script
+

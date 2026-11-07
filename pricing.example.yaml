@@ -1,0 +1,26 @@
+# What a model costs, per million tokens, so the UI can estimate a run's bill.
+#
+# The history never records money — the agent CLI does not report a price, and
+# a benchmark must not invent one — so this table is the only source of a cost,
+# and every number built from it is labelled an estimate.
+#
+# Copy to `pricing.yaml` in this directory to turn the dashboard's "cost" from
+# "not recorded" into an estimate. A model that is not listed, and no `*`
+# default given, is left unpriced rather than guessed at: an estimate nobody
+# can check is worse than no number.
+
+currency: USD
+
+models:
+  # "*" prices every model the table does not name
+  "*":
+    input: 1.00
+    output: 4.00
+
+  qwen/Qwen3.8-27B:
+    input: 0.30
+    output: 1.20
+
+  qwen/Qwen3.8-Flash-Next:
+    input: 0.10
+    output: 0.40

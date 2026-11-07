@@ -1,7 +1,16 @@
 // AK-Bench Analytics Explorer: client-side grouping, filtering and many chart types.
 (() => {
   const PALETTE = ['#00e59b', '#5aa9ff', '#ffb44a', '#c792ea', '#ff6b7a', '#4dd0e1', '#f0e68c', '#ff8a65', '#9ccc65', '#ba68c8', '#7986cb', '#e57373'];
-  const TXT = '#c6d3df', DIM = '#8d9daf', GRID = 'rgba(255,255,255,0.06)';
+  // Chart ink is read from the theme rather than fixed here: a canvas keeps the
+  // colours it was drawn with, so a palette switch re-reads these and rebuilds
+  // every chart instead of recolouring one in place.
+  let TXT = '#c6d3df', DIM = '#8d9daf', GRID = 'rgba(255,255,255,0.06)';
+  function readThemeInk() {
+    const ink = window.akbenchThemeColors ? window.akbenchThemeColors() : null;
+    if (!ink) return;
+    TXT = ink.text; DIM = ink.dim; GRID = ink.grid;
+  }
+  readThemeInk();
   const MONO = 'ui-monospace, monospace';
 
   const METRICS = {
@@ -181,7 +190,9 @@
     ticks: { color: DIM, font: { family: MONO, size: 11 } }, grid: { color: GRID },
     title: title ? { display: true, text: title, color: DIM, font: { family: MONO, size: 11 } } : { display: false },
   }, extra);
-  const legend = { labels: { color: TXT, font: { family: MONO, size: 11 }, boxWidth: 12, usePointStyle: true } };
+  const legendCfg = () => ({
+    labels: { color: TXT, font: { family: MONO, size: 11 }, boxWidth: 12, usePointStyle: true },
+  });
   // Full (never truncated) labels: Chart.js wraps array labels
   function wrapLabel(s, w = 38) {
     s = String(s); if (s.length <= w) return s;
@@ -218,7 +229,7 @@
       type: 'bar', data: { labels, datasets },
       options: {
         indexAxis: 'y',
-        plugins: { legend: state.split ? legend : { display: false }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.raw == null ? '—' : M.fmt(c.raw)}` } } },
+        plugins: { legend: state.split ? legendCfg() : { display: false }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.raw == null ? '—' : M.fmt(c.raw)}` } } },
         scales: { x: baseScale(M.label, { beginAtZero: true }), y: baseScale('', { ticks: { color: TXT, font: { family: MONO, size: 11 }, autoSkip: false } }) },
       },
     }, rowH(n));
@@ -236,7 +247,7 @@
         ],
       },
       options: {
-        indexAxis: 'y', plugins: { legend },
+        indexAxis: 'y', plugins: { legend: legendCfg() },
         scales: { x: baseScale('%', { min: 0, max: 100 }), y: baseScale('', { ticks: { color: TXT, font: { family: MONO, size: 11 }, autoSkip: false } }) },
       },
     }, rowH(groups.length * 1.6));
@@ -256,7 +267,7 @@
         })),
       },
       options: {
-        indexAxis: 'y', plugins: { legend },
+        indexAxis: 'y', plugins: { legend: legendCfg() },
         scales: { x: baseScale('%', { stacked: true, max: 100 }), y: baseScale('', { stacked: true, ticks: { color: TXT, font: { family: MONO, size: 11 }, autoSkip: false } }) },
       },
     }, rowH(groups.length));
@@ -275,7 +286,7 @@
         ],
       },
       options: {
-        indexAxis: 'y', plugins: { legend },
+        indexAxis: 'y', plugins: { legend: legendCfg() },
         scales: { x: baseScale('tokens / run', { stacked: true }), y: baseScale('', { stacked: true, ticks: { color: TXT, font: { family: MONO, size: 11 }, autoSkip: false } }) },
       },
     }, rowH(groups.length));
@@ -294,7 +305,7 @@
       },
       options: {
         plugins: {
-          legend: Object.assign({}, legend, { position: 'bottom' }),
+          legend: Object.assign({}, legendCfg(), { position: 'bottom' }),
           tooltip: { callbacks: { label: c => `${c.dataset.label}: tokens ${fmtNum(c.raw.x)}, score ${c.raw.y.toFixed(3)}, time ${fmtDur(c.raw.dur)}, n=${c.raw.n}` } },
         },
         scales: { x: baseScale('mean tokens / run'), y: baseScale('mean score', { suggestedMin: 0, suggestedMax: 1 }) },
@@ -319,7 +330,7 @@
         })),
       },
       options: {
-        plugins: { legend: Object.assign({}, legend, { position: 'bottom' }) },
+        plugins: { legend: Object.assign({}, legendCfg(), { position: 'bottom' }) },
         scales: { r: { min: 0, max: 1, angleLines: { color: GRID }, grid: { color: GRID }, pointLabels: { color: TXT, font: { family: MONO, size: 11 } }, ticks: { display: false } } },
       },
     });
@@ -339,7 +350,7 @@
       },
       options: {
         plugins: {
-          legend: Object.assign({}, legend, { position: 'bottom' }),
+          legend: Object.assign({}, legendCfg(), { position: 'bottom' }),
           tooltip: { callbacks: { label: c => `${c.raw.task} · ${X.label}=${X.fmt(c.raw.x)}, ${Y.label}=${Y.fmt(c.raw.y)}` } },
         },
         onClick: (_, els, ch) => { if (els.length) { const p = ch.data.datasets[els[0].datasetIndex].data[els[0].index]; if (window.openRunModal) openRunModal(p.uid); } },
@@ -364,7 +375,7 @@
           return { label: g[0], data: c, backgroundColor: alpha(color(i), 0.65), borderColor: color(i), borderWidth: 1 };
         }),
       },
-      options: { plugins: { legend: Object.assign({}, legend, { position: 'bottom' }) }, scales: { x: baseScale(M.label + ' (bin start)'), y: baseScale('runs', { beginAtZero: true, ticks: { color: DIM, precision: 0 } }) } },
+      options: { plugins: { legend: Object.assign({}, legendCfg(), { position: 'bottom' }) }, scales: { x: baseScale(M.label + ' (bin start)'), y: baseScale('runs', { beginAtZero: true, ticks: { color: DIM, precision: 0 } }) } },
     });
   }
 
@@ -382,7 +393,7 @@
       },
       options: {
         plugins: {
-          legend: Object.assign({}, legend, { position: 'bottom' }),
+          legend: Object.assign({}, legendCfg(), { position: 'bottom' }),
           tooltip: { callbacks: { label: c => `${c.raw.task}: ${M.fmt(c.raw.y)} @ ${new Date(c.raw.x).toLocaleString('pl-PL')}` } },
         },
         scales: { x: baseScale('', { ticks: { color: DIM, callback: v => new Date(v).toLocaleString('pl-PL', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) } }), y: baseScale(M.label) },
@@ -405,7 +416,7 @@
         }),
       },
       options: {
-        parsing: false, plugins: { legend: Object.assign({}, legend, { position: 'bottom' }) },
+        parsing: false, plugins: { legend: Object.assign({}, legendCfg(), { position: 'bottom' }) },
         scales: { x: { type: 'linear', ticks: { color: DIM, callback: v => new Date(v).toLocaleString('pl-PL', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }, grid: { color: GRID } }, y: baseScale('cumulative tokens') },
       },
     });
@@ -511,5 +522,8 @@
     $('anReset').addEventListener('click', () => { history.replaceState(null, '', location.pathname); location.reload(); });
     // live refresh integration
     window.triggerLiveUpdate = () => load(false);
+    // A canvas cannot follow a CSS variable, so the theme event rebuilds the
+    // charts with the ink of the palette the page has just taken on.
+    document.addEventListener('akbench:theme', () => { readThemeInk(); render(); });
   });
 })();

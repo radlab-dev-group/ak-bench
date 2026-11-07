@@ -10,6 +10,10 @@
       <h1 style="margin:0 0 4px;">Runs Explorer</h1>
       <div style="color:var(--fg-dim); font-size:13.5px;">
         Filter, search, inspect test logs and compare arbitrary benchmark executions.
+        <span class="kbd-hint">
+          <kbd>&uarr;</kbd><kbd>&darr;</kbd> move &middot; <kbd>Enter</kbd> inspect &middot;
+          <kbd>/</kbd> search
+        </span>
       </div>
     </div>
     <div style="display:flex; gap:10px;">
@@ -115,8 +119,12 @@
         <span>Execution Runs</span>
         <span id="runsMatchedCount" class="chip" style="font-size:11px;">{{ total }} runs</span>
       </div>
-      <div id="runsSelectionHint" class="selection-hint">
-        Tip: select 2 runs to compare side by side
+      <div class="export-actions">
+        <button id="btnCopyCsv" class="btn btn-sm">Copy CSV</button>
+        <button id="btnCopyMarkdown" class="btn btn-sm">Copy Markdown</button>
+        <span id="runsSelectionHint" class="selection-hint">
+          Tip: select 2 runs to compare side by side
+        </span>
       </div>
     </div>
     <div class="table-responsive">
@@ -131,6 +139,7 @@
             <th data-sortable>Runtime</th>
             <th data-sortable>Verdict</th>
             <th data-sortable class="num">Score</th>
+            <th title="This task under this configuration, scored in the order the runs started; the dashed line is the task's baseline">Trend</th>
             <th data-sortable class="num">Duration</th>
             <th data-sortable class="num">Tokens</th>
             <th data-sortable class="num">Tool Calls</th>
@@ -168,6 +177,12 @@
               </td>
               <td class="num mono" style="font-weight:600; color:{% if (run.score or 0) >= 1.0 %}var(--mint){% elif (run.score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
                 {% if run.score is not none %}{{ "%.3f"|format(run.score) }}{% else %}—{% endif %}
+              </td>
+              <td class="spark-cell">
+                <span class="spark"
+                      data-points="{{ run.trend_csv }}"
+                      data-index="{{ run.trend_index if run.trend_index is not none else '' }}"
+                      data-baseline="{{ run.baseline_score if run.baseline_score is not none else '' }}"></span>
               </td>
               <td class="num mono" data-sort-value="{{ run.duration_seconds if run.duration_seconds is not none else '' }}">
                 {% if run.duration_seconds is not none %}

@@ -40,6 +40,7 @@
     <div class="ledger-item">
       <div class="ledger-value mono">{{ item.value }}</div>
       <div class="ledger-label">{{ item.label }}</div>
+      {% if item.hint %}<div class="ledger-hint">{{ item.hint }}</div>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -120,6 +121,7 @@
         </div>
       </div>
     </div>
+    <div class="model-verification-summary" id="modelVerificationSummary"></div>
   </div>
 
   <!-- Configuration Ranking Matrix Table -->
@@ -290,7 +292,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (typeof Chart !== 'undefined' && models.length > 0) {
     const mono = { family: 'ui-monospace', size: 11 };
-    const labels = models.map(m => m.model);
+    // A canvas keeps the ink it was drawn with, so the palette is read each
+    // time a chart is built and the charts are rebuilt when it is switched.
+    const ink = () => (window.akbenchThemeColors ? window.akbenchThemeColors()
+      : { text: '#c6d3df', dim: '#8d9daf', grid: 'rgba(255,255,255,0.06)' });
+    // A model a run only asked for is weaker evidence than one the instance's
+    // log confirmed it served, so the badge says how many of the model's runs
+    // the log verified. Zero verified reads as "not verified", not as "bad".
+    const vlabel = (m) => m.verified_runs > 0 ? `\u2713 ${m.verified_runs}/${m.runs}` : '\u25cb';
+    const labels = models.map(m => `${m.model}  ${vlabel(m)}`);
     const perf = {
       successRate: models.map(m => m.success_rate !== null ? (m.success_rate * 100).toFixed(1) : 0),
       meanScore: models.map(m => m.mean_score !== null ? (m.mean_score * 100).toFixed(1) : 0),
@@ -300,6 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
       tokensK: models.map(m => m.mean_total_tokens !== null ? Math.round(m.mean_total_tokens / 1000) : 0),
     };
 
+    const drawModelCharts = () => {
     const ctx1 = document.getElementById('chartModelPerformance');
     if (ctx1) {
       new Chart(ctx1, {
@@ -329,10 +340,12 @@ document.addEventListener('DOMContentLoaded', () => {
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: '#c6d3df', font: mono } } },
+          plugins: { legend: { labels: { color: ink().text, font: mono } } },
           scales: {
-            x: { min: 0, max: 100, ticks: { color: '#8d9daf', font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { ticks: { color: '#c6d3df', autoSkip: false, font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            x: {
+              min: 0, max: 100, ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+            },
+            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
           }
         }
       });
@@ -368,15 +381,58 @@ document.addEventListener('DOMContentLoaded', () => {
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: '#c6d3df', font: mono } } },
+          plugins: {
+            legend: { labels: { color: ink().text, font: mono } },
+            // the bill is an estimate from the price table, so it is named as
+            // one in the tooltip rather than shown as a measured quantity
+            tooltip: {
+              callbacks: {
+                afterBody: (items) => {
+                  const model = models[items[0].dataIndex];
+                  return model.estimated_cost === null || model.estimated_cost === undefined
+                    ? 'cost: not recorded'
+                    : `cost: estimated \u2248 $${model.estimated_cost.toFixed(2)}`;
+                },
+              },
+            },
+          },
           scales: {
-            x: { ticks: { color: '#c6d3df', autoSkip: false, font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { type: 'linear', position: 'left', ticks: { color: '#ffb44a', font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            x: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } },
+            y: {
+              type: 'linear', position: 'left',
+              ticks: { color: '#ffb44a', font: mono }, grid: { color: ink().grid },
+            },
             y1: { type: 'linear', position: 'right', ticks: { color: '#c792ea', font: mono }, grid: { drawOnChartArea: false } }
           }
         }
       });
     }
+    };
+
+    // One sentence under the charts, because a bar whose model was never
+    // verified should not read as a measured fact.
+    const summary = document.getElementById('modelVerificationSummary');
+    if (summary) {
+      const named = (list) => list.map(m => `${m.model} (${m.verified_runs}/${m.runs})`).join(', ');
+      const never = models.filter(m => m.verified_runs === 0);
+      const whole = models.filter(m => m.verified_runs === m.runs);
+      const part = models.filter(m => m.verified_runs > 0 && m.verified_runs < m.runs);
+      if (whole.length === models.length) {
+        summary.textContent = 'Every model here was confirmed by the runtime\u2019s own log.';
+      } else if (whole.length === 0 && part.length === 0) {
+        summary.textContent = 'Nothing here was confirmed by a runtime log:'
+          + ' the runs asked for a model, and no log says it was served.';
+      } else {
+        const bits = [];
+        if (whole.length) bits.push(`confirmed ${named(whole)}`);
+        if (part.length) bits.push(`partly confirmed ${named(part)}`);
+        if (never.length) bits.push(`never confirmed ${never.map(m => m.model).join(', ')}`);
+        summary.textContent = bits.join(' \u00b7 ');
+      }
+    }
+
+    drawModelCharts();
+    document.addEventListener('akbench:theme', drawModelCharts);
   }
 });
 </script>

@@ -25,6 +25,30 @@
   --red: #ff6f6f;
   --red-bg: rgba(255, 111, 111, 0.1);
   --red-border: rgba(255, 111, 111, 0.35);
+  --nav-bg: rgba(5, 7, 10, 0.85);
+  --grid-line: rgba(255, 255, 255, 0.028);
+  --hover: rgba(255, 255, 255, 0.05);
+  --row-hover: rgba(255, 255, 255, 0.025);
+  --scan: rgba(255, 255, 255, 0.08);
+  --overlay: rgba(3, 5, 8, 0.85);
+  --spin: rgba(255, 255, 255, 0.12);
+  --chart-tx: #c6d3df;
+  --chart-dim: #8d9daf;
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --fg-strong: #fff;
+  --link-hover: #8ac0ff;
+  --btn-hover-border: #2b3a4a;
+  --card-hover-border: #253342;
+  --on-accent: #032018;
+  --on-accent-hover: #02170f;
+  --mint-strong: #26ffb4;
+  --track: rgba(255, 255, 255, 0.06);
+  --code-bg: #040608;
+  --code-fg: #d1dbe5;
+  --log-bg: rgba(0, 0, 0, 0.25);
+  --option-bg: #0a0e14;
+  --modal-shadow: rgba(0, 0, 0, 0.8);
+  --spin-bg: rgba(10, 14, 20, 0.55);
   --mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --r: 8px;
@@ -64,8 +88,8 @@ body::before {
   z-index: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.028) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
   background-size: 56px 56px;
 }
 
@@ -77,8 +101,8 @@ body::after {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(760px 420px at 12% -6%, rgba(0, 229, 155, 0.12), transparent 62%),
-    radial-gradient(680px 400px at 92% 4%, rgba(90, 169, 255, 0.10), transparent 60%);
+    radial-gradient(760px 420px at 12% -6%, var(--mint-bg), transparent 62%),
+    radial-gradient(680px 400px at 92% 4%, var(--blue-bg), transparent 60%);
 }
 
 main, header, footer {
@@ -98,7 +122,7 @@ a {
 }
 
 a:hover {
-  color: #8ac0ff;
+  color: var(--link-hover);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -110,7 +134,7 @@ a:hover {
 h1, h2, h3 {
   letter-spacing: -0.025em;
   font-weight: 600;
-  color: #fff;
+  color: var(--fg-strong);
   margin: 0 0 12px;
 }
 
@@ -131,7 +155,7 @@ h3 { font-size: 1.1rem; }
   top: 0;
   z-index: 60;
   height: var(--nav-h);
-  background: rgba(5, 7, 10, 0.85);
+  background: var(--nav-bg);
   backdrop-filter: blur(16px) saturate(160%);
   border-bottom: 1px solid var(--line);
 }
@@ -148,7 +172,7 @@ h3 { font-size: 1.1rem; }
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #fff;
+  color: var(--fg-strong);
   font-family: var(--mono);
   font-weight: 600;
   font-size: 15px;
@@ -183,8 +207,8 @@ h3 { font-size: 1.1rem; }
 }
 
 .nav-links a:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--fg-strong);
+  background: var(--hover);
   text-decoration: none;
 }
 
@@ -198,6 +222,83 @@ h3 { font-size: 1.1rem; }
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* ============================================================ light theme */
+/* One swap of the variables the pages already read; the markup and the
+   component rules stay exactly the same, which is what keeps the theme a
+   swap rather than a rewrite. */
+[data-theme="light"] {
+  --bg: #eef1f5;
+  --bg-grad: #f5f7fa;
+  --panel: #ffffff;
+  --panel-2: #f6f8fa;
+  --panel-3: #eef2f7;
+  --line: #d5dde6;
+  --line-soft: #e3e9f0;
+  --fg: #22303e;
+  --fg-dim: #4b5c6e;
+  --fg-faint: #67788a;
+  --mint: #00996b;
+  --mint-bg: rgba(0, 153, 107, 0.12);
+  --mint-border: rgba(0, 153, 107, 0.4);
+  --blue: #2472e0;
+  --blue-bg: rgba(36, 114, 224, 0.12);
+  --blue-border: rgba(36, 114, 224, 0.4);
+  --amber: #c47a10;
+  --amber-bg: rgba(196, 122, 16, 0.14);
+  --amber-border: rgba(196, 122, 16, 0.42);
+  --purple: #8a4fb8;
+  --purple-bg: rgba(138, 79, 184, 0.12);
+  --purple-border: rgba(138, 79, 184, 0.4);
+  --red: #d84a5b;
+  --red-bg: rgba(216, 74, 91, 0.12);
+  --red-border: rgba(216, 74, 91, 0.4);
+  --nav-bg: rgba(255, 255, 255, 0.85);
+  --grid-line: rgba(34, 48, 62, 0.05);
+  --hover: rgba(34, 48, 62, 0.06);
+  --row-hover: rgba(34, 48, 62, 0.03);
+  --scan: rgba(34, 48, 62, 0.1);
+  --overlay: rgba(240, 243, 247, 0.85);
+  --spin: rgba(34, 48, 62, 0.2);
+  --chart-tx: #22303e;
+  --chart-dim: #67788a;
+  --chart-grid: rgba(34, 48, 62, 0.09);
+  --fg-strong: #101c27;
+  --link-hover: #1a5fc4;
+  --btn-hover-border: #b9c6d4;
+  --card-hover-border: #c2cedb;
+  --on-accent: #ffffff;
+  --on-accent-hover: #f2fff9;
+  --mint-strong: #00875d;
+  --track: rgba(34, 48, 62, 0.09);
+  --code-bg: #f8fafc;
+  --code-fg: #26333f;
+  --log-bg: rgba(34, 48, 62, 0.04);
+  --option-bg: #ffffff;
+  --modal-shadow: rgba(34, 48, 62, 0.25);
+  --spin-bg: rgba(255, 255, 255, 0.6);
+}
+
+
+/* The theme toggle: a button like any other, kept in the nav. */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  color: var(--fg);
+  border-color: var(--mint-border);
 }
 
 /* ============================================================ Badges & Chips */
@@ -316,7 +417,7 @@ h3 { font-size: 1.1rem; }
 }
 
 .badge-neutral {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--hover);
   color: var(--fg-dim);
   border: 1px solid var(--line);
 }
@@ -339,23 +440,23 @@ h3 { font-size: 1.1rem; }
 }
 
 .btn:hover {
-  border-color: #2b3a4a;
+  border-color: var(--btn-hover-border);
   background: var(--panel-3);
   text-decoration: none;
-  color: #fff;
+  color: var(--fg-strong);
 }
 
 .btn-primary {
   background: var(--mint);
   border-color: var(--mint);
-  color: #032018;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
 .btn-primary:hover {
-  background: #26ffb4;
-  border-color: #26ffb4;
-  color: #02170f;
+  background: var(--mint-strong);
+  border-color: var(--mint-strong);
+  color: var(--on-accent-hover);
 }
 
 .btn-sm {
@@ -381,13 +482,105 @@ h3 { font-size: 1.1rem; }
 }
 
 .select option {
-  background: #0a0e14;
-  color: #c6d3df;
+  background: var(--option-bg);
+  color: var(--fg);
 }
 
 /* ============================================================ Cards & Grid */
 /** The whole history in one ledger: a row of small cells the reader scans in one
     pass — how much there is, how it fared, how long it took, what it cost. */
+/** Two runs' changes to the task, compared line by line: a line one run dropped
+    reads red, one the other added reads green, and unchanged context reads as
+    it is, so the difference is found by looking rather than by counting. */
+pre.artifact-diff {
+  margin: 0;
+  padding: 12px 14px;
+  max-height: 380px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--fg-dim);
+  background: var(--log-bg);
+  white-space: pre;
+}
+
+/** A grid of tasks against configurations: the colour is the score, so the
+    weak cell is found by looking rather than by reading a number column. */
+.matrix-scroll { overflow-x: auto; }
+table.score-matrix { border-collapse: separate; border-spacing: 3px; }
+table.score-matrix th {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  text-align: left;
+  padding: 0 4px 4px;
+  border: none;
+}
+table.score-matrix th.matrix-head { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.score-matrix td { border: none; padding: 3px 4px; }
+td.matrix-cell { text-align: center; }
+.matrix-chip {
+  display: inline-block;
+  min-width: 56px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.matrix-high { background: rgba(0, 229, 155, 0.18); color: var(--mint); }
+.matrix-mid { background: rgba(255, 180, 74, 0.16); color: var(--amber); }
+.matrix-low { background: rgba(255, 107, 122, 0.16); color: var(--red); }
+.matrix-empty { color: var(--fg-faint); }
+
+/** What a run paid in tokens, and how the payment split across input, cached
+    input, output and reasoning. The bar is the proportion, the legend the
+    exact numbers, so the shape and the size are both readable. */
+.token-headline { margin: 4px 0 8px; }
+.token-cache { font-size: 12.5px; color: var(--mint, #00e59b); font-weight: 600; }
+.token-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--track);
+}
+.token-seg { height: 100%; min-width: 2px; }
+.token-legend { margin-top: 10px; display: grid; gap: 3px; }
+.token-legend-item {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.token-swatch { width: 9px; height: 9px; border-radius: 2px; }
+.token-legend-label { color: var(--fg-dim); }
+.token-legend-value { color: var(--fg-strong); }
+
+/** The score history of one run: a line for the task under this configuration,
+    a dashed line for its declared baseline, a dot for the run the row is about. */
+/* A bar is a fact about a model only when the runtime's log confirmed that
+   model was served; the note under the charts says how much of that holds. */
+.model-verification-summary {
+  grid-column: 1 / -1;
+  margin-top: -4px;
+  font-size: 12px;
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  line-height: 1.5;
+}
+
+.spark-cell { width: 92px; }
+.spark { display: inline-flex; vertical-align: middle; }
+.spark .spark-line { fill: none; stroke: var(--blue, #5aa9ff); stroke-width: 1.4; }
+.spark .spark-baseline { stroke: var(--fg-faint, #6d7c8c); stroke-width: 1; stroke-dasharray: 3 2; }
+.spark .spark-dot { fill: var(--fg-dim, #c6d3df); }
+.spark-above .spark-line { stroke: var(--mint, #00e59b); }
+.spark-above .spark-dot { fill: var(--mint, #00e59b); }
+.spark-below .spark-line { stroke: var(--red, #ff6b7a); }
+.spark-below .spark-dot { fill: var(--red, #ff6b7a); }
+
 /** A descriptor read by key: keys, values, comments and list markers each take
     their own colour, so the shape of a YAML file is visible at a glance. */
 .yaml-key { color: var(--blue, #5aa9ff); }
@@ -428,7 +621,7 @@ h3 { font-size: 1.1rem; }
 .test-row-error .test-mark { color: var(--red); }
 .test-row-skipped .test-mark { color: var(--fg-faint); }
 .test-row-failed .test-name,
-.test-row-error .test-name { color: #fff; font-weight: 600; }
+.test-row-error .test-name { color: var(--fg-strong); font-weight: 600; }
 .test-name { color: var(--fg-dim); word-break: break-all; }
 .test-time { color: var(--fg-faint); font-size: 11.5px; }
 .test-detail {
@@ -459,9 +652,16 @@ h3 { font-size: 1.1rem; }
 .ledger-value {
   font-size: 19px;
   font-weight: 700;
-  color: #fff;
+  color: var(--fg-strong);
   letter-spacing: -0.01em;
   white-space: nowrap;
+}
+.ledger-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-faint);
+  margin-top: 3px;
+  line-height: 1.35;
 }
 .ledger-label {
   font-family: var(--mono);
@@ -494,11 +694,11 @@ h3 { font-size: 1.1rem; }
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  background: linear-gradient(90deg, transparent, var(--scan), transparent);
 }
 
 .card:hover {
-  border-color: #253342;
+  border-color: var(--card-hover-border);
 }
 
 .card-title {
@@ -517,7 +717,7 @@ h3 { font-size: 1.1rem; }
   font-family: var(--mono);
   font-size: 1.75rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--fg-strong);
   line-height: 1.1;
   display: flex;
   align-items: baseline;
@@ -560,7 +760,7 @@ h3 { font-size: 1.1rem; }
   font-family: var(--mono);
   font-size: 14px;
   font-weight: 600;
-  color: #fff;
+  color: var(--fg-strong);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -809,6 +1009,16 @@ details[open] > .tree-dir > .tree-caret::before {
   cursor: not-allowed;
 }
 
+/* The export buttons and the selection note share the right-hand side of the
+   runs panel header: two ways out of the table, and one reminder of it. */
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .selection-hint {
   font-size: 12px;
   color: var(--fg-faint);
@@ -1000,7 +1210,40 @@ tr:last-child td {
 }
 
 tbody tr:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--row-hover);
+}
+
+/* The row the keyboard cursor rests on. It is marked rather than hovered so a
+   reader moving with the arrow keys can see where Enter will land. */
+tbody tr.row-focused {
+  background: rgba(126, 181, 255, 0.1);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+tbody tr.row-focused:hover {
+  background: rgba(126, 181, 255, 0.14);
+}
+
+/* The keyboard cheat-sheet under a page title: the keys and what they do. */
+.kbd-hint {
+  margin-left: 12px;
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-family: var(--mono);
+}
+
+.kbd-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 2px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.3;
 }
 
 .num {
@@ -1103,7 +1346,7 @@ th.num {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(3, 5, 8, 0.85);
+  background: var(--overlay);
   backdrop-filter: blur(8px);
   z-index: 100;
   align-items: center;
@@ -1124,7 +1367,7 @@ th.num {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 20px 40px var(--modal-shadow);
   overflow: hidden;
 }
 
@@ -1141,7 +1384,7 @@ th.num {
   font-family: var(--mono);
   font-size: 15px;
   font-weight: 600;
-  color: #fff;
+  color: var(--fg-strong);
 }
 
 .modal-close {
@@ -1155,7 +1398,7 @@ th.num {
 }
 
 .modal-close:hover {
-  color: #fff;
+  color: var(--fg-strong);
 }
 
 .modal-body {
@@ -1183,7 +1426,7 @@ th.num {
 }
 
 .modal-tab:hover {
-  color: #fff;
+  color: var(--fg-strong);
 }
 
 .modal-tab.active {
@@ -1206,12 +1449,12 @@ pre, code {
 }
 
 pre {
-  background: #040608;
+  background: var(--code-bg);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 14px;
   overflow-x: auto;
-  color: #d1dbe5;
+  color: var(--code-fg);
   line-height: 1.5;
 }
 
@@ -1364,10 +1607,10 @@ pre {
 /* a chart that has not painted yet spins in place: the reader can see the
    data is on its way instead of a blank box pretending nothing is there */
 .an-chart-loading { position:absolute; inset:0; display:flex; flex-direction:column;
-  align-items:center; justify-content:center; gap:10px; background:rgba(10,14,20,0.55);
+  align-items:center; justify-content:center; gap:10px; background:var(--spin-bg);
   z-index:5; }
 .an-chart-loading span { font-family:var(--mono); font-size:11px; color:var(--fg-dim); letter-spacing:0.04em; }
-.an-spin { width:34px; height:34px; border-radius:50%; border:3px solid rgba(255,255,255,0.12);
+.an-spin { width:34px; height:34px; border-radius:50%; border:3px solid var(--spin);
   border-top-color:var(--mint); animation:an-spin 0.9s linear infinite; }
 @keyframes an-spin { to { transform:rotate(360deg); } }
 @media (max-width:640px) { .an-grid { grid-template-columns:1fr; } }

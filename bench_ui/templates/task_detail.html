@@ -365,6 +365,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const palette = ['#00e59b', '#5aa9ff', '#ffb44a', '#c792ea', '#ff6b7a', '#4dd0e1',
                    '#f0e68c', '#ff8a65', '#9ccc65', '#ba68c8', '#7986cb', '#e57373'];
+  // a canvas keeps the ink it was drawn with, so the palette is read each time
+  // the chart is built and the chart is rebuilt when the theme is switched
+  const ink = () => (window.akbenchThemeColors ? window.akbenchThemeColors()
+    : { text: '#c6d3df', dim: '#8d9daf', grid: 'rgba(255,255,255,0.06)' });
   const byConfig = new Map();
   runs.forEach(run => {
     const key = run.config_str || run.variant_uid || '—';
@@ -390,6 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   });
 
+  const drawScoreChart = () => {
   new Chart(canvas, {
     type: 'line',
     data: { labels, datasets },
@@ -397,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: '#c6d3df', font: { family: 'ui-monospace', size: 11 }, boxWidth: 12, usePointStyle: true } },
+        legend: { labels: { color: ink().text, font: { family: 'ui-monospace', size: 11 }, boxWidth: 12, usePointStyle: true } },
         tooltip: {
           callbacks: {
             label: (c) => {
@@ -410,18 +415,26 @@ document.addEventListener('DOMContentLoaded', () => {
       },
       scales: {
         x: {
-          title: { display: true, text: 'Run order', color: '#8d9daf', font: { family: 'ui-monospace', size: 11 } },
-          ticks: { color: '#8d9daf', font: { family: 'ui-monospace', size: 11 } },
-          grid: { color: 'rgba(255,255,255,0.06)' },
+          title: {
+            display: true, text: 'Run order', color: ink().dim, font: { family: 'ui-monospace', size: 11 },
+          },
+          ticks: { color: ink().dim, font: { family: 'ui-monospace', size: 11 } },
+          grid: { color: ink().grid },
         },
         y: {
-          title: { display: true, text: 'Score', color: '#8d9daf', font: { family: 'ui-monospace', size: 11 } },
-          min: 0, max: 1, ticks: { color: '#8d9daf', font: { family: 'ui-monospace', size: 11 } },
-          grid: { color: 'rgba(255,255,255,0.06)' },
+          title: {
+            display: true, text: 'Score', color: ink().dim, font: { family: 'ui-monospace', size: 11 },
+          },
+          min: 0, max: 1, ticks: { color: ink().dim, font: { family: 'ui-monospace', size: 11 } },
+          grid: { color: ink().grid },
         },
       },
     },
   });
+  };
+
+  drawScoreChart();
+  document.addEventListener('akbench:theme', drawScoreChart);
 });
 </script>
 {% endif %}

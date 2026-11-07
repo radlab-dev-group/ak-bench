@@ -141,6 +141,14 @@ document.addEventListener('DOMContentLoaded', () => {
   initSortableTables();
   initCopyButtons();
   initYamlHighlighting();
+  initSparklines();
+  const copyCsv = document.getElementById('btnCopyCsv');
+  if (copyCsv) copyCsv.addEventListener('click', () => copyRunsTable('csv'));
+  const copyMarkdown = document.getElementById('btnCopyMarkdown');
+  if (copyMarkdown) copyMarkdown.addEventListener('click', () => copyRunsTable('markdown'));
+  initRunsKeyNav();
+  initThemeToggle();
+
   initTaskCodeTree();
   initRunDiffPicker();
   initRunSelectionLimit();
@@ -284,12 +292,13 @@ async function fetchFilteredRuns() {
     if (tbody) {
       tbody.innerHTML = '';
       if (data.runs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="14" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="15" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
       } else {
         data.runs.forEach(run => {
           tbody.appendChild(createRunTableRow(run));
         });
       }
+      initSparklines(tbody);
       tbody.style.opacity = '1';
       applyRunSelectionLimits();
     }
@@ -341,6 +350,7 @@ function createRunTableRow(run) {
         ${scoreFormatted}
       </span>
     </td>
+    <td class="spark-cell">${sparkCell(run)}</td>
     <td class="num mono" data-sort-value="${run.duration_seconds === null || run.duration_seconds === undefined ? '' : run.duration_seconds}">${durationFormatted}</td>
     <td class="num mono">${totalTokensFormatted}</td>
     <td class="num mono" data-sort-value="${run.tool_call_count === null || run.tool_call_count === undefined ? '' : run.tool_call_count}">${toolCallsFormatted}</td>
@@ -473,6 +483,43 @@ function renderRunTests(tests) {
   `;
 }
 
+// How much a run paid, and how the payment split: input, of it cached, output,
+// and reasoning. The headline is the cache hit ratio — the one number that
+// tells whether the input the run was charged for was already on the shelf.
+function renderTokenBreakdown(obs) {
+  const parts = [
+    { key: 'input', label: 'input', color: 'var(--blue, #5aa9ff)', value: obs.input_tokens || 0 },
+    { key: 'cached', label: 'cached', color: 'var(--mint, #00e59b)', value: obs.cached_input_tokens || 0 },
+    { key: 'output', label: 'output', color: 'var(--amber, #ffb44a)', value: obs.output_tokens || 0 },
+    { key: 'reasoning', label: 'reasoning', color: '#c792ea', value: obs.reasoning_output_tokens || 0 },
+  ];
+  const stated = parts.filter(part => part.value > 0);
+  const total = parts.reduce((sum, part) => sum + part.value, 0);
+  const cacheHit = obs.input_tokens
+    ? ((obs.cached_input_tokens || 0) / obs.input_tokens * 100).toFixed(1) + '%'
+    : '—';
+
+  const bar = total
+    ? `<div class="token-bar">
+        ${stated.map(part => `<div class="token-seg" style="width:${(part.value / total * 100).toFixed(2)}%; background:${part.color};" title="${part.label}: ${part.value.toLocaleString()}"></div>`).join('')}
+      </div>`
+    : '';
+  const legend = parts.map(part => `
+    <div class="token-legend-item">
+      <span class="token-swatch" style="background:${part.color};"></span>
+      <span class="token-legend-label">${part.label}</span>
+      <span class="token-legend-value mono">${part.value ? part.value.toLocaleString() : '—'}</span>
+    </div>`).join('');
+
+  return `
+    <div class="token-headline">
+      <span class="token-cache mono">cache hit ${cacheHit}</span>
+    </div>
+    ${bar}
+    <div class="token-legend">${legend}</div>
+  `;
+}
+
 function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyArtifacts, bodyJson }) {
   const run = data.run;
   const score = data.score !== null ? Number(data.score).toFixed(3) : '—';
@@ -493,9 +540,9 @@ function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyA
           <div class="card-sub">${run.status || 'unknown'}</div>
         </div>
         <div class="card card-amber">
-          <div class="card-title">Total Tokens</div>
+          <div class="card-title">Token Split</div>
           <div class="card-value">${obs.total_tokens ? Number(obs.total_tokens).toLocaleString() : '—'}</div>
-          <div class="card-sub">In: ${(obs.input_tokens || 0).toLocaleString()} | Out: ${(obs.output_tokens || 0).toLocaleString()}</div>
+          ${renderTokenBreakdown(obs)}
         </div>
       </div>
 
@@ -777,6 +824,329 @@ function initRunDiffPicker() {
   selects.forEach((select) => {
     select.addEventListener('change', () => form.submit());
   });
+}
+
+// ============================================================ Copy a table out
+// A filtered table is an answer to a question, and the reader often wants it
+// elsewhere: in a notebook as CSV, in a message as Markdown. The exporter reads
+// the table that is on screen, so it exports what the filter selected rather
+// than a server-side superset, and skips the columns that only exist to drive
+// the page (the comparison checkbox, the Inspect button).
+const EXPORT_COLUMNS = [
+  { key: 'uid', label: 'run' },
+  { key: 'task_uid', label: 'task' },
+  { key: 'config_str', label: 'configuration' },
+  { key: 'repetition', label: 'repetition' },
+  { key: 'verdict', label: 'verdict' },
+  { key: 'score', label: 'score' },
+  { key: 'duration_seconds', label: 'duration_s' },
+  { key: 'total_tokens', label: 'tokens' },
+  { key: 'tool_call_count', label: 'tool_calls' },
+  { key: 'status', label: 'status' },
+  { key: 'started_at', label: 'started_at' },
+];
+
+function csvField(value) {
+  const text = String(value ?? '');
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function markdownField(value) {
+  return String(value ?? '').replace(/\|/g, '\\|');
+}
+
+function tableToCsv(columns, rows) {
+  const head = columns.map(column => csvField(column.label)).join(',');
+  const body = rows.map(row => columns.map(column => csvField(row[column.key])).join(','));
+  return [head, ...body].join('\n');
+}
+
+function tableToMarkdown(columns, rows) {
+  const head = `| ${columns.map(column => markdownField(column.label)).join(' | ')} |`;
+  const rule = `| ${columns.map(() => '---').join(' | ')} |`;
+  const body = rows.map(row => `| ${columns.map(column => markdownField(row[column.key])).join(' | ')} |`);
+  return [head, rule, ...body].join('\n');
+}
+
+// The rows come from the page's own data, not from the rendered cells: a cell
+// that shows "1m 30s" would export as that string, and a reader taking the
+// table to a notebook wants the numbers behind it.
+async function copyRunsTable(format) {
+  const runs = await currentRunsForExport();
+  const columns = EXPORT_COLUMNS;
+  const text = format === 'markdown' ? tableToMarkdown(columns, runs) : tableToCsv(columns, runs);
+  copyText(text, format);
+}
+
+let exportCache = null;
+
+async function currentRunsForExport() {
+  // the same rows the table shows, refetched so a filter that has not been
+  // repainted yet cannot export a stale answer
+  const form = document.getElementById('runsFilterForm');
+  const params = new URLSearchParams();
+  if (form) {
+    for (const [key, val] of new FormData(form).entries()) {
+      if (val) params.append(key, val);
+    }
+  }
+  params.set('limit', '0');
+  try {
+    const res = await fetch(`/api/runs?${params.toString()}`, { loader: false });
+    if (!res.ok) return [];
+    const data = await res.json();
+    exportCache = data.runs;
+    return data.runs;
+  } catch (err) {
+    console.error('Export failed:', err);
+    return exportCache || [];
+  }
+}
+
+function copyText(text, format) {
+  const ok = () => flashCopied(format);
+  const fail = () => flashCopied('failed');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(ok, fail);
+    return;
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  let copied = false;
+  try { copied = document.execCommand('copy'); } catch { copied = false; }
+  area.remove();
+  copied ? ok() : fail();
+}
+
+function flashCopied(format) {
+  const hint = document.getElementById('runsSelectionHint');
+  if (!hint) return;
+  const original = hint.textContent;
+  hint.textContent = format === 'failed'
+    ? 'Copy failed — select the table and copy manually'
+    : `Copied ${format === 'markdown' ? 'Markdown' : 'CSV'} to clipboard`;
+  setTimeout(() => { hint.textContent = original; }, 1800);
+}
+
+// ============================================================ Keyboard navigation
+// A table read by hand is read with the cursor: up and down move it, Enter
+// opens the row it rests on, and / drops straight into the filter search so a
+// reader can jump to a run by name. The cursor lives in the page, never in the
+// data, so a filter that repaints the table simply starts the cursor at the top.
+// It stays out of the way while the keyboard is elsewhere — an input, a select
+// or the run inspector — and only the runs table takes the cursor.
+const runsKeyNav = { focused: -1, rows: [] };
+
+function runsKeyNavRows() {
+  const tbody = document.getElementById('runsTableBody');
+  runsKeyNav.rows = tbody
+    ? Array.from(tbody.querySelectorAll('tr')).filter(row => row.querySelector('.run-select-check'))
+    : [];
+  return runsKeyNav.rows;
+}
+
+function runsKeyNavClear() {
+  runsKeyNav.rows.forEach(row => row.classList.remove('row-focused'));
+  runsKeyNav.focused = -1;
+}
+
+function runsKeyNavFocus(index) {
+  const rows = runsKeyNavRows();
+  if (!rows.length) return;
+  runsKeyNav.rows.forEach(row => row.classList.remove('row-focused'));
+  const next = Math.max(0, Math.min(rows.length - 1, index));
+  const row = rows[next];
+  row.classList.add('row-focused');
+  row.scrollIntoView({ block: 'nearest' });
+  runsKeyNav.focused = next;
+}
+
+function runsKeyNavModalOpen() {
+  const modal = document.getElementById('runDetailModal');
+  return modal ? modal.classList.contains('open') : false;
+}
+
+function runsKeyNavActive() {
+  return document.getElementById('runsFilterForm') !== null && !runsKeyNavModalOpen();
+}
+
+function runsKeyNavOnKeydown(event) {
+  if (!runsKeyNavActive()) return;
+  const key = event.key;
+  const target = event.target;
+  const editing = target && (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
+    target.isContentEditable
+  );
+  // the keyboard belongs to whatever is being typed into, arrows and all
+  if (editing) return;
+
+  // "/" is the way in from anywhere else on the page; once the caret is in the
+  // search box it is an ordinary character again
+  if (key === '/') {
+    const search = document.getElementById('filterSearch');
+    if (search) {
+      event.preventDefault();
+      search.focus();
+      search.select();
+    }
+    return;
+  }
+
+  if (key === 'ArrowDown') {
+    event.preventDefault();
+    runsKeyNavFocus(runsKeyNav.focused + 1);
+    return;
+  }
+  if (key === 'ArrowUp') {
+    event.preventDefault();
+    runsKeyNavFocus(runsKeyNav.focused - 1);
+    return;
+  }
+  if (key === 'Enter' && runsKeyNav.focused >= 0) {
+    const row = runsKeyNav.rows[runsKeyNav.focused];
+    const box = row && row.querySelector('.run-select-check');
+    if (box) {
+      event.preventDefault();
+      openRunModal(box.value);
+    }
+  }
+}
+
+function initRunsKeyNav() {
+  document.addEventListener('keydown', runsKeyNavOnKeydown);
+}
+
+// ============================================================ Theme
+// The palette is a list of variables the pages already read, so switching the
+// theme is a swap of that list and not a repaint of anything: the attribute on
+// the root element decides which block of values wins. The choice is stored
+// under one key and read back before the sheet paints (base.html), so a page
+// never opens in the wrong palette. Charts are the one exception — they draw
+// into a canvas and cannot read a variable — so they are asked to redraw.
+const THEME_KEY = 'akbench_theme';
+
+function currentTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+function themeColors() {
+  const style = getComputedStyle(document.documentElement);
+  const read = (name, fallback) => (style.getPropertyValue(name) || fallback).trim();
+  return {
+    text: read('--chart-tx', '#c6d3df'),
+    dim: read('--chart-dim', '#8d9daf'),
+    grid: read('--chart-grid', 'rgba(255,255,255,0.06)'),
+  };
+}
+
+window.akbenchThemeColors = themeColors;
+
+function paintThemeToggle(button) {
+  if (!button) return;
+  const light = currentTheme() === 'light';
+  const label = button.querySelector('.theme-toggle-label');
+  const icon = button.querySelector('.theme-toggle-icon');
+  if (label) label.textContent = light ? 'Light' : 'Dark';
+  if (icon) icon.textContent = light ? '\u2600' : '\u263d';
+}
+
+function setTheme(theme) {
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch (err) { /* nowhere to remember it; the theme still switches for this page */ }
+  paintThemeToggle(document.getElementById('themeToggle'));
+  // canvases keep the colours they were drawn with, so they are rebuilt
+  document.dispatchEvent(new CustomEvent('akbench:theme'));
+}
+
+function initThemeToggle() {
+  const button = document.getElementById('themeToggle');
+  if (!button) return;
+  paintThemeToggle(button);
+  button.addEventListener('click', () => {
+    setTheme(currentTheme() === 'light' ? 'dark' : 'light');
+  });
+}
+
+// ============================================================ Run score sparkline
+// One run's score is a single number; what a reader needs beside it is the
+// history it came out of — the same task under the same configuration, run
+// again and again — and where the declared baseline sits in that history.
+//
+// A cell carries the series as data attributes and this fills it with a small
+// inline SVG: a line for the history, a dashed line for the baseline, a dot
+// for the run the row is about. Both the server-rendered rows and the ones the
+// filter paints carry the same attributes, so there is one renderer.
+const SPARK_WIDTH = 84;
+const SPARK_HEIGHT = 22;
+
+function sparkCell(run) {
+  const points = (run.trend_points || [])
+    .map(value => (value === null || value === undefined ? '' : Number(value).toFixed(4)))
+    .join(',');
+  const baseline = run.baseline_score === null || run.baseline_score === undefined
+    ? ''
+    : Number(run.baseline_score).toFixed(4);
+  const index = run.trend_index === null || run.trend_index === undefined ? '' : run.trend_index;
+  return `<span class="spark" data-points="${points}" data-index="${index}" data-baseline="${baseline}"></span>`;
+}
+
+function renderSparkline(element) {
+  const raw = (element.dataset.points || '').split(',').filter(s => s.length);
+  if (raw.length < 2) return;
+  const points = raw.map(Number);
+  const index = Number(element.dataset.index);
+  const baseline = element.dataset.baseline === '' ? null : Number(element.dataset.baseline);
+  const own = Number.isFinite(index) ? points[index] : null;
+
+  const x = (i) => (points.length === 1 ? SPARK_WIDTH / 2 : (i * (SPARK_WIDTH - 4)) / (points.length - 1) + 2);
+  const y = (value) => SPARK_HEIGHT - 2 - value * (SPARK_HEIGHT - 4);
+
+  const parts = [];
+  if (baseline !== null && Number.isFinite(baseline)) {
+    parts.push(`<line x1="0" y1="${y(baseline).toFixed(1)}" x2="${SPARK_WIDTH}" y2="${y(baseline).toFixed(1)}" class="spark-baseline"/>`);
+  }
+  const path = points.map((value, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(value).toFixed(1)}`).join(' ');
+  parts.push(`<path d="${path}" class="spark-line"/>`);
+  if (own !== null && Number.isFinite(own)) {
+    parts.push(`<circle cx="${x(index).toFixed(1)}" cy="${y(own).toFixed(1)}" r="2.6" class="spark-dot"/>`);
+  }
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${SPARK_WIDTH} ${SPARK_HEIGHT}`);
+  svg.setAttribute('width', SPARK_WIDTH);
+  svg.setAttribute('height', SPARK_HEIGHT);
+  svg.classList.add('spark');
+  if (own !== null && Number.isFinite(own)) {
+    const verdict = baseline === null || !Number.isFinite(baseline)
+      ? 'own'
+      : (own >= baseline ? 'above' : 'below');
+    svg.classList.add(`spark-${verdict}`);
+    svg.dataset.score = own.toFixed(3);
+    if (baseline !== null && Number.isFinite(baseline)) {
+      svg.dataset.baseline = baseline.toFixed(3);
+    }
+  }
+  svg.innerHTML = parts.join('');
+  element.replaceChildren(svg);
+  element.dataset.drawn = 'yes';
+}
+
+function initSparklines(root) {
+  (root || document).querySelectorAll('.spark-cell .spark:not([data-drawn])')
+    .forEach(renderSparkline);
 }
 
 // ============================================================ YAML colouring

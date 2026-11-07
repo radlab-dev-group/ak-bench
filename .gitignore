@@ -224,3 +224,6 @@ __marimo__/
 
 # AK-Bench: generowane raporty HTML
 /reports/
+
+# the operator's price table: prices are theirs, the example is the template
+pricing.yaml
