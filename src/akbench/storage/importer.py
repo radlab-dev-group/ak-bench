@@ -145,8 +145,17 @@ def validate_namespace(namespace: str) -> str:
 
 
 def _quote_schema(namespace: str) -> str:
-    """A schema name safe to embed in DDL (validated first, so it is bare)."""
-    return f'"{namespace}"'
+    """A schema name safe to embed in DDL.
+
+    Validated, and then quoted by doubling any embedded quote rather than by
+    trusting whatever reached this point: the docstring used to claim the value
+    was validated first, and it was not -- validation lived only in the CLI
+    caller, so ``import_sqlite`` reached here unchecked. Quoting is now correct
+    on its own terms, and validation happens here too so a bad name is refused
+    with a readable error instead of becoming a syntax error from the server.
+    """
+    validate_namespace(namespace)
+    return '"' + namespace.replace('"', '""') + '"'
 
 
 def create_namespace(url: str, namespace: str) -> bool:

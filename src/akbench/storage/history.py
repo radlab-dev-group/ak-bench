@@ -51,6 +51,17 @@ from akbench.storage.models import (
 )
 
 
+def _like_escape(value: str) -> str:
+    """A value made safe to sit inside a ``LIKE`` pattern.
+
+    ``%`` and ``_`` are wildcards, so a name carrying them matches more rows than
+    it names. The value was already a bound parameter -- this is not injection --
+    but a lookup that answers for a *different* artifact than the one asked for is
+    still a wrong answer.
+    """
+    return value.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+
+
 def _digest_bytes(data: bytes) -> str:
     return f"sha256:{hashlib.sha256(data).hexdigest()}"
 
@@ -417,8 +428,8 @@ class HistoryStore:
                     Artifact.run_id == run.id,
                     (Artifact.path == filename_or_path)
                     | (Artifact.path == target_name)
-                    | (Artifact.path.like(f"%/{filename_or_path}"))
-                    | (Artifact.path.like(f"%/{target_name}"))
+                    | (Artifact.path.like(f"%/{_like_escape(filename_or_path)}", escape="\\"))
+                    | (Artifact.path.like(f"%/{_like_escape(target_name)}", escape="\\"))
                     | (Artifact.kind == filename_or_path)
                     | (Artifact.kind == target_name),
                 )
