@@ -141,6 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSortableTables();
   initCopyButtons();
   initYamlHighlighting();
+  initSparklines();
   initTaskCodeTree();
   initRunDiffPicker();
   initRunSelectionLimit();
@@ -284,12 +285,13 @@ async function fetchFilteredRuns() {
     if (tbody) {
       tbody.innerHTML = '';
       if (data.runs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="14" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="15" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
       } else {
         data.runs.forEach(run => {
           tbody.appendChild(createRunTableRow(run));
         });
       }
+      initSparklines(tbody);
       tbody.style.opacity = '1';
       applyRunSelectionLimits();
     }
@@ -341,6 +343,7 @@ function createRunTableRow(run) {
         ${scoreFormatted}
       </span>
     </td>
+    <td class="spark-cell">${sparkCell(run)}</td>
     <td class="num mono" data-sort-value="${run.duration_seconds === null || run.duration_seconds === undefined ? '' : run.duration_seconds}">${durationFormatted}</td>
     <td class="num mono">${totalTokensFormatted}</td>
     <td class="num mono" data-sort-value="${run.tool_call_count === null || run.tool_call_count === undefined ? '' : run.tool_call_count}">${toolCallsFormatted}</td>
@@ -777,6 +780,75 @@ function initRunDiffPicker() {
   selects.forEach((select) => {
     select.addEventListener('change', () => form.submit());
   });
+}
+
+// ============================================================ Run score sparkline
+// One run's score is a single number; what a reader needs beside it is the
+// history it came out of — the same task under the same configuration, run
+// again and again — and where the declared baseline sits in that history.
+//
+// A cell carries the series as data attributes and this fills it with a small
+// inline SVG: a line for the history, a dashed line for the baseline, a dot
+// for the run the row is about. Both the server-rendered rows and the ones the
+// filter paints carry the same attributes, so there is one renderer.
+const SPARK_WIDTH = 84;
+const SPARK_HEIGHT = 22;
+
+function sparkCell(run) {
+  const points = (run.trend_points || [])
+    .map(value => (value === null || value === undefined ? '' : Number(value).toFixed(4)))
+    .join(',');
+  const baseline = run.baseline_score === null || run.baseline_score === undefined
+    ? ''
+    : Number(run.baseline_score).toFixed(4);
+  const index = run.trend_index === null || run.trend_index === undefined ? '' : run.trend_index;
+  return `<span class="spark" data-points="${points}" data-index="${index}" data-baseline="${baseline}"></span>`;
+}
+
+function renderSparkline(element) {
+  const raw = (element.dataset.points || '').split(',').filter(s => s.length);
+  if (raw.length < 2) return;
+  const points = raw.map(Number);
+  const index = Number(element.dataset.index);
+  const baseline = element.dataset.baseline === '' ? null : Number(element.dataset.baseline);
+  const own = Number.isFinite(index) ? points[index] : null;
+
+  const x = (i) => (points.length === 1 ? SPARK_WIDTH / 2 : (i * (SPARK_WIDTH - 4)) / (points.length - 1) + 2);
+  const y = (value) => SPARK_HEIGHT - 2 - value * (SPARK_HEIGHT - 4);
+
+  const parts = [];
+  if (baseline !== null && Number.isFinite(baseline)) {
+    parts.push(`<line x1="0" y1="${y(baseline).toFixed(1)}" x2="${SPARK_WIDTH}" y2="${y(baseline).toFixed(1)}" class="spark-baseline"/>`);
+  }
+  const path = points.map((value, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(value).toFixed(1)}`).join(' ');
+  parts.push(`<path d="${path}" class="spark-line"/>`);
+  if (own !== null && Number.isFinite(own)) {
+    parts.push(`<circle cx="${x(index).toFixed(1)}" cy="${y(own).toFixed(1)}" r="2.6" class="spark-dot"/>`);
+  }
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${SPARK_WIDTH} ${SPARK_HEIGHT}`);
+  svg.setAttribute('width', SPARK_WIDTH);
+  svg.setAttribute('height', SPARK_HEIGHT);
+  svg.classList.add('spark');
+  if (own !== null && Number.isFinite(own)) {
+    const verdict = baseline === null || !Number.isFinite(baseline)
+      ? 'own'
+      : (own >= baseline ? 'above' : 'below');
+    svg.classList.add(`spark-${verdict}`);
+    svg.dataset.score = own.toFixed(3);
+    if (baseline !== null && Number.isFinite(baseline)) {
+      svg.dataset.baseline = baseline.toFixed(3);
+    }
+  }
+  svg.innerHTML = parts.join('');
+  element.replaceChildren(svg);
+  element.dataset.drawn = 'yes';
+}
+
+function initSparklines(root) {
+  (root || document).querySelectorAll('.spark-cell .spark:not([data-drawn])')
+    .forEach(renderSparkline);
 }
 
 // ============================================================ YAML colouring

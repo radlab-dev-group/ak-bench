@@ -131,6 +131,7 @@
             <th data-sortable>Runtime</th>
             <th data-sortable>Verdict</th>
             <th data-sortable class="num">Score</th>
+            <th title="This task under this configuration, scored in the order the runs started; the dashed line is the task's baseline">Trend</th>
             <th data-sortable class="num">Duration</th>
             <th data-sortable class="num">Tokens</th>
             <th data-sortable class="num">Tool Calls</th>
@@ -168,6 +169,12 @@
               </td>
               <td class="num mono" style="font-weight:600; color:{% if (run.score or 0) >= 1.0 %}var(--mint){% elif (run.score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
                 {% if run.score is not none %}{{ "%.3f"|format(run.score) }}{% else %}—{% endif %}
+              </td>
+              <td class="spark-cell">
+                <span class="spark"
+                      data-points="{{ run.trend_csv }}"
+                      data-index="{{ run.trend_index if run.trend_index is not none else '' }}"
+                      data-baseline="{{ run.baseline_score if run.baseline_score is not none else '' }}"></span>
               </td>
               <td class="num mono" data-sort-value="{{ run.duration_seconds if run.duration_seconds is not none else '' }}">
                 {% if run.duration_seconds is not none %}

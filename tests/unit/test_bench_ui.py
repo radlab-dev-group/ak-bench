@@ -1093,3 +1093,54 @@ def test_run_tables_carry_the_repetition_number(database_url: str) -> None:
         assert ">Rep</th>" in client.get(path).text, path
     assert ">Rep</th>" in client.get("/runs").text
     assert 'data-sort-value="2"' in client.get("/runs").text
+
+
+def test_each_run_row_carries_its_own_score_history(database_url: str) -> None:
+    """A score is only readable against the runs it came out of.
+
+    A row now carries the history of its own task under its own configuration,
+    in the order the runs started, plus the mean the task's declared baseline
+    reached — so an outlier run is visible without opening it.
+    """
+    store = _seeded_store(database_url)
+    for index, (uid, score) in enumerate(
+        [("run-late-1", 0.4), ("run-late-2", 1.0)], start=1
+    ):
+        store.record_run(
+            {
+                "run_uid": uid,
+                "task_uid": "wordcount-001@1.0.0",
+                "agent_id": "codex",
+                "agent_version": "1.0",
+                "state": "completed",
+                "started_at": f"2026-11-06T1{index}:00:00+00:00",
+                "evaluation": {
+                    "verdict": "partial" if score < 1 else "passed",
+                    "score": score,
+                    "passed": int(score * 10),
+                    "failed": 10 - int(score * 10),
+                    "total": 10,
+                },
+            },
+            experiment_uid="test-exp@1.0.0",
+            variant_uid="v-opt",
+            task=_task_stub(),
+        )
+    client = TestClient(create_app(database_url=database_url))
+
+    runs = {run["uid"]: run for run in client.get("/api/runs").json()["runs"]}
+    late = runs["run-late-2"]
+    # the v-opt series in the order it ran: the seeded partial, then 0.4, then 1.0
+    assert late["trend_points"] == [0.9, 0.4, 1.0]
+    assert late["trend_index"] == 2
+    assert late["trend_csv"] == "0.9000,0.4000,1.0000"
+    # the baseline of this task is v-base, which scored 1.0
+    assert late["baseline_score"] == 1.0
+
+    body = client.get("/runs").text
+    assert ">Trend</th>" in body
+    assert 'data-points="0.9000,0.4000,1.0000"' in body
+    assert 'data-baseline="1.0"' in body
+
+    script = client.get("/static/js/app.js").text
+    assert "initSparklines" in script and "renderSparkline" in script

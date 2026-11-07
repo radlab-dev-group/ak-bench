@@ -388,6 +388,18 @@ h3 { font-size: 1.1rem; }
 /* ============================================================ Cards & Grid */
 /** The whole history in one ledger: a row of small cells the reader scans in one
     pass — how much there is, how it fared, how long it took, what it cost. */
+/** The score history of one run: a line for the task under this configuration,
+    a dashed line for its declared baseline, a dot for the run the row is about. */
+.spark-cell { width: 92px; }
+.spark { display: inline-flex; vertical-align: middle; }
+.spark .spark-line { fill: none; stroke: var(--blue, #5aa9ff); stroke-width: 1.4; }
+.spark .spark-baseline { stroke: var(--fg-faint, #6d7c8c); stroke-width: 1; stroke-dasharray: 3 2; }
+.spark .spark-dot { fill: var(--fg-dim, #c6d3df); }
+.spark-above .spark-line { stroke: var(--mint, #00e59b); }
+.spark-above .spark-dot { fill: var(--mint, #00e59b); }
+.spark-below .spark-line { stroke: var(--red, #ff6b7a); }
+.spark-below .spark-dot { fill: var(--red, #ff6b7a); }
+
 /** A descriptor read by key: keys, values, comments and list markers each take
     their own colour, so the shape of a YAML file is visible at a glance. */
 .yaml-key { color: var(--blue, #5aa9ff); }

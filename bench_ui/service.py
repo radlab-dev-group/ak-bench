@@ -305,6 +305,55 @@ def _safe_load_json(val: Any) -> Any:
         return val
 
 
+def _score_trends(history: HistoryData) -> dict[tuple, list[dict[str, Any]]]:
+    """The score history of each (task, configuration), in the order runs started.
+
+    One score says little; the same task under the same configuration run
+    several times says whether the number is steady or a fluke. A table row is
+    one run in one of these series, so it carries the whole series and its own
+    place in it.
+    """
+    series: dict[tuple, list[dict[str, Any]]] = {}
+    for run in history.runs:
+        key = (run.get("task_uid"), run.get("variant_uid"))
+        series.setdefault(key, []).append(
+            {
+                "uid": run.get("uid"),
+                "score": score_of(run),
+                "started_at": run.get("started_at"),
+            }
+        )
+    for points in series.values():
+        points.sort(key=lambda point: str(point.get("started_at") or ""))
+    return series
+
+
+def _baseline_scores(history: HistoryData) -> dict[str, float | None]:
+    """The mean score each task's declared baseline reached, when it scored at all.
+
+    A configuration's number is only a number against the baseline; the
+    sparkline draws it as a line, and a run above or below it can then be read
+    at a glance.
+    """
+    baseline_variants = set()
+    for exp_uid, variants in history.variants.items():
+        for variant in variants:
+            if variant.get("is_baseline"):
+                baseline_variants.add((exp_uid, variant.get("uid")))
+    per_task: dict[str, list[float]] = {}
+    for run in history.runs:
+        if (run.get("experiment_uid"), run.get("variant_uid")) not in baseline_variants:
+            continue
+        value = score_of(run)
+        if value is None:
+            continue
+        per_task.setdefault(str(run.get("task_uid")), []).append(value)
+    return {
+        task: (sum(values) / len(values) if values else None)
+        for task, values in per_task.items()
+    }
+
+
 def _read_artifact_text(path: str | None) -> str | None:
     """The text of an artifact kept on disk, or ``None`` when it is not there."""
     if not path:
@@ -552,7 +601,11 @@ class BenchDataService:
 
         # Recent runs (last 15 ordered by start descending)
         ordered_runs = sorted(runs, key=lambda r: str(r.get("started_at") or ""), reverse=True)
-        recent_runs = [self._format_run_summary(r, history) for r in ordered_runs[:15]]
+        trends, baselines = _score_trends(history), _baseline_scores(history)
+        recent_runs = [
+            self._format_run_summary(r, history, trends, baselines)
+            for r in ordered_runs[:15]
+        ]
 
         # Aggregate task performance
         task_stats = []
@@ -682,7 +735,10 @@ class BenchDataService:
 
         paginated = filtered[offset : offset + limit] if limit > 0 else filtered
 
-        formatted_runs = [self._format_run_summary(r, history) for r in paginated]
+        trends, baselines = _score_trends(history), _baseline_scores(history)
+        formatted_runs = [
+            self._format_run_summary(r, history, trends, baselines) for r in paginated
+        ]
 
         # Available filter options for UI dropdowns
         all_experiments = sorted(
@@ -891,6 +947,7 @@ class BenchDataService:
         report = build_experiment_report(history, experiment_uid)
         variants = history.variants.get(experiment_uid, [])
         snapshots = self.store.snapshots(experiment_uid)
+        trends, baselines = _score_trends(history), _baseline_scores(history)
         ranking = configuration_ranking(report.runs, {experiment_uid: variants})
         experiment_yaml = report.experiment.get("experiment_yaml")
         parsed_experiment = _experiment_config(_task_yaml(experiment_yaml))
@@ -905,7 +962,10 @@ class BenchDataService:
                 {
                     "variant": v,
                     "summary": v_summary,
-                    "runs": [self._format_run_summary(r, history) for r in v_runs],
+                    "runs": [
+                        self._format_run_summary(r, history, trends, baselines)
+                        for r in v_runs
+                    ],
                 }
             )
 
@@ -917,7 +977,9 @@ class BenchDataService:
             "variants": variants,
             "variant_summaries": variant_summaries,
             "snapshots": snapshots,
-            "runs": [self._format_run_summary(r, history) for r in report.runs],
+            "runs": [
+                self._format_run_summary(r, history, trends, baselines) for r in report.runs
+            ],
         }
 
     def get_tasks(self) -> list[dict[str, Any]]:
@@ -981,6 +1043,7 @@ class BenchDataService:
 
         dataset = self.get_dataset()
         report = build_task_report(history, task_uid, dataset=dataset)
+        trends, baselines = _score_trends(history), _baseline_scores(history)
         definition = _recorded_definition(
             history.task(task_uid), _definition_from_disk(dataset, task_uid)
         )
@@ -989,7 +1052,9 @@ class BenchDataService:
             "summary": report.summary,
             "definition": definition,
             "variants": report.variants,
-            "runs": [self._format_run_summary(r, history) for r in report.runs],
+            "runs": [
+                self._format_run_summary(r, history, trends, baselines) for r in report.runs
+            ],
         }
 
     def get_task_files(self, task_uid: str) -> list[dict[str, Any]]:
@@ -1249,12 +1314,31 @@ class BenchDataService:
             rows.append(row)
         return {"rows": rows, "param_keys": sorted(param_keys)}
 
-    def _format_run_summary(self, r: dict[str, Any], history: HistoryData) -> dict[str, Any]:
+    def _format_run_summary(
+        self,
+        r: dict[str, Any],
+        history: HistoryData,
+        trends: dict[tuple, list[dict[str, Any]]] | None = None,
+        baselines: dict[str, float | None] | None = None,
+    ) -> dict[str, Any]:
         duration = duration_seconds(r)
         score = score_of(r)
         verdict = verdict_of(r)
         obs = r.get("observations") or {}
         eval_dict = r.get("evaluation") or {}
+
+        # Where this run sits in its own history: the same task under the same
+        # configuration, scored in the order the runs started, with the task's
+        # declared baseline beside it.
+        if trends is None:
+            trends = _score_trends(history)
+        if baselines is None:
+            baselines = _baseline_scores(history)
+        series = trends.get((r.get("task_uid"), r.get("variant_uid"))) or []
+        trend_index = next(
+            (i for i, point in enumerate(series) if point["uid"] == r.get("uid")),
+            None,
+        )
 
         # Get variant configuration string
         var_uid = r.get("variant_uid")
@@ -1291,4 +1375,12 @@ class BenchDataService:
             "tool_call_count": obs.get("tool_call_count"),
             "started_at": r.get("started_at"),
             "finished_at": r.get("finished_at"),
+            "trend_points": [point["score"] for point in series],
+            # the same series as text, for a template that draws it without JS
+            "trend_csv": ",".join(
+                "" if point["score"] is None else f"{point['score']:.4f}"
+                for point in series
+            ),
+            "trend_index": trend_index,
+            "baseline_score": baselines.get(str(r.get("task_uid"))),
         }
