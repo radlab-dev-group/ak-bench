@@ -141,6 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSortableTables();
   initTaskCodeTree();
   initRunDiffPicker();
+  initRunSelectionLimit();
 });
 
 // ============================================================ Live Refresh
@@ -288,6 +289,7 @@ async function fetchFilteredRuns() {
         });
       }
       tbody.style.opacity = '1';
+      applyRunSelectionLimits();
     }
   } catch (err) {
     console.error('Error fetching filtered runs:', err);
@@ -585,6 +587,60 @@ async function previewArtifact(runUid, kind) {
   } catch (err) {
     container.innerHTML = `<div style="color:var(--red); padding:10px;">Error: ${escapeHtml(err.message)}</div>`;
   }
+}
+
+// ============================================================ Run Selection
+// The explorer compares two runs at a time, so two checks are the whole
+// budget: once they are spent the rest of the table dims and stops answering
+// clicks, rather than offering a third choice the Compare button will refuse.
+// The selection is held by uid, so filtering the table neither loses it nor
+// silently changes what is about to be compared.
+const COMPARISON_SIZE = 2;
+const selectedRunUids = new Set();
+
+function applyRunSelectionLimits() {
+  const full = selectedRunUids.size >= COMPARISON_SIZE;
+  document.querySelectorAll('.run-select-check').forEach((box) => {
+    const chosen = selectedRunUids.has(box.value);
+    box.checked = chosen;
+    box.disabled = full && !chosen;
+    const row = box.closest('tr');
+    if (row) row.classList.toggle('row-dimmed', full && !chosen);
+  });
+  renderRunSelectionHint();
+}
+
+function renderRunSelectionHint() {
+  const hint = document.getElementById('runsSelectionHint');
+  if (!hint) return;
+  const chosen = Array.from(selectedRunUids);
+  if (chosen.length === 0) {
+    hint.textContent = 'Tip: select 2 runs to compare side by side';
+  } else if (chosen.length === 1) {
+    hint.textContent = '1 of 2 selected \u2014 pick one more';
+  } else {
+    hint.textContent = `Comparing: ${chosen[0]} \u00b7 ${chosen[1]}`;
+  }
+  hint.classList.toggle('is-armed', chosen.length === COMPARISON_SIZE);
+}
+
+function initRunSelectionLimit() {
+  const tbody = document.getElementById('runsTableBody');
+  if (!tbody) return;
+
+  tbody.addEventListener('change', (event) => {
+    const box = event.target.closest('.run-select-check');
+    if (!box) return;
+    if (box.checked) selectedRunUids.add(box.value);
+    else selectedRunUids.delete(box.value);
+    applyRunSelectionLimits();
+  });
+
+  const reset = document.getElementById('btnResetFilter');
+  if (reset) {
+    reset.addEventListener('click', () => selectedRunUids.clear());
+  }
+  applyRunSelectionLimits();
 }
 
 // ============================================================ Comparison Helpers

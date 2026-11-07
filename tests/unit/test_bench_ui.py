@@ -737,3 +737,22 @@ def test_the_run_diff_opens_on_two_runs_chosen_from_lists(database_url: str) -> 
     chosen = client.get("/compare?run_a=run-001&run_b=run-002").text
     assert 'value="run-001" selected' in chosen
     assert 'value="run-002" selected' in chosen
+
+
+def test_the_runs_page_limits_the_comparison_to_two_runs(database_url: str) -> None:
+    """Two checks are the whole budget, and the page says so while choosing.
+
+    The comparison takes exactly two runs; the explorer therefore announces
+    the budget and hands the running out of it to the script, instead of
+    letting a third checkbox appear to work.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/runs").text
+    assert 'id="runsSelectionHint"' in body
+    assert "select 2 runs" in body
+
+    script = client.get("/static/js/app.js").text
+    assert "COMPARISON_SIZE" in script
+    assert "applyRunSelectionLimits" in script
