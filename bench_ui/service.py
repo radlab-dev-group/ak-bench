@@ -17,6 +17,7 @@ from akbench.datasets import Dataset, TaskLoadError
 from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE
 from akbench.reporting.data import (
     HistoryData,
+    mean_per_run,
     build_experiment_report,
     build_task_report,
     collect_history,
@@ -384,6 +385,49 @@ class BenchDataService:
         return collect_history(self.store)
 
     # ------------------------------------------------------------- Overview
+    def get_model_comparison(self) -> list[dict[str, Any]]:
+        """The same measures, one row per model: how each model fared.
+
+        Pooling runs by their configuration mixes different models together,
+        so a chart of them cannot say which model a bar belongs to. Grouping
+        by the model instead asks the question a reader can act on: on the
+        same set of tasks, how did each model do, and at what cost in time and
+        tokens.
+        """
+        history = self.get_history()
+        by_model: dict[str, list[dict[str, Any]]] = {}
+        for run in history.runs:
+            model = run.get("observed_model") or run.get("requested_model")
+            if model is None:
+                continue
+            by_model.setdefault(str(model), []).append(run)
+        rows = []
+        for model, group in sorted(by_model.items()):
+            summary = summarize_runs(group)
+            rows.append(
+                {
+                    "model": model,
+                    "runs": summary["runs"],
+                    "evaluated": summary["evaluated"],
+                    "success_rate": summary["success_rate"],
+                    "mean_score": summary["mean_score"],
+                    "mean_duration_seconds": summary["mean_duration_seconds"],
+                    "mean_total_tokens": mean_per_run(
+                        summary["total_tokens"], summary["token_runs"]
+                    ),
+                    "mean_input_tokens": mean_per_run(
+                        summary["input_tokens"], summary["input_token_runs"]
+                    ),
+                    "mean_output_tokens": mean_per_run(
+                        summary["output_tokens"], summary["output_token_runs"]
+                    ),
+                    "mean_tool_calls": mean_per_run(
+                        summary["tool_calls"], summary["tool_call_runs"]
+                    ),
+                }
+            )
+        return rows
+
     def get_overview(self) -> dict[str, Any]:
         history = self.get_history()
         runs = history.runs

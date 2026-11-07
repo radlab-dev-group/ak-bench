@@ -78,32 +78,32 @@
 
   <!-- Interactive Charts Grid -->
   <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap:20px; margin-bottom:24px;">
-    <!-- Chart: Configuration Ranking -->
+    <!-- One metric, one bar per model: the question is how the models differ,
+         not how the same model differs from itself across metrics. -->
     <div class="panel" style="margin-bottom:0;">
       <div class="panel-header">
         <div class="panel-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-          Configuration Performance (Success Rate vs Mean Score)
+          Models: Success Rate &amp; Mean Score
         </div>
       </div>
       <div class="panel-body">
-        <div style="height:{{ [300, ranking|length * 70 + 100]|max }}px; position:relative;">
-          <canvas id="chartConfigPerformance"></canvas>
+        <div style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+          <canvas id="chartModelPerformance"></canvas>
         </div>
       </div>
     </div>
 
-    <!-- Chart: Mean Duration & Token Efficiency -->
     <div class="panel" style="margin-bottom:0;">
       <div class="panel-header">
         <div class="panel-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Mean Duration & Token Usage
+          Models: Cost (Duration &amp; Tokens)
         </div>
       </div>
       <div class="panel-body">
-        <div style="height:{{ [300, ranking|length * 70 + 100]|max }}px; position:relative;">
-          <canvas id="chartDurationTokens"></canvas>
+        <div style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+          <canvas id="chartModelCost"></canvas>
         </div>
       </div>
     </div>
@@ -254,27 +254,30 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const ranking = {{ ranking | tojson }};
+  const models = {{ model_comparison | tojson }};
 
-  if (typeof Chart !== 'undefined' && ranking.length > 0) {
-    const wrap = (t, w = 34) => { const o = []; let l = ''; String(t).split(/(?<=[,\s])/).forEach(p => { if ((l + p).length > w && l) { o.push(l.trim()); l = ''; } l += p; }); if (l) o.push(l.trim()); return o; };
-    const labels = ranking.map(r => wrap(r.config));
-    const successRates = ranking.map(r => r.success_rate !== null ? (r.success_rate * 100).toFixed(1) : 0);
-    const meanScores = ranking.map(r => r.mean_score !== null ? (r.mean_score * 100).toFixed(1) : 0);
-    const durations = ranking.map(r => r.mean_duration_seconds !== null ? (r.mean_duration_seconds / 60).toFixed(1) : 0);
-    const tokens = ranking.map(r => r.mean_total_tokens !== null ? Math.round(r.mean_total_tokens / 1000) : 0);
+  if (typeof Chart !== 'undefined' && models.length > 0) {
+    const mono = { family: 'ui-monospace', size: 11 };
+    const labels = models.map(m => m.model);
+    const perf = {
+      successRate: models.map(m => m.success_rate !== null ? (m.success_rate * 100).toFixed(1) : 0),
+      meanScore: models.map(m => m.mean_score !== null ? (m.mean_score * 100).toFixed(1) : 0),
+    };
+    const cost = {
+      durationMin: models.map(m => m.mean_duration_seconds !== null ? (m.mean_duration_seconds / 60).toFixed(1) : 0),
+      tokensK: models.map(m => m.mean_total_tokens !== null ? Math.round(m.mean_total_tokens / 1000) : 0),
+    };
 
-    // Chart 1: Performance
-    const ctx1 = document.getElementById('chartConfigPerformance');
+    const ctx1 = document.getElementById('chartModelPerformance');
     if (ctx1) {
       new Chart(ctx1, {
         type: 'bar',
         data: {
-          labels: labels,
+          labels,
           datasets: [
             {
               label: 'Success Rate (%)',
-              data: successRates,
+              data: perf.successRate,
               backgroundColor: 'rgba(0, 229, 155, 0.7)',
               borderColor: '#00e59b',
               borderWidth: 1,
@@ -282,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             {
               label: 'Mean Score (%)',
-              data: meanScores,
+              data: perf.meanScore,
               backgroundColor: 'rgba(90, 169, 255, 0.7)',
               borderColor: '#5aa9ff',
               borderWidth: 1,
@@ -294,55 +297,50 @@ document.addEventListener('DOMContentLoaded', () => {
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: '#c6d3df', font: { family: 'ui-monospace' } } }
-          },
+          plugins: { legend: { labels: { color: '#c6d3df', font: mono } } },
           scales: {
-            y: { ticks: { color: '#c6d3df', autoSkip: false, font: { family: 'ui-monospace', size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            x: { max: 100, min: 0, ticks: { color: '#8d9daf', font: { family: 'ui-monospace' } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            x: { min: 0, max: 100, ticks: { color: '#8d9daf', font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y: { ticks: { color: '#c6d3df', autoSkip: false, font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } }
           }
         }
       });
     }
 
-    // Chart 2: Durations & Tokens
-    const ctx2 = document.getElementById('chartDurationTokens');
+    const ctx2 = document.getElementById('chartModelCost');
     if (ctx2) {
       new Chart(ctx2, {
         type: 'bar',
         data: {
-          labels: labels,
+          labels,
           datasets: [
             {
               label: 'Mean Duration (min)',
-              data: durations,
+              data: cost.durationMin,
               backgroundColor: 'rgba(255, 180, 74, 0.7)',
               borderColor: '#ffb44a',
               borderWidth: 1,
-              yAxisID: 'y',
               borderRadius: 4,
+              yAxisID: 'y',
             },
             {
               label: 'Mean Tokens (k)',
-              data: tokens,
+              data: cost.tokensK,
               backgroundColor: 'rgba(199, 146, 234, 0.7)',
               borderColor: '#c792ea',
               borderWidth: 1,
-              yAxisID: 'y1',
               borderRadius: 4,
+              yAxisID: 'y1',
             }
           ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: '#c6d3df', font: { family: 'ui-monospace' } } }
-          },
+          plugins: { legend: { labels: { color: '#c6d3df', font: mono } } },
           scales: {
-            x: { ticks: { color: '#c6d3df', autoSkip: false, font: { family: 'ui-monospace', size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { type: 'linear', position: 'left', ticks: { color: '#ffb44a', font: { family: 'ui-monospace' } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y1: { type: 'linear', position: 'right', ticks: { color: '#c792ea', font: { family: 'ui-monospace' } }, grid: { drawOnChartArea: false } }
+            x: { ticks: { color: '#c6d3df', autoSkip: false, font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y: { type: 'linear', position: 'left', ticks: { color: '#ffb44a', font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y1: { type: 'linear', position: 'right', ticks: { color: '#c792ea', font: mono }, grid: { drawOnChartArea: false } }
           }
         }
       });

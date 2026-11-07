@@ -124,7 +124,7 @@ def test_dashboard_endpoint_renders(database_url: str) -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert "Benchmark Dashboard" in response.text
-    assert "Configuration Performance" in response.text
+    assert "Models: Success Rate" in response.text
     assert "test-exp@1.0.0" in response.text or "run-001" in response.text
 
 
@@ -509,7 +509,9 @@ def test_the_ui_reads_its_database_from_the_env_file(monkeypatch, tmp_path) -> N
 def test_the_address_of_the_database_never_reaches_the_pages(monkeypatch, tmp_path) -> None:
     from bench_ui.app import create_app
 
-    app = create_app(database_url="postgresql+psycopg://akbench:***@127.0.0.1:1/none")
+    # A URL nobody can actually connect to: the page must say it is offline
+    # and must never echo the address or the password.
+    app = create_app(database_url="postgresql+psycopg://akbench:***@127.0.0.1:1/none", project_root=tmp_path)
     client = TestClient(app)
 
     page = client.get("/")
@@ -756,3 +758,62 @@ def test_the_runs_page_limits_the_comparison_to_two_runs(database_url: str) -> N
     script = client.get("/static/js/app.js").text
     assert "COMPARISON_SIZE" in script
     assert "applyRunSelectionLimits" in script
+
+
+def test_the_dashboard_charts_compare_models_not_metrics(database_url: str) -> None:
+    """The charts ask how the models differ, not how one differs from itself.
+
+    Two runs of the same model under different configurations used to be two
+    bars of the same metric; grouping by model makes the comparison a reader
+    can act on: same set of tasks, different models, per-model success rate,
+    score, duration and tokens.
+    """
+    _seeded_store(database_url)
+    store = _store(database_url)
+    # two runs, same task, two different models
+    store.record_run(
+        {
+            "run_uid": "run-model-a",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "requested_model": "model-a",
+            "observed_model": "model-a",
+            "state": "completed",
+            "evaluation": {"verdict": "passed", "score": 1.0, "passed": 5, "failed": 0, "total": 5},
+            "observations": {"total_tokens": 1000, "input_tokens": 800, "output_tokens": 200},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+    store.record_run(
+        {
+            "run_uid": "run-model-b",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "requested_model": "model-b",
+            "observed_model": "model-b",
+            "state": "completed",
+            "evaluation": {"verdict": "failed", "score": 0.0, "passed": 1, "failed": 4, "total": 5},
+            "observations": {"total_tokens": 2000, "input_tokens": 1500, "output_tokens": 500},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-opt",
+        task=_task_stub(),
+    )
+
+    client = TestClient(create_app(database_url=database_url))
+    body = client.get("/").text
+
+    # one bar per model, the same metric in both charts
+    assert "chartModelPerformance" in body and "chartModelCost" in body
+    assert "model-a" in body and "model-b" in body
+    import json, re
+    match = re.search(r"const models = (\[.*?\]);", body, re.S)
+    models = json.loads(match.group(1))
+    by_model = {row["model"]: row for row in models}
+    assert by_model["model-a"]["success_rate"] == 1.0
+    assert by_model["model-b"]["success_rate"] == 0.0
+    assert by_model["model-a"]["mean_total_tokens"] == 1000

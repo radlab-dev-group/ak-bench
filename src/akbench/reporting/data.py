@@ -315,7 +315,7 @@ def _rank_key(row: dict[str, Any], token_field: str = "total_tokens") -> tuple:
     )
 
 
-def _mean_per_run(total: int | None, stated: int) -> float | None:
+def mean_per_run(total: int | None, stated: int) -> float | None:
     """A summed measure averaged over the runs that actually stated it.
 
     ``None`` stays ``None``: a pool whose runs reported no tokens has no mean
@@ -429,16 +429,16 @@ def configuration_ranking(
                 # the sums stay in the row for the JSON and the future pages;
                 # the tables rank the per-run means, because a sum over a
                 # different number of runs is not comparable
-                "mean_input_tokens": _mean_per_run(
+                "mean_input_tokens": mean_per_run(
                     summary["input_tokens"], summary["input_token_runs"]
                 ),
-                "mean_output_tokens": _mean_per_run(
+                "mean_output_tokens": mean_per_run(
                     summary["output_tokens"], summary["output_token_runs"]
                 ),
-                "mean_total_tokens": _mean_per_run(
+                "mean_total_tokens": mean_per_run(
                     summary["total_tokens"], summary["token_runs"]
                 ),
-                "mean_tool_calls": _mean_per_run(
+                "mean_tool_calls": mean_per_run(
                     summary["tool_calls"], summary["tool_call_runs"]
                 ),
             }
