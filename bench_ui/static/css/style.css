@@ -1276,4 +1276,13 @@ pre {
 .an-grid .panel { margin-bottom:0; min-width:0; }
 .an-chart { position:relative; height:320px; }
 .an-chart.tall { height:440px; }
+/* a chart that has not painted yet spins in place: the reader can see the
+   data is on its way instead of a blank box pretending nothing is there */
+.an-chart-loading { position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:10px; background:rgba(10,14,20,0.55);
+  z-index:5; }
+.an-chart-loading span { font-family:var(--mono); font-size:11px; color:var(--fg-dim); letter-spacing:0.04em; }
+.an-spin { width:34px; height:34px; border-radius:50%; border:3px solid rgba(255,255,255,0.12);
+  border-top-color:var(--mint); animation:an-spin 0.9s linear infinite; }
+@keyframes an-spin { to { transform:rotate(360deg); } }
 @media (max-width:640px) { .an-grid { grid-template-columns:1fr; } }

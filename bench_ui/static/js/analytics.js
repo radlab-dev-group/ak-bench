@@ -20,6 +20,22 @@
   };
 
   let DATA = { rows: [], param_keys: [] };
+
+  // Every chart spins while the data is on its way, then the overlay is torn
+  // down the moment its chart has been drawn.
+  function armSpinners() {
+    document.querySelectorAll('.an-chart:not(.has-spinner)').forEach(el => {
+      const spin = document.createElement('div');
+      spin.className = 'an-chart-loading';
+      spin.innerHTML = '<div class="an-spin"></div><span>loading…</span>';
+      el.appendChild(spin);
+      el.classList.add('has-spinner');
+    });
+  }
+  function clearSpinners() {
+    document.querySelectorAll('.an-chart .an-chart-loading').forEach(el => el.remove());
+    document.querySelectorAll('.an-chart.has-spinner').forEach(el => el.classList.remove('has-spinner'));
+  }
   let DIMS = {};
   const charts = {};
   const state = { group: 'config_str', split: '', metric: 'score', x: 'total_tokens', y: 'score', sort: 'metric_desc', agg: 'mean', filters: {} };
@@ -471,12 +487,20 @@
   }
 
   async function load(first) {
-    const res = await fetch('/api/analytics/data'); if (!res.ok) return;
-    DATA = await res.json();
+    armSpinners();
+    try {
+      const res = await fetch('/api/analytics/data');
+      DATA = res.ok ? await res.json() : { rows: [], param_keys: [] };
+    } catch {
+      DATA = { rows: [], param_keys: [] };
+    }
     buildDims();
     if (first) { loadHash(); buildControls(); }
     buildFilters();
     render();
+    // the charts above are constructed synchronously by render(); one frame
+    // later they have painted, so the spinners may go
+    requestAnimationFrame(clearSpinners);
   }
 
   document.addEventListener('DOMContentLoaded', () => {
