@@ -169,8 +169,10 @@
   <details class="panel raw-descriptor">
     <summary class="panel-header">
       <span class="panel-title">Experiment file <span class="badge badge-neutral">YAML</span></span>
+      <button class="btn btn-sm" type="button" data-copy-target="#rawYamlBlock"
+              onclick="event.stopPropagation()">Copy</button>
     </summary>
-    <pre class="task-prose">{{ experiment.experiment_yaml }}</pre>
+    <pre class="task-prose yaml-block" id="rawYamlBlock">{{ experiment.experiment_yaml }}</pre>
   </details>
   {% endif %}
 
@@ -242,6 +244,7 @@
         <thead>
           <tr>
             <th data-sortable>Run UID</th>
+            <th data-sortable class="num" title="Repetition number of this run">Rep</th>
             <th data-sortable>Task</th>
             <th data-sortable>Variant</th>
             <th data-sortable>Verdict</th>
@@ -260,6 +263,9 @@
                 <a href="javascript:void(0)" onclick="openRunModal('{{ run.uid }}')" class="mono" style="font-weight:600;">
                   {{ run.uid }}
                 </a>
+              </td>
+              <td class="num mono" data-sort-value="{{ run.repetition if run.repetition is not none else '' }}">
+                {{ run.repetition if run.repetition is not none else "—" }}
               </td>
               <td><a href="/tasks/{{ run.task_uid }}" class="mono">{{ run.task_uid }}</a></td>
               <td class="mono" style="font-size:11.5px;">{{ run.config_str }}</td>

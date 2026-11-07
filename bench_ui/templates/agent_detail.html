@@ -168,8 +168,10 @@
   <details class="panel raw-descriptor">
     <summary class="panel-header">
       <span class="panel-title">Agent descriptor <span class="badge badge-neutral">{{ newest.agent_yaml.splitlines() | length }} lines</span></span>
+      <button class="btn btn-sm" type="button" data-copy-target="#rawYamlBlock"
+              onclick="event.stopPropagation()">Copy</button>
     </summary>
-    <pre class="task-prose">{{ newest.agent_yaml }}</pre>
+    <pre class="task-prose yaml-block" id="rawYamlBlock">{{ newest.agent_yaml }}</pre>
   </details>
   {% endif %}
 </div>
