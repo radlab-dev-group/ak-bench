@@ -456,7 +456,26 @@ def configuration_ranking(
     baseline = next((row for row in rows if row.get("is_baseline")), None)
     for row in rows:
         row["vs_baseline"] = _vs_baseline(row, baseline, token_field="mean_total_tokens")
+        row["vs_baseline_delta"] = _vs_baseline_delta(row, baseline)
     return rows
+
+
+def _vs_baseline_delta(
+    row: dict[str, Any],
+    baseline: dict[str, Any] | None,
+) -> float | None:
+    """The number behind the words: how far the success rate is from the baseline.
+
+    ``vs_baseline`` is a sentence for a reader to skim, which makes it a poor
+    thing to order a column by. The difference in success rate is what the
+    phrase leads with, so the tables sort on that and show the sentence.
+    """
+    if baseline is None or row is baseline:
+        return None
+    rate, base_rate = row.get("success_rate"), baseline.get("success_rate")
+    if rate is None or base_rate is None:
+        return None
+    return round(rate - base_rate, 4)
 
 
 def _vs_baseline(

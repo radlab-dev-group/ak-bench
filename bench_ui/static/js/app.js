@@ -815,13 +815,15 @@ function initSortableTables(root) {
       if (!cell) return '';
       const explicit = cell.dataset.sortValue;
       if (explicit !== undefined) return explicit;
-      // The first text node is the cell's own text: a badge or a bar beside
-      // it must not pull the sort after itself.
+      // The cell's own text is what sorts: a badge or a bar beside it must not
+      // pull the sort after itself. Whitespace is not a value — a cell whose
+      // number lives inside a span has no own text and falls back to the text
+      // it shows, or its column would sort on nothing at all.
       let text = '';
       cell.childNodes.forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
       });
-      return (text || cell.textContent || '').trim();
+      return text.trim() || (cell.textContent || '').trim();
     };
 
     const parseValue = (raw) => {

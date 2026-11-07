@@ -44,13 +44,13 @@
               <td><span class="badge badge-info">{{ exp.type or "matrix" }}</span></td>
               <td class="num mono">{{ exp.runs_count }}</td>
               <td class="num mono">{{ exp.passed_count }}</td>
-              <td>
+              <td data-sort-value="{{ exp.success_rate if exp.success_rate is not none else '' }}">
                 <div class="cell-bar">
                   <div class="cell-bar-fill" style="width:{{ ((exp.success_rate or 0) * 70)|round|int }}px;"></div>
                   <span class="mono" style="font-size:12px;">{% if exp.success_rate is not none %}{{ "%.1f"|format(exp.success_rate * 100) }}%{% else %}—{% endif %}</span>
                 </div>
               </td>
-              <td>
+              <td data-sort-value="{{ exp.mean_score if exp.mean_score is not none else '' }}">
                 <span class="mono" style="font-weight:600; color:{% if (exp.mean_score or 0) >= 0.95 %}var(--mint){% elif (exp.mean_score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
                   {% if exp.mean_score is not none %}{{ "%.3f"|format(exp.mean_score) }}{% else %}—{% endif %}
                 </span>

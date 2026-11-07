@@ -148,13 +148,13 @@
               </td>
               <td class="num mono">{{ row.runs }}</td>
               <td class="num mono">{{ row.evaluated }}</td>
-              <td>
+              <td data-sort-value="{{ row.success_rate if row.success_rate is not none else '' }}">
                 <div class="cell-bar">
                   <div class="cell-bar-fill" style="width:{{ ((row.success_rate or 0) * 80)|round|int }}px;"></div>
                   <span class="mono" style="font-size:12.5px;">{% if row.success_rate is not none %}{{ "%.1f"|format(row.success_rate * 100) }}%{% else %}—{% endif %}</span>
                 </div>
               </td>
-              <td>
+              <td data-sort-value="{{ row.mean_score if row.mean_score is not none else '' }}">
                 <div class="cell-bar">
                   <div class="cell-bar-fill" style="background:var(--blue); width:{{ ((row.mean_score or 0) * 80)|round|int }}px;"></div>
                   <span class="mono" style="font-size:12.5px; font-weight:600; color:{% if (row.mean_score or 0) >= 0.95 %}var(--mint){% elif (row.mean_score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
@@ -174,7 +174,7 @@
               <td class="num mono" data-sort-value="{{ row.mean_tool_calls if row.mean_tool_calls is not none else '' }}">
                 {% if row.mean_tool_calls is not none %}{{ "%.1f"|format(row.mean_tool_calls) }}{% else %}—{% endif %}
               </td>
-              <td>
+              <td data-sort-value="{{ row.vs_baseline_delta if row.vs_baseline_delta is not none else '' }}">
                 <span class="mono" style="font-size:12px; color:var(--fg-dim);">
                   {{ row.vs_baseline or "—" }}
                 </span>

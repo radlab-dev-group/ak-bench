@@ -202,10 +202,10 @@
               <td class="mono" style="font-weight:600;">{{ v.variant.uid }}</td>
               <td><code>{{ v.variant['values'] | tojson }}</code></td>
               <td class="num mono">{{ v.summary.runs }}</td>
-              <td>
+              <td data-sort-value="{{ v.summary.success_rate if v.summary.success_rate is not none else '' }}">
                 <span class="mono">{% if v.summary.success_rate is not none %}{{ "%.1f"|format(v.summary.success_rate * 100) }}%{% else %}—{% endif %}</span>
               </td>
-              <td>
+              <td data-sort-value="{{ v.summary.mean_score if v.summary.mean_score is not none else '' }}">
                 <span class="mono" style="font-weight:600; color:{% if (v.summary.mean_score or 0) >= 0.95 %}var(--mint){% elif (v.summary.mean_score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
                   {% if v.summary.mean_score is not none %}{{ "%.3f"|format(v.summary.mean_score) }}{% else %}—{% endif %}
                 </span>
