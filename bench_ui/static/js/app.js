@@ -146,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (copyCsv) copyCsv.addEventListener('click', () => copyRunsTable('csv'));
   const copyMarkdown = document.getElementById('btnCopyMarkdown');
   if (copyMarkdown) copyMarkdown.addEventListener('click', () => copyRunsTable('markdown'));
+  initRunsKeyNav();
 
   if (document.getElementById('liveStrip')) {
     fetchActiveRuns();
@@ -975,6 +976,97 @@ function flashCopied(format) {
     ? 'Copy failed — select the table and copy manually'
     : `Copied ${format === 'markdown' ? 'Markdown' : 'CSV'} to clipboard`;
   setTimeout(() => { hint.textContent = original; }, 1800);
+}
+
+// ============================================================ Keyboard navigation
+// A table read by hand is read with the cursor: up and down move it, Enter
+// opens the row it rests on, and / drops straight into the filter search so a
+// reader can jump to a run by name. The cursor lives in the page, never in the
+// data, so a filter that repaints the table simply starts the cursor at the top.
+// It stays out of the way while the keyboard is elsewhere — an input, a select
+// or the run inspector — and only the runs table takes the cursor.
+const runsKeyNav = { focused: -1, rows: [] };
+
+function runsKeyNavRows() {
+  const tbody = document.getElementById('runsTableBody');
+  runsKeyNav.rows = tbody
+    ? Array.from(tbody.querySelectorAll('tr')).filter(row => row.querySelector('.run-select-check'))
+    : [];
+  return runsKeyNav.rows;
+}
+
+function runsKeyNavClear() {
+  runsKeyNav.rows.forEach(row => row.classList.remove('row-focused'));
+  runsKeyNav.focused = -1;
+}
+
+function runsKeyNavFocus(index) {
+  const rows = runsKeyNavRows();
+  if (!rows.length) return;
+  runsKeyNav.rows.forEach(row => row.classList.remove('row-focused'));
+  const next = Math.max(0, Math.min(rows.length - 1, index));
+  const row = rows[next];
+  row.classList.add('row-focused');
+  row.scrollIntoView({ block: 'nearest' });
+  runsKeyNav.focused = next;
+}
+
+function runsKeyNavModalOpen() {
+  const modal = document.getElementById('runDetailModal');
+  return modal ? modal.classList.contains('open') : false;
+}
+
+function runsKeyNavActive() {
+  return document.getElementById('runsFilterForm') !== null && !runsKeyNavModalOpen();
+}
+
+function runsKeyNavOnKeydown(event) {
+  if (!runsKeyNavActive()) return;
+  const key = event.key;
+  const target = event.target;
+  const editing = target && (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
+    target.isContentEditable
+  );
+  // the keyboard belongs to whatever is being typed into, arrows and all
+  if (editing) return;
+
+  // "/" is the way in from anywhere else on the page; once the caret is in the
+  // search box it is an ordinary character again
+  if (key === '/') {
+    const search = document.getElementById('filterSearch');
+    if (search) {
+      event.preventDefault();
+      search.focus();
+      search.select();
+    }
+    return;
+  }
+
+  if (key === 'ArrowDown') {
+    event.preventDefault();
+    runsKeyNavFocus(runsKeyNav.focused + 1);
+    return;
+  }
+  if (key === 'ArrowUp') {
+    event.preventDefault();
+    runsKeyNavFocus(runsKeyNav.focused - 1);
+    return;
+  }
+  if (key === 'Enter' && runsKeyNav.focused >= 0) {
+    const row = runsKeyNav.rows[runsKeyNav.focused];
+    const box = row && row.querySelector('.run-select-check');
+    if (box) {
+      event.preventDefault();
+      openRunModal(box.value);
+    }
+  }
+}
+
+function initRunsKeyNav() {
+  document.addEventListener('keydown', runsKeyNavOnKeydown);
 }
 
 // ============================================================ Run score sparkline

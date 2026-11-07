@@ -1391,6 +1391,28 @@ def test_two_runs_without_change_artifacts_have_no_diff(database_url: str) -> No
     comparison = service.compare_runs_side_by_side("run-001", "run-002")
     assert comparison["artifact_diff"] is None
 
+def test_the_runs_table_is_driven_from_the_keyboard(database_url: str) -> None:
+    """A reader who lives at the keyboard should not have to reach for the mouse.
+
+    The runs page says how it is driven, and the script behind it moves a cursor
+    with the arrow keys, opens the run under the cursor on Enter, and drops into
+    the filter search on "/". The keys belong to whatever is being typed into,
+    so the script guards against stealing them from an input or an open modal.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/runs").text
+    assert "kbd-hint" in body
+    assert "<kbd>" in body
+
+    script = client.get("/static/js/app.js").text
+    assert "initRunsKeyNav" in script
+    assert "runsKeyNavFocus" in script
+    assert "row-focused" in script
+    assert "filterSearch" in script
+
+
 def test_the_runs_page_exports_its_filtered_rows(database_url: str) -> None:
     """A filtered table is an answer to a question; the reader should be able to take it.
 

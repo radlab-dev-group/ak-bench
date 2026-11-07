@@ -1140,6 +1140,39 @@ tbody tr:hover {
   background: rgba(255, 255, 255, 0.025);
 }
 
+/* The row the keyboard cursor rests on. It is marked rather than hovered so a
+   reader moving with the arrow keys can see where Enter will land. */
+tbody tr.row-focused {
+  background: rgba(126, 181, 255, 0.1);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+tbody tr.row-focused:hover {
+  background: rgba(126, 181, 255, 0.14);
+}
+
+/* The keyboard cheat-sheet under a page title: the keys and what they do. */
+.kbd-hint {
+  margin-left: 12px;
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-family: var(--mono);
+}
+
+.kbd-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 2px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
