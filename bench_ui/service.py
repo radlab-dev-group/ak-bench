@@ -894,8 +894,39 @@ class BenchDataService:
         return groups
 
     def get_task_file(self, task_uid: str, path: str) -> dict[str, Any] | None:
-        """The content of one recorded file, or ``None`` when not stored."""
+        """The content of one recorded file, or ``None`` when it was not stored."""
         return self.store.task_file(task_uid, path)
+
+    def get_task_code_zip(self, task_uid: str) -> tuple[bytes, str] | None:
+        """The task's recorded code as a ``{id}__{version}.zip`` download.
+
+        A reader who wants to work the task themselves wants the files, not a
+        page of them. The archive keeps the recorded paths under each kind, so
+        the layout the task was recorded with is the layout they get. ``None``
+        when nothing was recorded.
+        """
+        import io
+        import zipfile
+
+        task = self.get_history().task(task_uid)
+        if task is None:
+            return None
+        rows = self.store.task_files(task_uid)
+        if not rows:
+            return None
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for row in rows:
+                detail = self.store.task_file(task_uid, row["path"])
+                if detail is None:
+                    continue
+                archive.writestr(
+                    f"{row['kind']}/{row['path']}",
+                    detail.get("content") or "",
+                )
+        task_id = task.get("id") or task_uid
+        version = task.get("version") or "unknown"
+        return buffer.getvalue(), f"{task_id}__{version}.zip"
 
     def get_agents(self) -> list[dict[str, Any]]:
         """Every recorded agent version, with how often its runs happened.

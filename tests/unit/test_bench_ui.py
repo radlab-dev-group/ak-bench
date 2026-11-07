@@ -868,3 +868,101 @@ def test_the_run_tables_carry_a_tool_calls_column(database_url: str) -> None:
 
     detail = client.get("/experiments/test-exp@1.0.0").text
     assert "Tool Calls" in detail
+
+
+def test_a_task_page_offers_its_code_as_one_archive(database_url: str, tmp_path) -> None:
+    """The whole recorded code of a task, in a file named after the task.
+
+    A reader who wants to work the task themselves wants the files, not a page
+    of them, and wants the download to say which task and which version it is.
+    """
+    import io
+    import zipfile
+
+    store = _seeded_store(database_url)
+    _task_with_files(store, tmp_path)
+    client = TestClient(create_app(database_url=database_url))
+
+    response = client.get("/api/tasks/wordcount-001@1.0.0/download.zip")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/zip")
+    assert 'filename="wordcount-001__1.0.0.zip"' in response.headers["content-disposition"]
+
+    names = zipfile.ZipFile(io.BytesIO(response.content)).namelist()
+    assert "repository/src/wordcount/__init__.py" in names
+    assert "hidden_tests/hidden_tests/test_hidden.py" in names
+    assert "public_tests/public_tests/test_public.py" in names
+    assert any(name.endswith("mutation-001.patch") for name in names)
+
+    # the page offers it, and the offer does not fold the panel when clicked
+    body = client.get("/tasks/wordcount-001@1.0.0").text
+    assert "/api/tasks/wordcount-001@1.0.0/download.zip" in body
+    assert "event.stopPropagation()" in body
+
+    missing = client.get("/api/tasks/never-recorded@9.9.9/download.zip")
+    assert missing.status_code == 404
+
+
+def test_the_task_page_folds_its_long_prose_and_its_code(database_url: str, tmp_path) -> None:
+    """Description and code open and close: neither is the page's first point."""
+    store = _seeded_store(database_url)
+    _task_with_files(store, tmp_path)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/tasks/wordcount-001@1.0.0").text
+
+    assert '<details class="panel raw-descriptor">' in body
+    # the description panel is a <details> whose summary names the file
+    assert "<summary" in body
+    description_header = body.split("description.md")[0]
+    assert description_header.count("<details") >= 1
+
+
+def test_the_task_page_charts_score_per_configuration(database_url: str) -> None:
+    """One line per configuration: the same task under different factors."""
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/tasks/wordcount-001@1.0.0").text
+
+    assert 'id="chartTaskScore"' in body
+    assert "Score by Configuration" in body
+    # the series are built from the runs of this task, keyed by configuration
+    assert "byConfig" in body
+    assert "knowledge=False" in body or "model=base-model" in body
+
+
+def test_a_formatted_cell_sorts_by_the_number_it_shows(database_url: str) -> None:
+    """A percentage inside a bar sorted on nothing: the text it shows is the key.
+
+    Whitespace between the cell and the value inside it is not a value, and a
+    cell whose own text is only whitespace used to sort on that — a column of
+    success rates that refused to move.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    script = client.get("/static/js/app.js").text
+    assert "text.trim() || (cell.textContent || '').trim()" in script
+
+    # the success rate and mean score columns carry their raw number beside the
+    # bar, and the against-baseline column carries the difference it describes
+    body = client.get("/").text
+    assert 'data-sort-value="1.0"' in body
+    assert 'data-sort-value="0.9"' in body
+    assert 'data-sort-value="-1.0"' in body
+
+
+def test_the_analytics_charts_spin_until_their_data_arrives() -> None:
+    """An empty chart is indistinguishable from a broken one, so it spins."""
+    client = TestClient(create_app(database_url="sqlite:///:memory:"))
+
+    body = client.get("/analytics").text
+    assert "analytics.js" in body
+
+    script = client.get("/static/js/analytics.js").text
+    assert "armSpinners" in script and "clearSpinners" in script
+
+    css = client.get("/static/css/style.css").text
+    assert "an-chart-loading" in css and "an-spin" in css

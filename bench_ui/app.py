@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -425,6 +425,19 @@ def create_app(
         if row is None:
             raise HTTPException(status_code=404, detail="File not recorded for this task")
         return row
+
+    @app.get("/api/tasks/{task_uid}/download.zip")
+    async def api_task_code_zip(task_uid: str):
+        """The task's recorded code as one archive, named after the task."""
+        packed = service.get_task_code_zip(task_uid)
+        if packed is None:
+            raise HTTPException(status_code=404, detail="No task code recorded")
+        payload, filename = packed
+        return Response(
+            content=payload,
+            media_type="application/zip",
+            headers={"content-disposition": f'attachment; filename="{filename}"'},
+        )
 
     @app.get("/api/tasks")
     async def api_tasks():
