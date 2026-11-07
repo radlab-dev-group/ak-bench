@@ -28,6 +28,7 @@
             <th data-sortable>Mean Score</th>
             <th data-sortable class="num">Mean Duration</th>
             <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
             <th style="text-align:right;">Actions</th>
           </tr>
         </thead>
@@ -78,6 +79,9 @@
               </td>
               <td class="num mono">
                 {% if t.total_tokens %}{{ "{:,}".format(t.total_tokens) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ t.mean_tool_calls if t.mean_tool_calls is not none else '' }}">
+                {% if t.mean_tool_calls is not none %}{{ "%.1f"|format(t.mean_tool_calls) }}{% else %}—{% endif %}
               </td>
               <td style="text-align:right;">
                 <a href="/tasks/{{ t.uid }}" class="btn btn-sm">Inspect</a>

@@ -25,6 +25,7 @@
             <th data-sortable>Mean Score</th>
             <th data-sortable class="num">Mean Duration</th>
             <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
             <th data-sortable>Validity</th>
             <th style="text-align:right;">Actions</th>
           </tr>
@@ -62,6 +63,9 @@
               </td>
               <td class="num mono">
                 {% if exp.total_tokens %}{{ "{:,}".format(exp.total_tokens) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ exp.tool_calls or '' }}">
+                {% if exp.tool_calls %}{{ "{:,}".format(exp.tool_calls) }}{% else %}—{% endif %}
               </td>
               <td>
                 <span class="badge {% if exp.validity == 'valid' %}badge-passed{% elif exp.validity == 'valid_with_warnings' %}badge-partial{% else %}badge-neutral{% endif %}">

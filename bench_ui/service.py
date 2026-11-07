@@ -470,6 +470,9 @@ class BenchDataService:
                         "mean_score": t_sum["mean_score"],
                         "mean_duration": t_sum["mean_duration_seconds"],
                         "total_tokens": t_sum["total_tokens"],
+                        "mean_tool_calls": mean_per_run(
+                            t_sum["tool_calls"], t_sum["tool_call_runs"]
+                        ),
                     }
                 )
 
@@ -748,6 +751,7 @@ class BenchDataService:
                     "mean_score": summary["mean_score"],
                     "mean_duration": summary["mean_duration_seconds"],
                     "total_tokens": summary["total_tokens"],
+                    "tool_calls": summary["tool_calls"],
                     "variants_count": len(variants),
                     "created_at": exp.get("created_at"),
                     "updated_at": exp.get("updated_at"),
@@ -838,6 +842,9 @@ class BenchDataService:
                     "mean_score": summary["mean_score"],
                     "mean_duration": summary["mean_duration_seconds"],
                     "total_tokens": summary["total_tokens"],
+                    "mean_tool_calls": mean_per_run(
+                        summary["tool_calls"], summary["tool_call_runs"]
+                    ),
                     "doc_available": doc_available,
                 }
             )

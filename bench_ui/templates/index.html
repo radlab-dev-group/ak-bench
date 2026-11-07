@@ -130,6 +130,7 @@
             <th data-sortable>Mean Score</th>
             <th data-sortable class="num">Mean Time</th>
             <th data-sortable class="num">Mean Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
             <th data-sortable>Against Baseline</th>
           </tr>
         </thead>
@@ -170,6 +171,9 @@
               <td class="num mono">
                 {% if row.mean_total_tokens %}{{ "{:,}".format(row.mean_total_tokens) }}{% else %}—{% endif %}
               </td>
+              <td class="num mono" data-sort-value="{{ row.mean_tool_calls if row.mean_tool_calls is not none else '' }}">
+                {% if row.mean_tool_calls is not none %}{{ "%.1f"|format(row.mean_tool_calls) }}{% else %}—{% endif %}
+              </td>
               <td>
                 <span class="mono" style="font-size:12px; color:var(--fg-dim);">
                   {{ row.vs_baseline or "—" }}
@@ -201,6 +205,7 @@
             <th data-sortable class="num">Score</th>
             <th data-sortable class="num">Duration</th>
             <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
             <th data-sortable>Status</th>
             <th data-sortable>Started At</th>
             <th style="text-align:right;">Actions</th>
@@ -236,6 +241,9 @@
               </td>
               <td class="num mono">
                 {% if r.total_tokens %}{{ "{:,}".format(r.total_tokens) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ r.tool_call_count if r.tool_call_count is not none else '' }}">
+                {% if r.tool_call_count is not none %}{{ r.tool_call_count }}{% else %}—{% endif %}
               </td>
               <td><span class="badge badge-neutral" style="font-size:11px;">{{ r.status }}</span></td>
               <td style="font-size:11px; color:var(--fg-faint); white-space:nowrap;">{{ r.started_at or "—" }}</td>

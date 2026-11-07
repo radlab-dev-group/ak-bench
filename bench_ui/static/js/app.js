@@ -282,7 +282,7 @@ async function fetchFilteredRuns() {
     if (tbody) {
       tbody.innerHTML = '';
       if (data.runs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
       } else {
         data.runs.forEach(run => {
           tbody.appendChild(createRunTableRow(run));
@@ -303,6 +303,9 @@ function createRunTableRow(run) {
   const scoreFormatted = run.score !== null && run.score !== undefined ? Number(run.score).toFixed(3) : '—';
   const durationFormatted = formatDuration(run.duration_seconds);
   const totalTokensFormatted = run.total_tokens ? Number(run.total_tokens).toLocaleString() : '—';
+  const toolCallsFormatted = run.tool_call_count === null || run.tool_call_count === undefined
+    ? '—'
+    : Number(run.tool_call_count).toLocaleString();
 
   tr.innerHTML = `
     <td>
@@ -335,6 +338,7 @@ function createRunTableRow(run) {
     </td>
     <td class="num mono" data-sort-value="${run.duration_seconds === null || run.duration_seconds === undefined ? '' : run.duration_seconds}">${durationFormatted}</td>
     <td class="num mono">${totalTokensFormatted}</td>
+    <td class="num mono" data-sort-value="${run.tool_call_count === null || run.tool_call_count === undefined ? '' : run.tool_call_count}">${toolCallsFormatted}</td>
     <td>
       <span class="badge badge-neutral" style="font-size:11px;">
         ${escapeHtml(run.status || 'unknown')}

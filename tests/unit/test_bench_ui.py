@@ -817,3 +817,54 @@ def test_the_dashboard_charts_compare_models_not_metrics(database_url: str) -> N
     assert by_model["model-a"]["success_rate"] == 1.0
     assert by_model["model-b"]["success_rate"] == 0.0
     assert by_model["model-a"]["mean_total_tokens"] == 1000
+
+
+def test_the_run_tables_carry_a_tool_calls_column(database_url: str) -> None:
+    """A run's effort is not only its tokens: the tables must show the calls.
+
+    Tool calls were recorded and summed but never printed, so a reader could
+    not see that one configuration did the same work in a tenth of the calls.
+    Every table that lists runs or configurations carries the column, with the
+    raw number beside it for sorting.
+    """
+    store = _seeded_store(database_url)
+    store.record_run(
+        {
+            "run_uid": "run-tools",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "runtime_id": "llm-router-ak-bench",
+            "state": "completed",
+            "started_at": "2026-11-06T11:00:00+00:00",
+            "finished_at": "2026-11-06T11:01:00+00:00",
+            "evaluation": {
+                "verdict": "passed",
+                "score": 1.0,
+                "passed": 10,
+                "failed": 0,
+                "total": 10,
+            },
+            "observations": {"total_tokens": 900, "tool_call_count": 17},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+    client = TestClient(create_app(database_url=database_url))
+
+    # the number reaches the API the explorer paints from
+    api_runs = client.get("/api/runs").json()["runs"]
+    by_uid = {run["uid"]: run for run in api_runs}
+    assert by_uid["run-tools"]["tool_call_count"] == 17
+
+    for path in ("/runs", "/", "/tasks", "/experiments", "/experiments/test-exp@1.0.0", "/tasks/wordcount-001@1.0.0"):
+        body = client.get(path).text
+        assert "Tool Calls" in body, path
+
+    # a run that stated its calls shows them, with a sort key beside the text
+    runs_body = client.get("/runs").text
+    assert 'data-sort-value="17"' in runs_body
+
+    detail = client.get("/experiments/test-exp@1.0.0").text
+    assert "Tool Calls" in detail

@@ -276,6 +276,7 @@
             <th data-sortable class="num">Score</th>
             <th data-sortable class="num">Duration</th>
             <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
             <th data-sortable>Status</th>
             <th style="text-align:right;">Actions</th>
           </tr>
@@ -305,6 +306,7 @@
                 {% else %}—{% endif %}
               </td>
               <td class="num mono">{% if run.total_tokens %}{{ "{:,}".format(run.total_tokens) }}{% else %}—{% endif %}</td>
+              <td class="num mono" data-sort-value="{{ run.tool_call_count if run.tool_call_count is not none else '' }}">{{ run.tool_call_count if run.tool_call_count is not none else "—" }}</td>
               <td><span class="badge badge-neutral" style="font-size:11px;">{{ run.status }}</span></td>
               <td style="text-align:right;">
                 <button class="btn btn-sm" onclick="openRunModal('{{ run.uid }}')">Inspect</button>

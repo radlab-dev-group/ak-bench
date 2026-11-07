@@ -132,6 +132,7 @@
             <th data-sortable class="num">Score</th>
             <th data-sortable class="num">Duration</th>
             <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
             <th data-sortable>Status</th>
             <th data-sortable>Started At</th>
             <th style="text-align:right;">Actions</th>
@@ -172,6 +173,9 @@
               </td>
               <td class="num mono">
                 {% if run.total_tokens %}{{ "{:,}".format(run.total_tokens) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ run.tool_call_count if run.tool_call_count is not none else '' }}">
+                {% if run.tool_call_count is not none %}{{ run.tool_call_count }}{% else %}—{% endif %}
               </td>
               <td><span class="badge badge-neutral" style="font-size:11px;">{{ run.status }}</span></td>
               <td style="font-size:11px; color:var(--fg-faint); white-space:nowrap;">{{ run.started_at or "—" }}</td>
