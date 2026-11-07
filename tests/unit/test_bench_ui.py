@@ -72,6 +72,7 @@ def _seeded_store(database_url: str) -> HistoryStore:
             "task_uid": "wordcount-001@1.0.0",
             "agent_id": "codex",
             "agent_version": "1.0",
+            "runtime_id": "llm-router-ak-bench",
             "state": "completed",
             "started_at": "2026-11-06T10:00:00+00:00",
             "finished_at": "2026-11-06T10:05:00+00:00",
@@ -95,6 +96,7 @@ def _seeded_store(database_url: str) -> HistoryStore:
             "task_uid": "wordcount-001@1.0.0",
             "agent_id": "codex",
             "agent_version": "1.0",
+            "runtime_id": "shared-runtime",
             "state": "completed",
             "started_at": "2026-11-06T10:10:00+00:00",
             "finished_at": "2026-11-06T10:12:00+00:00",
@@ -261,6 +263,33 @@ def _components(store: HistoryStore) -> None:
             ),
         },
     )
+    # A second recorded version of the same agent: the catalog must carry both,
+    # and the runs filter must be able to name each of them.
+    store.record_run(
+        {
+            "run_uid": "run-comp-b",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "2.0",
+            "runtime_id": "llm-router-ak-bench",
+            "state": "completed",
+            "evaluation": {"verdict": "failed", "score": 0.0, "passed": 0, "failed": 1, "total": 1},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-opt",
+        task=_task_stub(),
+        agent_descriptor={
+            "id": "codex",
+            "version": "2.0",
+            "title": "Codex CLI",
+            "description": "A newer Codex, recorded at its own version.",
+            "descriptor_yaml": (
+                "id: codex\nversion: \"2.0\"\ntitle: Codex CLI\n"
+                "agent:\n  adapter: codex_cli\n  execution_type: process\n"
+                "  capabilities: {token_usage: verified, cost_usage: partial}\n"
+            ),
+        },
+    )
 
 
 def test_the_experiment_page_shows_its_own_file(database_url: str) -> None:
@@ -307,12 +336,15 @@ def test_runs_can_be_filtered_by_agent_and_runtime(database_url: str) -> None:
     _components(_store(database_url))
     client = TestClient(create_app(database_url=database_url))
 
-    by_agent = client.get("/api/runs?agent=codex@1.0").json()
+    by_agent = client.get("/api/runs?agent=codex%401.0").json()
     assert "run-comp" in [run["uid"] for run in by_agent["runs"]]
+    # a version the history never used matches nothing: the catalog and the
+    # filter agree on what was actually recorded
+    assert client.get("/api/runs?agent=codex%409.9").json()["runs"] == []
 
     api = client.get("/api/runs?runtime=llm-router-ak-bench").json()
-    assert [run["uid"] for run in api["runs"]] == ["run-comp"]
-    assert api["runs"][0]["runtime_id"] == "llm-router-ak-bench"
+    assert "run-comp" in [run["uid"] for run in api["runs"]]
+    assert all(run["runtime_id"] == "llm-router-ak-bench" for run in api["runs"])
 
     assert client.get("/api/runs?runtime=some-other-runtime").json()["runs"] == []
 
@@ -635,3 +667,45 @@ def test_an_unrecorded_file_is_not_invented(database_url: str, tmp_path) -> None
 
     assert missing.status_code == 404
     assert unknown_task.status_code == 404
+
+
+def test_the_agents_catalog_lists_each_recorded_version_with_its_runs(
+    database_url: str
+) -> None:
+    """An agent at the version a run recorded is a row of its own.
+
+    A run named codex at 2.0 is not the same fact as codex at 1.0.0: the
+    catalog lists both, each linking to the runs that actually used it.
+    """
+    _seeded_store(database_url)
+    _components(_store(database_url))
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/agents").text
+    # the version column is the version the runs recorded, and every row links
+    # to the runs filtered to its own id@version
+    assert 'href="/runs?agent=codex%401.0"' in body
+    assert 'href="/runs?agent=codex%402.0"' in body
+
+    v2 = client.get("/api/runs?agent=codex%402.0").json()
+    assert [run["uid"] for run in v2["runs"]] == ["run-comp-b"]
+    v1 = client.get("/api/runs?agent=codex%401.0").json()
+    assert "run-comp" in [run["uid"] for run in v1["runs"]]
+    assert "run-comp-b" not in [run["uid"] for run in v1["runs"]]
+
+
+def test_the_runs_page_carries_the_runtime_filter(database_url: str) -> None:
+    """The runtime dropdown lists what the history actually used, and filters."""
+    _seeded_store(database_url)
+    _components(_store(database_url))
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/runs").text
+    assert 'select id="filterRuntime"' in body
+    assert "llm-router-ak-bench" in body and "shared-runtime" in body
+
+    managed = client.get("/api/runs?runtime=llm-router-ak-bench").json()
+    assert "run-001" in [run["uid"] for run in managed["runs"]]
+    assert "run-002" not in [run["uid"] for run in managed["runs"]]
+    shared = client.get("/api/runs?runtime=shared-runtime").json()
+    assert [run["uid"] for run in shared["runs"]] == ["run-002"]

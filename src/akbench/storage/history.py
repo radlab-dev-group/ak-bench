@@ -217,9 +217,17 @@ class HistoryStore:
             if task is not None:
                 self._record_task(session, task)
             if agent_descriptor is not None:
-                self._record_component(session, Agent, agent_descriptor, "agent")
+                # A run records the agent it used at the version it observed
+                # (codex-cli 0.166.0), not only the descriptor's declared
+                # version, so the row the run names is the row the catalog has.
+                self._record_component(
+                    session, Agent, agent_descriptor, "agent",
+                    record.get("agent_version"),
+                )
             if runtime_descriptor is not None:
-                self._record_component(session, Runtime, runtime_descriptor, "runtime")
+                self._record_component(
+                    session, Runtime, runtime_descriptor, "runtime",
+                )
 
             run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
             if run is None:
@@ -970,7 +978,14 @@ class HistoryStore:
                 if recorded.get(path) != digest
             )
 
-    def _record_component(self, session: Session, model: Any, descriptor: Any, kind: str) -> None:
+    def _record_component(
+        self,
+        session: Session,
+        model: Any,
+        descriptor: Any,
+        kind: str,
+        observed_version: Any = None,
+    ) -> None:
         """Store an agent or runtime descriptor, keyed by (id, version).
 
         ``descriptor`` is the validated descriptor model or a mapping with the
@@ -989,7 +1004,9 @@ class HistoryStore:
         identifier = stated("id")
         if not identifier:
             return
-        version = str(stated("version") or "")
+        # The version a run names is what it observed; the descriptor's own
+        # version is a fallback only when the run recorded none.
+        version = str(observed_version or stated("version") or "")
         title = stated("title")
         description = stated("description")
         document = stated("descriptor_yaml")

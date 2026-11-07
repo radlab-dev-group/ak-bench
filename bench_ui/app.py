@@ -273,10 +273,16 @@ def create_app(
         )
 
     @app.get("/agents/{agent_id}", response_class=HTMLResponse)
-    async def agent_detail_page(request: Request, agent_id: str):
+    @app.get("/agents/{agent_id}/{version}", response_class=HTMLResponse)
+    async def agent_detail_page(request: Request, agent_id: str, version: str | None = None):
         agents = [row for row in service.get_agents() if row["id"] == agent_id]
         if not agents:
             raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not recorded")
+        if version is not None:
+            wanted = [row for row in agents if row["version"] == version]
+            if not wanted:
+                raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' has no version '{version}'")
+            agents = wanted
         return templates.TemplateResponse(
             request=request,
             name="agent_detail.html",
@@ -301,10 +307,16 @@ def create_app(
         )
 
     @app.get("/runtimes/{runtime_id}", response_class=HTMLResponse)
-    async def runtime_detail_page(request: Request, runtime_id: str):
+    @app.get("/runtimes/{runtime_id}/{version}", response_class=HTMLResponse)
+    async def runtime_detail_page(request: Request, runtime_id: str, version: str | None = None):
         runtimes = [row for row in service.get_runtimes() if row["id"] == runtime_id]
         if not runtimes:
             raise HTTPException(status_code=404, detail=f"Runtime '{runtime_id}' not recorded")
+        if version is not None:
+            wanted = [row for row in runtimes if row["version"] == version]
+            if not wanted:
+                raise HTTPException(status_code=404, detail=f"Runtime '{runtime_id}' has no version '{version}'")
+            runtimes = wanted
         return templates.TemplateResponse(
             request=request,
             name="runtime_detail.html",
