@@ -125,6 +125,7 @@
           <tr>
             <th style="width:30px;"></th>
             <th data-sortable>Run UID & Config</th>
+            <th data-sortable class="num" title="Repetition number of this run">Rep</th>
             <th data-sortable>Task</th>
             <th data-sortable>Agent</th>
             <th data-sortable>Runtime</th>
@@ -151,6 +152,9 @@
                 <div style="font-size:11px; color:var(--fg-faint); margin-top:2px;">
                   {{ run.config_str or "—" }}
                 </div>
+              </td>
+              <td class="num mono" data-sort-value="{{ run.repetition if run.repetition is not none else '' }}">
+                {{ run.repetition if run.repetition is not none else "—" }}
               </td>
               <td>
                 <a href="/tasks/{{ run.task_uid }}" class="mono">{{ run.task_uid or "—" }}</a>
