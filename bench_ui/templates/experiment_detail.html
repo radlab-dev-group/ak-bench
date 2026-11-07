@@ -234,6 +234,52 @@
     </div>
   </div>
 
+  {% if score_matrix and score_matrix.rows and score_matrix.columns %}
+  <!-- One cell per task and configuration, coloured by its mean score: a weak
+       cell is the thing to open, not a table to read through. An empty cell is
+       a task this configuration never ran, which is not the same as a zero. -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Task &times; Configuration Matrix
+        <span class="badge badge-neutral">{{ score_matrix.rows | length }} task(s) &times; {{ score_matrix.columns | length }} configuration(s)</span>
+      </div>
+      <span class="panel-subtitle">Cell colour is the mean score of that task under that configuration</span>
+    </div>
+    <div class="matrix-scroll">
+      <table class="score-matrix">
+        <thead>
+          <tr>
+            <th>Task</th>
+            {% for column in score_matrix.columns %}
+            <th class="mono matrix-head" title="{{ column.config | tojson }}">{{ column.uid }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in score_matrix.rows %}
+          <tr>
+            <td><a href="/tasks/{{ row.task_uid }}" class="mono">{{ row.task_uid }}</a></td>
+            {% for column in score_matrix.columns %}
+            {% set value = row.cells.get(column.uid) %}
+            <td class="mono matrix-cell" data-score="{{ value if value is not none else '' }}">
+              {% if value is none %}
+                <span class="matrix-empty" title="This configuration never ran this task">&mdash;</span>
+              {% else %}
+                <span class="matrix-chip matrix-{{ 'high' if value >= 0.95 else ('mid' if value >= 0.8 else 'low') }}">
+                  {{ '%.3f' % value }}
+                </span>
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Recorded Runs -->
   <div class="panel">
     <div class="panel-header">

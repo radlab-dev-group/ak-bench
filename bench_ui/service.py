@@ -969,6 +969,13 @@ class BenchDataService:
                 }
             )
 
+        # One cell per (task, configuration): the mean score its runs earned.
+        # The page colours the cell, because a weak task under a strong
+        # configuration is the thing worth opening.
+        task_matrix = self._task_score_matrix(
+            report.runs, variant_summaries
+        )
+
         return {
             "experiment": report.experiment,
             "experiment_config": parsed_experiment,
@@ -976,11 +983,58 @@ class BenchDataService:
             "ranking": ranking,
             "variants": variants,
             "variant_summaries": variant_summaries,
+            "score_matrix": task_matrix,
             "snapshots": snapshots,
             "runs": [
                 self._format_run_summary(r, history, trends, baselines) for r in report.runs
             ],
         }
+
+    @staticmethod
+    def _task_score_matrix(
+        runs: list[dict[str, Any]],
+        variant_summaries: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """The mean score of each task under each configuration.
+
+        A configuration is only interesting relative to the task it is applied
+        to, and a task relative to the configurations it is tried under, so the
+        page reads a grid rather than two lists. A cell with no scored runs is
+        ``None`` — a task a configuration never ran is missing, not zero.
+        """
+        columns = [
+            {"uid": v["variant"]["uid"], "config": v["variant"].get("values")}
+            for v in variant_summaries
+        ]
+        by_cell: dict[tuple, list[float]] = {}
+        for run in runs:
+            score = score_of(run)
+            if score is None:
+                continue
+            by_cell.setdefault(
+                (run.get("task_uid"), run.get("variant_uid")), []
+            ).append(score)
+        rows = []
+        seen: list[str] = []
+        for run in runs:
+            t_uid = run.get("task_uid")
+            if not t_uid or t_uid in seen:
+                continue
+            seen.append(t_uid)
+            rows.append(
+                {
+                    "task_uid": t_uid,
+                    "cells": {
+                        c["uid"]: (
+                            sum(vals) / len(vals)
+                            if (vals := by_cell.get((t_uid, c["uid"])))
+                            else None
+                        )
+                        for c in columns
+                    },
+                }
+            )
+        return {"columns": columns, "rows": rows}
 
     def get_tasks(self) -> list[dict[str, Any]]:
         history = self.get_history()

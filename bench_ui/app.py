@@ -238,6 +238,7 @@ def create_app(
                 "ranking": detail["ranking"],
                 "variants": detail["variants"],
                 "variant_summaries": detail["variant_summaries"],
+                "score_matrix": detail.get("score_matrix"),
                 "snapshots": detail["snapshots"],
                 "runs": detail["runs"],
                 "database": database,

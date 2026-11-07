@@ -1189,3 +1189,54 @@ def test_the_run_inspector_splits_what_a_run_paid_in(database_url: str) -> None:
 
     css = client.get("/static/css/style.css").text
     assert ".token-bar" in css and ".token-legend" in css
+
+
+def test_the_experiment_page_scores_tasks_against_configurations(database_url: str) -> None:
+    """A configuration is only interesting relative to the task it is applied to.
+
+    The page therefore reads a grid — one cell per task and configuration,
+    coloured by the mean score it earned — and a cell with no runs is a
+    missing cell, not a zero.
+    """
+    store = _seeded_store(database_url)
+    # a second task, scored under both variants, so a weak cell exists
+    from types import SimpleNamespace
+    from datetime import datetime
+
+    stub = SimpleNamespace(
+        uid="second-001@1.0.0",
+        digest="sha256:second",
+        path=None,
+        task=SimpleNamespace(
+            id="second-001", version="1.0.0", category="bug_fix", difficulty="easy",
+            evaluator="pytest", created_at=datetime(2026, 11, 1, 12, 0, 0), authors=["Alice"],
+            title="Second", description="d", task=SimpleNamespace(repository=SimpleNamespace(source="s", ref="r")),
+        ),
+    )
+    store.record_run(
+        {"run_uid": "r-second-base", "task_uid": "second-001@1.0.0", "agent_id": "codex",
+         "agent_version": "1.0", "state": "completed", "started_at": "2026-11-06T15:00:00+00:00",
+         "evaluation": {"verdict": "passed", "score": 1.0, "passed": 10, "failed": 0, "total": 10}},
+        experiment_uid="test-exp@1.0.0", variant_uid="v-base", task=stub,
+    )
+    store.record_run(
+        {"run_uid": "r-second-opt", "task_uid": "second-001@1.0.0", "agent_id": "codex",
+         "agent_version": "1.0", "state": "completed", "started_at": "2026-11-06T15:10:00+00:00",
+         "evaluation": {"verdict": "failed", "score": 0.2, "passed": 2, "failed": 8, "total": 10}},
+        experiment_uid="test-exp@1.0.0", variant_uid="v-opt", task=stub,
+    )
+    client = TestClient(create_app(database_url=database_url))
+    service = BenchDataService(database_url=database_url)
+    matrix = service.get_experiment_detail("test-exp@1.0.0")["score_matrix"]
+    by_task = {row["task_uid"]: row for row in matrix["rows"]}
+    # wordcount passed on baseline, partially on opt; second passed on baseline,
+    # failed on opt — the weak cell is (second, v-opt)
+    assert by_task["wordcount-001@1.0.0"]["cells"]["v-base"] == 1.0
+    assert by_task["wordcount-001@1.0.0"]["cells"]["v-opt"] == 0.9
+    assert by_task["second-001@1.0.0"]["cells"]["v-opt"] == 0.2
+    assert by_task["second-001@1.0.0"]["cells"]["v-base"] == 1.0
+
+    body = client.get("/experiments/test-exp@1.0.0").text
+    assert "Task &times; Configuration Matrix" in body
+    assert 'data-score="0.2"' in body
+    assert 'class="matrix-chip matrix-low"' in body

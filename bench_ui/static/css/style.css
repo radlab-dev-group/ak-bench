@@ -388,6 +388,34 @@ h3 { font-size: 1.1rem; }
 /* ============================================================ Cards & Grid */
 /** The whole history in one ledger: a row of small cells the reader scans in one
     pass — how much there is, how it fared, how long it took, what it cost. */
+/** A grid of tasks against configurations: the colour is the score, so the
+    weak cell is found by looking rather than by reading a number column. */
+.matrix-scroll { overflow-x: auto; }
+table.score-matrix { border-collapse: separate; border-spacing: 3px; }
+table.score-matrix th {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  text-align: left;
+  padding: 0 4px 4px;
+  border: none;
+}
+table.score-matrix th.matrix-head { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.score-matrix td { border: none; padding: 3px 4px; }
+td.matrix-cell { text-align: center; }
+.matrix-chip {
+  display: inline-block;
+  min-width: 56px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.matrix-high { background: rgba(0, 229, 155, 0.18); color: var(--mint); }
+.matrix-mid { background: rgba(255, 180, 74, 0.16); color: var(--amber); }
+.matrix-low { background: rgba(255, 107, 122, 0.16); color: var(--red); }
+.matrix-empty { color: var(--fg-faint); }
+
 /** What a run paid in tokens, and how the payment split across input, cached
     input, output and reasoning. The bar is the proportion, the legend the
     exact numbers, so the shape and the size are both readable. */
