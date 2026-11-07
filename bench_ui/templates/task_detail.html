@@ -1,0 +1,428 @@
+{% macro render_nodes(nodes, task_uid) %}
+  {% for node in nodes %}
+    <li class="tree-node">
+      {% if node.type == 'dir' %}
+      <details>
+        <summary class="tree-dir"><span class="tree-caret"></span>{{ node.name }}/</summary>
+        <ul class="file-tree mono">{{ render_nodes(node.children, task_uid) }}</ul>
+      </details>
+      {% else %}
+      <button class="tree-file" type="button" data-task="{{ task_uid }}" data-path="{{ node.path }}">
+        {{ node.name }}<span class="tree-size">{{ node.size_bytes }}</span>
+      </button>
+      {% endif %}
+    </li>
+  {% endfor %}
+{% endmacro %}
+
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Task: {{ task.uid }}{% endblock %}
+
+{% block content %}
+<div>
+  <!-- Header -->
+  <div style="margin-bottom: 24px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+    <div>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+        <span class="badge badge-info">{{ task.category or "general" }}</span>
+        <span class="badge badge-neutral">{{ task.difficulty or "medium" }}</span>
+      </div>
+      <h1 style="margin:0 0 6px;">{{ task.uid }}</h1>
+      <div class="mono" style="color:var(--fg-dim); font-size:13px;">
+        Task ID: {{ task.id }} &middot; Evaluator: {{ task.evaluator or "pytest" }}
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a href="/runs?task_uid={{ task.uid }}" class="btn btn-primary">Filter Runs in Explorer</a>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="grid-cards">
+    <div class="card card-mint">
+      <div class="card-title">Success Rate & Mean Score</div>
+      <div class="card-value">
+        <span>{% if summary.success_rate is not none %}{{ "%.1f"|format(summary.success_rate * 100) }}%{% else %}—{% endif %}</span>
+        <span style="font-size:15px; color:var(--fg-dim); font-weight:normal;">/</span>
+        <span style="color:var(--mint); font-size:1.5rem;">{% if summary.mean_score is not none %}{{ "%.3f"|format(summary.mean_score) }}{% else %}—{% endif %}</span>
+      </div>
+      <div class="card-sub">{{ summary.passed }} / {{ summary.evaluated }} passed</div>
+    </div>
+    <div class="card card-blue">
+      <div class="card-title">Total Runs</div>
+      <div class="card-value">{{ summary.runs }}</div>
+      <div class="card-sub">Recorded across all experiments</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Mean Duration</div>
+      <div class="card-value">
+        {% if summary.mean_duration_seconds is not none %}
+          {% set s = summary.mean_duration_seconds|round|int %}
+          {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+        {% else %}—{% endif %}
+      </div>
+      <div class="card-sub">Wall-clock time</div>
+    </div>
+    <div class="card card-amber">
+      <div class="card-title">Total Tokens</div>
+      <div class="card-value">{% if summary.total_tokens %}{{ "{:,}".format(summary.total_tokens) }}{% else %}—{% endif %}</div>
+      <div class="card-sub">In: {{ "{:,}".format(summary.input_tokens or 0) }} &middot; Out: {{ "{:,}".format(summary.output_tokens or 0) }}</div>
+    </div>
+  </div>
+
+  {% if runs %}
+  <!-- One line per configuration: the same task under different factors, in
+       the order the runs happened, so a factor that moves the score is visible
+       as a line that sits above another one -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Score by Configuration
+        <span class="badge badge-neutral">{{ runs | map(attribute='config_str') | unique | list | length }} configuration(s)</span>
+      </div>
+      <span class="panel-subtitle">Runs in the order they started; a point is one run</span>
+    </div>
+    <div class="panel-body">
+      <div style="height:{{ [260, (runs | map(attribute='config_str') | unique | list | length) * 60 + 110]|max }}px; position:relative;">
+        <canvas id="chartTaskScore"></canvas>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- What the task asked -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Task Definition
+        {% if definition %}
+          <span class="badge {% if definition.recorded %}badge-passed{% else %}badge-neutral{% endif %}">
+            {% if definition.recorded %}recorded with the run{% else %}read from the dataset{% endif %}
+          </span>
+        {% else %}
+          <span class="badge badge-neutral">not recorded</span>
+        {% endif %}
+      </div>
+      {% if definition and definition.digest_matches is defined and definition.digest_matches is false %}
+      <span class="badge badge-partial" title="The dataset on disk no longer matches the task these runs were worked under">
+        dataset edited since
+      </span>
+      {% endif %}
+    </div>
+
+    {% if definition %}
+    <div class="panel-body">
+      {% if definition.title %}
+      <h2 style="margin:0 0 6px; font-size:17px;">{{ definition.title }}</h2>
+      {% endif %}
+      {% if definition.description %}
+      <p style="margin:0 0 16px; color:var(--fg-dim);">{{ definition.description }}</p>
+      {% endif %}
+
+      <div class="task-meta">
+        <div class="task-meta-item">
+          <div class="task-meta-label">Category</div>
+          <div class="task-meta-value">{{ definition.category or task.category or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Difficulty</div>
+          <div class="task-meta-value">{{ definition.difficulty or task.difficulty or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Evaluator</div>
+          <div class="task-meta-value mono">{{ definition.evaluator or task.evaluator or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Timeout</div>
+          <div class="task-meta-value mono">
+            {% if definition.timeout_seconds %}{{ definition.timeout_seconds }}s{% else %}—{% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Task created</div>
+          <div class="task-meta-value mono">{{ definition.created_at or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Version</div>
+          <div class="task-meta-value mono">{{ task.version or "—" }}</div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Authors</div>
+          <div class="task-meta-value">
+            {% if definition.authors %}
+            {% for author in definition.authors %}
+            <span class="chip">{{ author }}</span>
+            {% endfor %}
+          {% else %}
+            —
+          {% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Repository</div>
+          <div class="task-meta-value mono" style="word-break:break-all;">{{ definition.repository or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Pinned ref</div>
+          <div class="task-meta-value mono">{{ definition.ref or task.base_commit or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Hidden tests</div>
+          <div class="task-meta-value mono">{{ definition.hidden_tests or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Public tests</div>
+          <div class="task-meta-value mono">{{ definition.public_tests or "—" }}</div>
+        </div>
+        {% if definition.mutation %}
+        <div class="task-meta-item">
+          <div class="task-meta-label">Mutation</div>
+          <div class="task-meta-value mono">{{ definition.mutation }}{% if definition.mutation_version %} @ {{ definition.mutation_version }}{% endif %}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Mutation proven by</div>
+          <div class="task-meta-value mono">{{ definition.mutation_verification or "—" }}</div>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if definition.mutation_notes %}
+      <div class="task-note"><span class="task-note-label">Mutation notes</span>{{ definition.mutation_notes }}</div>
+      {% endif %}
+      {% if definition.repository_notes %}
+      <div class="task-note"><span class="task-note-label">Repository notes</span>{{ definition.repository_notes }}</div>
+      {% endif %}
+      {% if definition.notes %}
+      <div class="task-note"><span class="task-note-label">Notes</span>{{ definition.notes }}</div>
+      {% endif %}
+
+      {% if definition.constraints %}
+      <div class="task-list-block">
+        <div class="task-list-title">Constraints</div>
+        <ul class="task-list">
+          {% for constraint in definition.constraints %}<li>{{ constraint }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if definition.setup %}
+      <div class="task-list-block">
+        <div class="task-list-title">Setup</div>
+        <ul class="task-list">
+          {% for step in definition.setup %}<li class="mono">{{ step }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="panel-body" style="color:var(--fg-dim);">
+      This task's definition was never recorded and no matching task was found in
+      <span class="mono">datasets/</span>. Record a run from this dataset, or backfill history with
+      <span class="mono">scripts/update_task_info.py</span>.
+    </div>
+    {% endif %}
+  </div>
+
+  {% if definition and definition.description_markdown %}
+  <!-- The full scope of work, exactly as the task states it; folded away so
+       the definition above stays the first thing read -->
+  <details class="panel raw-descriptor">
+    <summary class="panel-header">
+      <span class="panel-title">Description <span class="badge badge-neutral">description.md</span></span>
+      <button class="btn btn-sm" type="button" data-copy-target="#taskDescriptionBlock"
+              onclick="event.stopPropagation()">Copy</button>
+    </summary>
+    <pre class="task-prose" id="taskDescriptionBlock">{{ definition.description_markdown }}</pre>
+  </details>
+  {% endif %}
+
+  {% if definition and definition.task_yaml %}
+  <details class="panel raw-descriptor">
+    <summary class="panel-header">
+      <span class="panel-title">Task descriptor <span class="badge badge-neutral">task.yaml</span></span>
+      <button class="btn btn-sm" type="button" data-copy-target="#taskYamlBlock"
+              onclick="event.stopPropagation()">Copy</button>
+    </summary>
+    <pre class="task-prose yaml-block" id="taskYamlBlock">{{ definition.task_yaml }}</pre>
+  </details>
+  {% endif %}
+
+  {% if files %}
+  <!-- The code of the task: repository, tests and mutation, as recorded;
+       collapsible because a long tree is not the point of the page -->
+  <details class="panel raw-descriptor">
+    <summary class="panel-header">
+      <span class="panel-title">
+        Task Code
+        <span class="badge badge-neutral">
+          {{ files | map(attribute='tree') | map(attribute='children') | map('length') | sum }} entries
+        </span>
+      </span>
+      <span class="panel-subtitle">
+        Recorded with the task; click a file to read it
+      </span>
+      <a class="btn btn-sm" href="/api/tasks/{{ task.uid }}/download.zip"
+         onclick="event.stopPropagation()" title="Download every recorded file">Download zip</a>
+    </summary>
+    <div class="task-code">
+      {% for group in files %}
+      <details class="code-group" {% if group.kind == 'repository' %}open{% endif %}>
+        <summary>
+          <span class="code-group-name mono">{{ group.kind }}</span>
+          <span class="code-group-count">{{ group.tree.children | length }}</span>
+        </summary>
+        <ul class="file-tree mono">
+          {{ render_nodes(group.tree.children, task.uid) }}
+        </ul>
+      </details>
+      {% endfor %}
+      <div class="code-viewer" id="codeViewer" hidden>
+        <div class="code-viewer-header">
+          <span class="code-viewer-path mono" id="codeViewerPath"></span>
+          <span style="display:flex; gap:8px;">
+            <button class="btn btn-sm" type="button" data-copy-target="#codeViewerBody">Copy</button>
+            <button class="btn btn-sm" id="codeViewerClose" type="button">Close</button>
+          </span>
+        </div>
+        <pre class="code-viewer-body mono" id="codeViewerBody"></pre>
+      </div>
+    </div>
+  </details>
+  {% endif %}
+
+  <!-- Runs of this task -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Recorded Runs of this Task ({{ runs|length }})</div>
+    </div>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th data-sortable>Run UID</th>
+            <th data-sortable class="num" title="Repetition number of this run">Rep</th>
+            <th data-sortable>Experiment</th>
+            <th data-sortable>Configuration</th>
+            <th data-sortable>Verdict</th>
+            <th data-sortable class="num">Score</th>
+            <th data-sortable class="num">Duration</th>
+            <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
+            <th data-sortable>Status</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td>
+                <a href="javascript:void(0)" onclick="openRunModal('{{ run.uid }}')" class="mono" style="font-weight:600;">
+                  {{ run.uid }}
+                </a>
+              </td>
+              <td class="num mono" data-sort-value="{{ run.repetition if run.repetition is not none else '' }}">
+                {{ run.repetition if run.repetition is not none else "—" }}
+              </td>
+              <td><a href="/experiments/{{ run.experiment_uid }}" class="mono">{{ run.experiment_uid }}</a></td>
+              <td class="mono" style="font-size:11.5px;">{{ run.config_str }}</td>
+              <td>
+                <span class="badge {% if run.verdict == 'passed' %}badge-passed{% elif run.verdict == 'partial' %}badge-partial{% elif run.verdict == 'failed' %}badge-failed{% else %}badge-neutral{% endif %}">
+                  {{ run.verdict or "unverified" }}
+                </span>
+              </td>
+              <td class="num mono" style="font-weight:600; color:{% if (run.score or 0) >= 1.0 %}var(--mint){% elif (run.score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
+                {% if run.score is not none %}{{ "%.3f"|format(run.score) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ run.duration_seconds if run.duration_seconds is not none else '' }}">
+                {% if run.duration_seconds is not none %}
+                  {% set s = run.duration_seconds|round|int %}
+                  {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="num mono">{% if run.total_tokens %}{{ "{:,}".format(run.total_tokens) }}{% else %}—{% endif %}</td>
+              <td class="num mono" data-sort-value="{{ run.tool_call_count if run.tool_call_count is not none else '' }}">{{ run.tool_call_count if run.tool_call_count is not none else "—" }}</td>
+              <td><span class="badge badge-neutral" style="font-size:11px;">{{ run.status }}</span></td>
+              <td style="text-align:right;">
+                <button class="btn btn-sm" onclick="openRunModal('{{ run.uid }}')">Inspect</button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if runs %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const runs = {{ runs | tojson }};
+  const canvas = document.getElementById('chartTaskScore');
+  if (!canvas || typeof Chart === 'undefined' || !runs.length) return;
+
+  const palette = ['#00e59b', '#5aa9ff', '#ffb44a', '#c792ea', '#ff6b7a', '#4dd0e1',
+                   '#f0e68c', '#ff8a65', '#9ccc65', '#ba68c8', '#7986cb', '#e57373'];
+  const byConfig = new Map();
+  runs.forEach(run => {
+    const key = run.config_str || run.variant_uid || '—';
+    if (!byConfig.has(key)) byConfig.set(key, []);
+    byConfig.get(key).push(run);
+  });
+  byConfig.forEach(list => list.sort((a, b) => String(a.started_at || '').localeCompare(String(b.started_at || ''))));
+
+  const longest = Math.max(0, ...[...byConfig.values()].map(l => l.length));
+  const labels = Array.from({ length: longest }, (_, i) => `#${i + 1}`);
+  const datasets = [...byConfig.entries()].map(([config, list], i) => {
+    const color = palette[i % palette.length];
+    return {
+      label: config,
+      data: list.map(r => r.score),
+      borderColor: color,
+      backgroundColor: color,
+      borderWidth: 2,
+      tension: 0.2,
+      spanGaps: true,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+    };
+  });
+
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#c6d3df', font: { family: 'ui-monospace', size: 11 }, boxWidth: 12, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: (c) => {
+              const run = [...byConfig.get(c.dataset.label)][c.dataIndex];
+              const score = c.raw === null || c.raw === undefined ? '—' : Number(c.raw).toFixed(3);
+              return `${c.dataset.label}: score ${score} · ${run.verdict || 'unverified'} · ${run.uid}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Run order', color: '#8d9daf', font: { family: 'ui-monospace', size: 11 } },
+          ticks: { color: '#8d9daf', font: { family: 'ui-monospace', size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+        },
+        y: {
+          title: { display: true, text: 'Score', color: '#8d9daf', font: { family: 'ui-monospace', size: 11 } },
+          min: 0, max: 1, ticks: { color: '#8d9daf', font: { family: 'ui-monospace', size: 11 } },
+          grid: { color: 'rgba(255,255,255,0.06)' },
+        },
+      },
+    },
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

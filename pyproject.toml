@@ -12,12 +12,15 @@ license = { text = "MIT" }
 authors = [{ name = "radlab.dev" }]
 dependencies = [
     "alembic>=1.14",
+    "fastapi>=0.110",
     "jinja2>=3.1",
+    "psycopg[binary]>=3.2",
     "pydantic>=2.10",
     "pyyaml>=6.0",
     "rich>=13.9",
     "sqlalchemy>=2.0",
     "typer>=0.15",
+    "uvicorn>=0.28",
 ]
 
 [project.optional-dependencies]
@@ -37,16 +40,18 @@ datasets = [
 akbench = "akbench.cli.main:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/akbench"]
+packages = ["src/akbench", "bench_ui"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/akbench/storage/migrations" = "akbench/storage/migrations"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = [".", "src"]
 addopts = "-q --strict-markers"
 markers = [
     "integration: tests that touch the filesystem or a real SQLite database",
+    "postgres: tests that need a real PostgreSQL (set AKBENCH_RUN_POSTGRES=1)",
     "live: tests that run the real Codex CLI against the LLM router (set AKBENCH_RUN_LIVE=1)",
 ]
 
@@ -58,3 +63,8 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
 ignore = ["B008"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]

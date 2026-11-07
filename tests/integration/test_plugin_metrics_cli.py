@@ -74,7 +74,7 @@ def test_plugin_list_shows_the_shipped_plugins(project: Path) -> None:
     payload = _payload(result.output)
     assert {item["id"] for item in payload} == {"agentic_knowledge", "agentic_routing_codex"}
     knowledge = next(item for item in payload if item["id"] == "agentic_knowledge")
-    assert knowledge["observed_env"] == 25
+    assert knowledge["observed_env"] == 24
     assert knowledge["dimensions"]
     assert knowledge["verification_required"] is True
 

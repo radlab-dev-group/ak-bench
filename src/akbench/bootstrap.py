@@ -9,6 +9,7 @@ from akbench.config.loader import LoadedConfig, build_app_paths, resolve_databas
 from akbench.config.models import SCHEMA_VERSION
 from akbench.core.errors import DatabaseError
 from akbench.core.logging_setup import get_logger
+from akbench.storage.db import database_path_from_url
 from akbench.storage.migrator import schema_status, upgrade
 
 LOG = get_logger("bootstrap")
@@ -16,6 +17,8 @@ LOG = get_logger("bootstrap")
 CONFIG_TEMPLATE = """# AK-Bench default configuration.
 # Every value can be overridden by an environment variable:
 #   AKBENCH__LOGGING__LEVEL=DEBUG  AKBENCH__DATABASE__URL=sqlite:////tmp/akbench.sqlite
+# PostgreSQL connection parameters live in the project .env (AKBENCH_PG_*),
+# the same names scripts/run-postgres.sh reads.
 schema_version: {schema_version}
 
 paths:
@@ -31,8 +34,16 @@ paths:
   logs_dir: data/logs
 
 database:
-  # url: null means "use paths.database_file as a SQLite file".
+  # Recorded benchmarks go to PostgreSQL by default. "sqlite" writes the
+  # paths.database_file SQLite file instead; database.url overrides both.
+  backend: postgres
   url: null
+  postgres:
+    host: 127.0.0.1
+    port: 5959
+    user: akbench
+    password: akbench_local
+    database: akbench
   echo: false
   timeout_seconds: 30
 
@@ -107,11 +118,18 @@ def initialize(
             LOG.info("wrote config %s", config_target)
 
     database_url = resolve_database_url(settings, environ)
-    database_file = paths.database_file
-    report.database_created = not database_file.exists()
+    # A SQLite file appears when init creates it; a PostgreSQL database appears
+    # when it is first migrated, so "created" means "had no schema before".
+    database_file = database_path_from_url(database_url)
+    if database_file is None:
+        report.database_created = settings.database.backend == "postgres"
+    else:
+        report.database_created = not database_file.exists()
 
     if migrate:
         report.revision_before, report.revision_after = upgrade(database_url)
+        if database_file is None:
+            report.database_created = report.revision_before is None
         LOG.info(
             "migrations applied: %s -> %s",
             report.revision_before or "(none)",

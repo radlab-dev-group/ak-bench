@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Tasks Catalog{% endblock %}
+
+{% block content %}
+<div>
+  <!-- Header -->
+  <div style="margin-bottom: 24px;">
+    <h1 style="margin:0 0 4px;">Tasks Catalog</h1>
+    <div style="color:var(--fg-dim); font-size:13.5px;">
+      Evaluated programming tasks, categories, difficulties, and historical pass rates across all experiments.
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="table-responsive">
+      <table class="table-wide">
+        <thead>
+          <tr>
+            <th data-sortable>Task UID</th>
+            <th data-sortable>Task</th>
+            <th data-sortable>Authors</th>
+            <th data-sortable>Category</th>
+            <th data-sortable>Difficulty</th>
+            <th data-sortable class="num">Runs</th>
+            <th data-sortable class="num">Passed</th>
+            <th data-sortable>Success Rate</th>
+            <th data-sortable>Mean Score</th>
+            <th data-sortable class="num">Mean Duration</th>
+            <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tasks %}
+            <tr>
+              <td>
+                <a href="/tasks/{{ t.uid }}" class="mono" style="font-weight:600; font-size:13.5px;">
+                  {{ t.uid }}
+                </a>
+              </td>
+              <td>
+                <div style="font-weight:600; max-width:340px;">{{ t.title or "—" }}</div>
+                {% if t.description %}
+                <div class="task-snippet" title="{{ t.description }}">
+                  {{ t.description }}
+                  {% if t.timeout_seconds %}<span class="task-snippet-dim">&middot; {{ t.timeout_seconds }}s</span>{% endif %}
+                </div>
+                {% endif %}
+              </td>
+              <td>
+                {% if t.authors %}
+                  <div class="author-list">
+                    {% for author in t.authors %}<span class="chip chip-sm">{{ author }}</span>{% endfor %}
+                  </div>
+                {% else %}<span style="color:var(--fg-faint);">—</span>{% endif %}
+              </td>
+              <td><span class="badge badge-info">{{ t.category or "general" }}</span></td>
+              <td><span class="badge badge-neutral">{{ t.difficulty or "medium" }}</span></td>
+              <td class="num mono">{{ t.runs_count }}</td>
+              <td class="num mono">{{ t.passed_count }}</td>
+              <td data-sort-value="{{ t.success_rate if t.success_rate is not none else '' }}">
+                <div class="cell-bar">
+                  <div class="cell-bar-fill" style="width:{{ ((t.success_rate or 0) * 70)|round|int }}px;"></div>
+                  <span class="mono" style="font-size:12px;">{% if t.success_rate is not none %}{{ "%.1f"|format(t.success_rate * 100) }}%{% else %}—{% endif %}</span>
+                </div>
+              </td>
+              <td data-sort-value="{{ t.mean_score if t.mean_score is not none else '' }}">
+                <span class="mono" style="font-weight:600; color:{% if (t.mean_score or 0) >= 0.95 %}var(--mint){% elif (t.mean_score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
+                  {% if t.mean_score is not none %}{{ "%.3f"|format(t.mean_score) }}{% else %}—{% endif %}
+                </span>
+              </td>
+              <td class="num mono" data-sort-value="{{ t.mean_duration if t.mean_duration is not none else '' }}">
+                {% if t.mean_duration is not none %}
+                  {% set s = t.mean_duration|round|int %}
+                  {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="num mono">
+                {% if t.total_tokens %}{{ "{:,}".format(t.total_tokens) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ t.mean_tool_calls if t.mean_tool_calls is not none else '' }}">
+                {% if t.mean_tool_calls is not none %}{{ "%.1f"|format(t.mean_tool_calls) }}{% else %}—{% endif %}
+              </td>
+              <td style="text-align:right;">
+                <a href="/tasks/{{ t.uid }}" class="btn btn-sm">Inspect</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

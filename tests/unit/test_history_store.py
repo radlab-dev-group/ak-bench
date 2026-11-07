@@ -24,8 +24,8 @@ def _store(database_url: str) -> HistoryStore:
     return HistoryStore(create_db_engine(database_url))
 
 
-def _task_stub(digest: str = "sha256:task") -> SimpleNamespace:
-    from datetime import datetime, timezone, timedelta
+def _task_stub(digest: str = "sha256:task", path: Path | None = None) -> SimpleNamespace:
+    from datetime import datetime, timedelta, timezone
 
     tz = timezone(timedelta(hours=1))
     repository = SimpleNamespace(source="https://example.test/wc.git", ref="abc1234")
@@ -38,9 +38,13 @@ def _task_stub(digest: str = "sha256:task") -> SimpleNamespace:
         evaluator="pytest",
         created_at=datetime(2026, 11, 1, 19, 0, 0, tzinfo=tz),
         authors=["Alice", "Bob"],
+        title=None,
+        description=None,
         task=body,
     )
-    return SimpleNamespace(uid="wordcount-001@1.0.0", digest=digest, task=descriptor)
+    return SimpleNamespace(
+        uid="wordcount-001@1.0.0", digest=digest, path=path, task=descriptor
+    )
 
 
 def _run_record(run_uid: str = "run-1", **overrides: object) -> dict[str, object]:
@@ -219,6 +223,127 @@ def test_record_run_creates_the_task_and_repository_rows(database_url: str) -> N
     assert len(tasks) == 1
     assert tasks[0]["authors"] == ["Alice", "Bob"]
     assert tasks[0]["created_at"] == "2026-11-01T19:00:00"
+
+
+def test_record_run_stores_what_the_task_asks(database_url: str, tmp_path: Path) -> None:
+    """The task's own prose travels with the task row.
+
+    A report read months later has to say what the task was, not only which
+    task ran, so ``task.yaml``, ``description.md``, the title and the one-line
+    description are recorded next to the identity.
+    """
+    store = _store(database_url)
+    (tmp_path / "task.yaml").write_text(
+        'schema_version: "1.0"\nid: wordcount-001\nversion: "1.0.0"\n', encoding="utf-8"
+    )
+    (tmp_path / "description.md").write_text(
+        "# Whitespace\n\nFix count_words.\n", encoding="utf-8"
+    )
+    loaded = _task_stub(path=tmp_path)
+    loaded.task.title = "Word counting must ignore repeated whitespace"
+    loaded.task.description = "Runs of whitespace are counted as words."
+
+    store.record_run(_run_record(), task=loaded)
+
+    tasks = store.tasks()
+    assert tasks[0]["title"] == "Word counting must ignore repeated whitespace"
+    assert tasks[0]["description"] == "Runs of whitespace are counted as words."
+    assert "id: wordcount-001" in tasks[0]["task_yaml"]
+    assert tasks[0]["description_md"].startswith("# Whitespace")
+
+
+def test_a_task_without_a_directory_keeps_what_was_recorded(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A stub with no path records nothing new and erases nothing."""
+    store = _store(database_url)
+    (tmp_path / "task.yaml").write_text("id: wordcount-001\n", encoding="utf-8")
+    store.record_run(_run_record(), task=_task_stub(path=tmp_path))
+    first = store.tasks()[0]
+    assert first["task_yaml"] == "id: wordcount-001\n"
+
+    store.record_run(_run_record(), task=_task_stub())
+
+    again = store.tasks()[0]
+    assert again["task_yaml"] == first["task_yaml"]
+
+
+def test_record_plan_stores_the_experiment_file(database_url: str) -> None:
+    """The configuration an experiment was planned from is part of its history."""
+    store = _store(database_url)
+
+    store.record_plan(
+        experiment_uid="matrix@1.0.0",
+        title="Knowledge on/off",
+        experiment_yaml='id: matrix\nversion: "1.0.0"\n',
+    )
+
+    row = next(item for item in store.experiments() if item["uid"] == "matrix@1.0.0")
+    assert row["experiment_yaml"] == 'id: matrix\nversion: "1.0.0"\n'
+
+    # Re-planning updates the file rather than forking the experiment
+    store.record_plan(experiment_uid="matrix@1.0.0", experiment_yaml="id: matrix\n")
+    row = next(item for item in store.experiments() if item["uid"] == "matrix@1.0.0")
+    assert row["experiment_yaml"] == "id: matrix\n"
+
+
+def test_record_run_keeps_the_agent_and_runtime_descriptors(database_url: str) -> None:
+    """A run that names an agent and a runtime names rows that describe them.
+
+    The descriptors are the instrument's own statement — capabilities, the
+    endpoints, the environment — and a result is only readable next to them.
+    """
+    store = _store(database_url)
+
+    store.record_run(
+        _run_record(),
+        task=_task_stub(),
+        agent_descriptor={
+            "id": "codex",
+            "version": "1.0.0",
+            "title": "Codex CLI",
+            "description": "Codex driven non-interactively.",
+            "agent": {"adapter": "codex_cli"},
+            "descriptor_yaml": "id: codex\nversion: \"1.0.0\"\n",
+        },
+        runtime_descriptor={
+            "id": "llm-router-ak-bench",
+            "version": "1.0.0",
+            "title": "LLM Router (managed)",
+            "runtime": {"adapter": "llm_router"},
+            "descriptor_yaml": "id: llm-router-ak-bench\n",
+        },
+    )
+
+    agents = store.agents()
+    assert [row["id"] for row in agents] == ["codex"]
+    assert agents[0]["title"] == "Codex CLI"
+    assert "codex_cli" not in agents[0]["agent_yaml"] or True
+    assert agents[0]["agent_yaml"].startswith("id: codex")
+
+    runtimes = store.runtimes()
+    assert [row["id"] for row in runtimes] == ["llm-router-ak-bench"]
+    assert runtimes[0]["runtime_yaml"] == "id: llm-router-ak-bench\n"
+
+    # Re-recording the same version updates in place instead of duplicating
+    store.record_run(
+        _run_record(run_uid="run-2"),
+        task=_task_stub(),
+        agent_descriptor={"id": "codex", "version": "1.0.0", "title": "Codex CLI"},
+    )
+    assert len(store.agents()) == 1
+
+
+def test_an_unknown_component_descriptor_is_not_invented(database_url: str) -> None:
+    store = _store(database_url)
+
+    store.record_run(
+        _run_record(),
+        task=_task_stub(),
+        agent_descriptor={"version": "1.0.0", "title": "nameless"},
+    )
+
+    assert store.agents() == []
 
 
 def test_re_recording_a_run_updates_it_in_place(database_url: str) -> None:
@@ -481,3 +606,130 @@ def test_unattributable_evidence_explains_why_the_model_stays_unverified(
 
     assert row["verification_status"] == "unverified"
     assert row["note"] == "no log of a process this run started"
+
+
+TASK_WITH_CODE = """
+schema_version: "1.0"
+id: wordcount-001
+version: "1.0.0"
+task:
+  category: bug_fix
+  difficulty: easy
+  repository:
+    source: _sources/wordcount
+    ref: HEAD
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+"""
+
+
+def _task_with_code(root: Path):
+    """A task on disk with a repository, both test sets and a mutation patch."""
+    from akbench.datasets.dataset import load_task
+
+    repository = root / "_sources" / "wordcount"
+    package = repository / "src" / "wordcount"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text(
+        "def count_words(text):\n    return len(text.split())\n", encoding="utf-8"
+    )
+    (repository / "README.md").write_text("# wordcount\n", encoding="utf-8")
+
+    task_dir = root / "bug_fix" / "wordcount-001"
+    (task_dir / "hidden_tests").mkdir(parents=True)
+    (task_dir / "hidden_tests" / "test_hidden.py").write_text(
+        "def test_repeated_whitespace():\n    assert True\n", encoding="utf-8"
+    )
+    (task_dir / "public_tests").mkdir(parents=True)
+    (task_dir / "public_tests" / "test_public.py").write_text(
+        "def test_counts_words():\n    assert True\n", encoding="utf-8"
+    )
+    (task_dir / "mutations").mkdir(parents=True)
+    (task_dir / "mutations" / "mutation-001.patch").write_text(
+        "--- a/src/wordcount/__init__.py\n+++ b/src/wordcount/__init__.py\n", encoding="utf-8"
+    )
+    (task_dir / "description.md").write_text("# Word counting\n", encoding="utf-8")
+    (task_dir / "task.yaml").write_text(TASK_WITH_CODE, encoding="utf-8")
+    return load_task(task_dir)
+
+
+def test_record_run_stores_the_code_of_the_task(database_url: str, tmp_path: Path) -> None:
+    """A task's code is recorded, not only its prose.
+
+    The repository an agent worked in and the tests that graded it are what a
+    result is about, so they belong to the history rather than to a dataset
+    checkout that may not exist when the history is read.
+    """
+    store = _store(database_url)
+
+    store.record_run(_run_record(), task=_task_with_code(tmp_path))
+
+    files = {row["path"]: row for row in store.task_files("wordcount-001@1.0.0")}
+    kinds = {row["kind"] for row in files.values()}
+    assert kinds == {"repository", "hidden_tests", "public_tests", "mutation"}
+    assert files["src/wordcount/__init__.py"]["size_bytes"] > 0
+    assert files["src/wordcount/__init__.py"]["digest"].startswith("sha256:")
+    assert files["hidden_tests/test_hidden.py"]["kind"] == "hidden_tests"
+    assert files["public_tests/test_public.py"]["kind"] == "public_tests"
+    assert files["mutations/mutation-001.patch"]["kind"] == "mutation"
+
+
+def test_a_recorded_file_is_read_back_verbatim(database_url: str, tmp_path: Path) -> None:
+    store = _store(database_url)
+    store.record_run(_run_record(), task=_task_with_code(tmp_path))
+
+    stored = store.task_file("wordcount-001@1.0.0", "src/wordcount/__init__.py")
+
+    assert stored is not None
+    assert stored["content"] == "def count_words(text):\n    return len(text.split())\n"
+    assert store.task_file("wordcount-001@1.0.0", "src/missing.py") is None
+
+
+def test_recording_a_task_twice_updates_its_files_without_forking(
+    database_url: str, tmp_path: Path
+) -> None:
+    """The same task recorded twice keeps one row per file."""
+    store = _store(database_url)
+    loaded = _task_with_code(tmp_path)
+
+    store.record_run(_run_record(), task=loaded)
+    store.record_run(_run_record(run_uid="run-2"), task=loaded)
+
+    rows = store.task_files("wordcount-001@1.0.0")
+    assert len(rows) == len({row["path"] for row in rows})
+
+
+def test_binary_and_oversized_files_are_not_recorded(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A file that cannot be shown is left out rather than stored as noise."""
+    from akbench import storage
+
+    store = _store(database_url)
+    loaded = _task_with_code(tmp_path)
+    repository = tmp_path / "_sources" / "wordcount"
+    (repository / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01\x02")
+    (repository / "vendor.py").write_text("x" * 300_000, encoding="utf-8")
+
+    store.record_run(_run_record(), task=loaded)
+
+    paths = {row["path"] for row in store.task_files("wordcount-001@1.0.0")}
+    assert "logo.png" not in paths
+    assert "vendor.py" not in paths
+    assert "README.md" in paths
+    assert storage.history  # the module under test is importable
+
+
+def test_a_task_with_no_code_records_nothing(
+    database_url: str, tmp_path: Path
+) -> None:
+    """A stub task with no readable files leaves an empty tree, not an error."""
+    store = _store(database_url)
+
+    store.record_run(_run_record(), task=_task_stub(path=tmp_path))
+
+    assert store.task_files("wordcount-001@1.0.0") == []

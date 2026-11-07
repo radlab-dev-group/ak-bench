@@ -4,6 +4,36 @@ All notable changes to the `ak-bench` package are documented here.
 Versions follow the `MAJOR.MINOR.PATCH` scheme; a new entry is added for every
 release tagged as `v<version>`.
 
+## [Unreleased]
+
+### Added
+- **The UI shows what a run cost in calls, not only in tokens.** Every table that lists runs or configurations — the dashboard leaderboard and recent runs, the runs explorer, the task and experiment pages — carries a tool-calls column, with the raw number beside it so it sorts. The dashboard charts compare the models against each other on the same measures (success rate and score, duration and tokens) instead of one model against itself across metrics.
+- **The dashboard opens with the overall picture.** Experiments, runs, evaluated, success rate, tasks, total and mean time, input/generated/total tokens and tool calls in one block, cost shown as "not recorded" until the history carries it.
+- **A task's code is downloadable.** `GET /api/tasks/{uid}/download.zip` packs every recorded file under its kind, named `{task-id}__{version}.zip`.
+- **The task page charts score per configuration** — one line per configuration over the task's runs in the order they started — and folds its long prose (the description) and its code tree away, so the definition is the first thing read.
+- **The analytics explorer spins while it loads.** Every chart shows a loader until its data has been drawn, so an empty chart is not mistaken for a broken one.
+
+### Changed
+- **The dashboard's recent-runs and leaderboard tables repeat the run's repetition number** beside the other run columns, and every table that lists runs shows it.
+- **Code viewers offer a copy button beside close** in the task code viewer and the run modal, so the text shown can be taken without selecting it.
+- **YAML in the UI is coloured.** The recorded descriptors (task, experiment, agent, runtime) and the task's `description.md` get a light syntax highlight for keys, values and comments.
+- **The runs explorer shows which tests passed and which failed in a run.** The inspect modal lists the evaluator's per-test results — green for a pass, red for a fail — when the run recorded them, alongside the passed/failed/total summary.
+- **Numeric table columns sort both ways.** A cell's sort value is its own text, or the text it shows when it has none; a cell that opens with whitespace and nests its number in a span used to sort on nothing, which is why success rate, mean score and the against-baseline columns never moved. The against-baseline column now sorts on the success-rate difference it describes.
+- **The runs explorer keeps its two-run comparison budget visible.** Selecting two runs dims the rest and disables their checkboxes, and the state survives filtering; the run diff opens on two runs chosen from lists of the same runs.
+
+- **A task's code is recorded in the history and browsable in the UI.** `task_files` stores the repository a task is worked in, its hidden and public tests and its mutation patch, one row per file with a size and a `sha256` digest (migration `0010`); binary files and anything over 256 KB are left out rather than stored empty. The task page shows the code as an expandable directory tree grouped by kind, and clicking a file reads its text from `GET /api/tasks/{uid}/files` and `GET /api/tasks/{uid}/files/{path}`. `scripts/update_task_info.py` backfills the files of an existing history from the dataset on disk.
+- **Agents and runtimes are first-class rows, filterable in the UI.** `agents` and `runtimes` keep every version a run was made of, keyed by the id the run already recorded, each with the descriptor file it declared (migration `0009`). New `/agents`, `/agents/{id}`, `/runtimes` and `/runtimes/{id}` pages show the descriptor as written — capabilities, controllable configuration, execution modes, endpoints — and the runs explorer filters by agent and by runtime.
+- **An experiment carries its own descriptor.** `experiments.experiment_yaml` is the file the experiment was planned from, and its page shows a configuration panel read from that file plus the raw YAML, so an experiment explains itself without its checkout.
+- **Every table sorts by clicking its column header.** First click ascending, second descending, a double click restores the page's own order; formatted cells (`1m 30s`, `1.2 MB`) sort by the value they show, and a table rendered after load arms itself through `window.akbenchSortTables()`.
+- **Task content is recorded in the history and shown in the UI.** Every task row now stores what the task asks — the title, the one-line description, the full `task.yaml` descriptor and the task's `description.md` (migration `0008`). The UI answers a task page from the history alone: the task catalog shows titles, descriptions, authors and timeouts, and the task detail shows the definition with constraints, setup, mutation and repository, the full scope of work, and the recorded descriptor. When a task was recorded before its content was stored, the dataset on disk fills the gap and the page says the definition came from there.
+- **`scripts/update_task_info.py` backfills an existing history** with the task content from the dataset on disk (migrating the schema to head first), for the PostgreSQL the project is already using.
+- **The UI footer links [radlab.dev](https://radlab.dev) and [llm-router.cloud](https://llm-router.cloud/).**
+
+### Changed
+- **PostgreSQL is now the default database.** Recorded benchmarks go to PostgreSQL instead of the SQLite file, so a project has one shared, server-backed history. SQLite stays available as an explicit fallback for a laptop without a server.
+- **A project `.env` file is read automatically.** The same `AKBENCH_PG_*` connection names `scripts/run-postgres.sh` uses now configure the engine; an exported variable beats the file, and `AKBENCH__DATABASE__*` still overrides both. The connection URL is redacted (password hidden) everywhere it is displayed, in `akbench config show` and in the UI footer.
+- **`akbench migrate` imports a SQLite history into PostgreSQL, one namespace per file.** Several working directories share one server; each import lands in its own schema (read back with `AKBENCH__DATABASE__POSTGRES__NAMESPACE`), children after parents, every table counted on both sides, and a difference is an error. The import surfaced a real defect: `config_hash` was declared 64 characters while the code has always written `sha256:<64 hex>` (71) — SQLite never enforced the length, PostgreSQL does. The column is now what the code writes (migration `0007`).
+
 ## Summary
 
 | Version | Changelog |

@@ -20,12 +20,23 @@ task execution through a chosen agent and verifies the outcome independently.
 uv venv --python 3.12 .venv
 uv pip install -e ".[dev]"
 
-akbench init          # directories + configuration + database (migrations to head)
-akbench doctor        # environment readiness
-akbench config show   # effective configuration and paths
-akbench descriptor validate  # component descriptors
-akbench dataset validate     # tasks (add --verify-mutations to prove defects)
+scripts/run-postgres.sh start   # local PostgreSQL (data in a Docker volume)
+akbench init                    # directories + configuration + database (migrations to head)
+akbench doctor                  # environment readiness
+akbench config show             # effective configuration, paths, database
+akbench descriptor validate     # component descriptors
+akbench dataset validate        # tasks (add --verify-mutations to prove defects)
 ```
+
+Recorded benchmarks go to **PostgreSQL** by default; the connection parameters
+live in the project `.env` (copy `.env.example` if you start from the
+repository). The engine and `scripts/run-postgres.sh` read the same
+`AKBENCH_PG_*` names, so one file drives both. To keep a run on a local
+SQLite file instead: `export AKBENCH_DB_BACKEND=sqlite`.
+
+Several working directories can share one server: each SQLite history is
+imported into its own namespace and read back by naming it
+(``akbench migrate sqlite …`` / ``akbench migrate list``).
 
 ## How AK-Bench reads a configuration
 
@@ -258,6 +269,21 @@ declares the project name `ak-bench` → the current directory.
 
 Unknown keys are rejected: an option that is silently ignored looks effective
 while it is not.
+
+### The database
+
+Where a recorded benchmark lives is chosen by `database.backend`:
+
+- **`postgres` (default)** — the parameters of `database.postgres` are the
+  same `AKBENCH_PG_*` names `scripts/run-postgres.sh` reads, so the project
+  `.env` file configures the helper container and the engine at once. An
+  exported variable beats the file; `AKBENCH__DATABASE__POSTGRES__*` beats
+  both.
+- **`sqlite`** — the file named by `paths.database_file`.
+- **`database.url`** overrides both and pins a full SQLAlchemy URL.
+
+The URL is shown with the password redacted (`akbench config show`, the UI
+footer); the connection itself is never printed.
 
 ## Layout
 

@@ -122,6 +122,47 @@ class Task(Base, TimestampMixin):
     snapshot_digest: Mapped[str] = mapped_column(String(71), nullable=False)
     task_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     authors_json: Mapped[str | None] = mapped_column(Text)
+    # What the task asks, as the task itself stated it. The identity columns
+    # above say which task ran; these say what it was, so the history can be
+    # read without the dataset checkout that produced it.
+    description: Mapped[str | None] = mapped_column(Text)
+    # The task descriptor as loaded, serialized back to YAML.
+    task_yaml: Mapped[str | None] = mapped_column(Text)
+    # description.md verbatim: the full scope of work, not the one-line summary.
+    description_md: Mapped[str | None] = mapped_column(Text)
+
+
+class TaskFile(Base, TimestampMixin):
+    """One file of a task: the code it is made of, kept next to the task row.
+
+    A task is more than its prose: it is the repository an agent works in,
+    the hidden and public tests that grade the work, and the mutation patch
+    that planted the defect. Each of those files is a row here, keyed by the
+    task and the path relative to where the file belongs, so a history read
+    without the dataset checkout can still show the exact code a recorded
+    run was handed and graded against.
+    """
+
+    __tablename__ = "task_files"
+    __table_args__ = (
+        UniqueConstraint("task_id", "path", name="uq_task_files_task_id_path"),
+        Index("ix_task_files_task_id", "task_id"),
+        Index("ix_task_files_kind", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    # Relative to the repository root for repository files, relative to the
+    # task directory for tests and the mutation patch.
+    path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # repository, hidden_tests, public_tests or mutation: which part of the
+    # task the file belongs to.
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    digest: Mapped[str] = mapped_column(String(71), nullable=False)
 
 
 class Experiment(Base, TimestampMixin):
@@ -139,8 +180,56 @@ class Experiment(Base, TimestampMixin):
     validity_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=ExperimentValidity.INCOMPLETE
     )
-    config_hash: Mapped[str | None] = mapped_column(String(64))
+    config_hash: Mapped[str | None] = mapped_column(String(71))
     notes: Mapped[str | None] = mapped_column(Text)
+    # The experiment file as written: the plan is derived, the file is the
+    # claim, and a page that explains an experiment quotes the claim.
+    experiment_yaml: Mapped[str | None] = mapped_column(Text)
+
+
+class Agent(Base, TimestampMixin):
+    """An agent as its own descriptor recorded it, kept per version.
+
+    A run names an agent by id (``task_runs.agent_id``); this table says what
+    that agent declared itself — capabilities, controllable configuration,
+    observability — so a result can be read next to the instrument that
+    produced it.
+    """
+
+    __tablename__ = "agents"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "version", name="uq_agents_agent_id_version"),
+        Index("ix_agents_agent_id", "agent_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    agent_yaml: Mapped[str | None] = mapped_column(Text)
+
+
+class Runtime(Base, TimestampMixin):
+    """A runtime as its own descriptor recorded it, kept per version.
+
+    The same reasoning as :class:`Agent`: the run records ``runtime_id``, the
+    row states what that runtime was — adapter, execution modes, lifecycles,
+    endpoints and the environment it is launched with.
+    """
+
+    __tablename__ = "runtimes"
+    __table_args__ = (
+        UniqueConstraint("runtime_id", "version", name="uq_runtimes_runtime_id_version"),
+        Index("ix_runtimes_runtime_id", "runtime_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    runtime_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    runtime_yaml: Mapped[str | None] = mapped_column(Text)
 
 
 class Benchmark(Base, TimestampMixin):
@@ -197,7 +286,7 @@ class ExperimentVariant(Base, TimestampMixin):
     agent_config_json: Mapped[str | None] = mapped_column(Text)
     environment_requests_json: Mapped[str | None] = mapped_column(Text)
     applies_json: Mapped[str | None] = mapped_column(Text)
-    config_hash: Mapped[str | None] = mapped_column(String(64))
+    config_hash: Mapped[str | None] = mapped_column(String(71))
     is_baseline: Mapped[bool] = mapped_column(nullable=False, default=False)
 
 
@@ -257,7 +346,7 @@ class TaskRun(Base, TimestampMixin):
     failure_class: Mapped[str | None] = mapped_column(String(32))
     error_message: Mapped[str | None] = mapped_column(Text)
     exit_code: Mapped[int | None] = mapped_column(Integer)
-    config_hash: Mapped[str | None] = mapped_column(String(64))
+    config_hash: Mapped[str | None] = mapped_column(String(71))
     #: Digest of the reproducibility manifest of this run (plan section 14).
     manifest_digest: Mapped[str | None] = mapped_column(String(71))
     mode: Mapped[str | None] = mapped_column(String(32))

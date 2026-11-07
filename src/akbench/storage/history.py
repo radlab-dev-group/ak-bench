@@ -27,8 +27,10 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from akbench.core.time import utc_now
+from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE
 from akbench.storage.db import session_scope
 from akbench.storage.models import (
+    Agent,
     AgentObservation,
     Artifact,
     Benchmark,
@@ -42,7 +44,9 @@ from akbench.storage.models import (
     ModelObservation,
     PluginObservation,
     Repository,
+    Runtime,
     Task,
+    TaskFile,
     TaskRun,
 )
 
@@ -95,6 +99,7 @@ class HistoryStore:
         descriptor_id: str | None = None,
         descriptor_version: str | None = None,
         config_hash: str | None = None,
+        experiment_yaml: str | None = None,
         benchmark_uid: str | None = None,
         variants: list[dict[str, Any]] | None = None,
         snapshots: list[dict[str, Any]] | None = None,
@@ -129,6 +134,8 @@ class HistoryStore:
                 experiment.descriptor_version = descriptor_version
             if config_hash is not None:
                 experiment.config_hash = config_hash
+            if experiment_yaml is not None:
+                experiment.experiment_yaml = experiment_yaml
             experiment.updated_at = now
 
             if benchmark_uid is not None:
@@ -180,6 +187,8 @@ class HistoryStore:
         task: Any | None = None,
         observed_model: dict[str, Any] | None = None,
         repetition: int | None = None,
+        agent_descriptor: Any | None = None,
+        runtime_descriptor: Any | None = None,
     ) -> dict[str, Any]:
         """Store one run record and its attached observations.
 
@@ -207,6 +216,18 @@ class HistoryStore:
 
             if task is not None:
                 self._record_task(session, task)
+            if agent_descriptor is not None:
+                # A run records the agent it used at the version it observed
+                # (codex-cli 0.166.0), not only the descriptor's declared
+                # version, so the row the run names is the row the catalog has.
+                self._record_component(
+                    session, Agent, agent_descriptor, "agent",
+                    record.get("agent_version"),
+                )
+            if runtime_descriptor is not None:
+                self._record_component(
+                    session, Runtime, runtime_descriptor, "runtime",
+                )
 
             run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
             if run is None:
@@ -628,6 +649,7 @@ class HistoryStore:
                     "uid": row.uid,
                     "id": row.task_id,
                     "version": row.version,
+                    "title": row.title,
                     "category": row.category,
                     "difficulty": row.difficulty,
                     "evaluator": row.evaluator,
@@ -636,10 +658,60 @@ class HistoryStore:
                     "snapshot_digest": row.snapshot_digest,
                     "created_at": row.task_created_at.isoformat() if row.task_created_at else None,
                     "authors": _load(row.authors_json) or [],
+                    "description": row.description,
+                    "task_yaml": row.task_yaml,
+                    "description_md": row.description_md,
                     "runs": by_task.get(row.uid, 0),
                 }
                 for row in rows
             ]
+
+    def task_files(self, task_uid: str | None = None) -> list[dict[str, Any]]:
+        """The recorded code of a task, or of every task, sorted by path.
+
+        Content is left out: a tree of files is a list of names, sizes and
+        kinds, and the text of one file is read when it is opened. A task with
+        no recorded files is not an error — it predates the recording, or the
+        dataset was not on disk when it was recorded.
+        """
+        with session_scope(self.engine) as session:
+            statement = (
+                select(Task, TaskFile)
+                .join(TaskFile, TaskFile.task_id == Task.id)
+                .order_by(TaskFile.kind, TaskFile.path)
+            )
+            if task_uid is not None:
+                statement = statement.where(Task.uid == task_uid)
+            rows = session.execute(statement).all()
+            return [
+                {
+                    "task_uid": task.uid,
+                    "path": row.path,
+                    "kind": row.kind,
+                    "size_bytes": row.size_bytes,
+                    "digest": row.digest,
+                }
+                for task, row in rows
+            ]
+
+    def task_file(self, task_uid: str, path: str) -> dict[str, Any] | None:
+        """One recorded file with its content, or ``None`` when it was not stored."""
+        with session_scope(self.engine) as session:
+            row = session.execute(
+                select(TaskFile)
+                .join(Task, Task.id == TaskFile.task_id)
+                .where(Task.uid == task_uid, TaskFile.path == path)
+            ).scalar_one_or_none()
+            if row is None:
+                return None
+            return {
+                "task_uid": task_uid,
+                "path": row.path,
+                "kind": row.kind,
+                "content": row.content,
+                "size_bytes": row.size_bytes,
+                "digest": row.digest,
+            }
 
     def plugin_observations(
         self, run_uid: str | None = None
@@ -819,17 +891,29 @@ class HistoryStore:
         authors = getattr(loaded.task, "authors", None)
         authors_json = _dump(authors) if authors else None
 
+        # The prose belongs to the task itself: the title, the one-line
+        # description, the descriptor as written and the full description.md.
+        # A reader of the history should see what a run was about without the
+        # dataset checkout, so it is recorded, not re-derived.
+        title = getattr(loaded.task, "title", None)
+        description = getattr(loaded.task, "description", None)
+        task_yaml, description_md = _task_texts(loaded)
+
         if task_row is None:
             task_row = Task(
                 uid=loaded.uid,
                 task_id=str(loaded.task.id),
                 version=str(loaded.task.version),
+                title=title,
                 category=str(loaded.task.category),
                 difficulty=str(loaded.task.difficulty),
                 evaluator=str(loaded.task.evaluator),
                 snapshot_digest=str(loaded.digest),
                 task_created_at=task_created_at,
                 authors_json=authors_json,
+                description=description,
+                task_yaml=task_yaml,
+                description_md=description_md,
                 created_at=now,
                 updated_at=now,
             )
@@ -839,10 +923,157 @@ class HistoryStore:
                 task_row.task_created_at = task_created_at
             if authors_json is not None:
                 task_row.authors_json = authors_json
+            if title is not None:
+                task_row.title = title
+            if description is not None:
+                task_row.description = description
+            if task_yaml is not None:
+                task_row.task_yaml = task_yaml
+            if description_md is not None:
+                task_row.description_md = description_md
         task_row.repository_uid = repository_uid
         task_row.base_commit = getattr(loaded.task.task.repository, "ref", None)
         task_row.updated_at = now
         session.flush()
+        self._record_task_files(session, task_row, loaded)
+
+    def _record_task_files(self, session: Session, task_row: Task, loaded: Any) -> None:
+        """Store the task's code, not only its prose, next to the task row.
+
+        The repository a run was worked in, the hidden and public tests that
+        grade it, and the mutation patch that planted the defect are recorded
+        file by file, so a history read without the dataset checkout can still
+        show the exact code a recorded run was handed. A loaded task that did
+        not come from a directory (a test stub) yields no files and changes
+        nothing: there is no code to read, and guessing would fabricate it.
+        """
+        _store_task_files(session, task_row.id, collect_task_files(loaded))
+
+    def record_task_files(self, loaded: Any) -> int:
+        """Store the code of a task found on disk, returning how many files changed.
+
+        The write path for ``scripts/update_task_info.py``: a history that
+        predates the recording gets its files from the dataset checkout without
+        waiting for a run. A task with no row was never recorded, and its code
+        is not this history's to claim.
+        """
+        uid = getattr(loaded, "uid", None)
+        collected = collect_task_files(loaded)
+        if not uid or not collected:
+            return 0
+        with session_scope(self.engine) as session:
+            task_row = session.scalar(select(Task).where(Task.uid == uid))
+            if task_row is None:
+                return 0
+            recorded = {
+                row.path: row.digest
+                for row in session.scalars(
+                    select(TaskFile).where(TaskFile.task_id == task_row.id)
+                ).all()
+            }
+            _store_task_files(session, task_row.id, collected)
+            return sum(
+                1
+                for path, _kind, _content, _size, digest in collected
+                if recorded.get(path) != digest
+            )
+
+    def _record_component(
+        self,
+        session: Session,
+        model: Any,
+        descriptor: Any,
+        kind: str,
+        observed_version: Any = None,
+    ) -> None:
+        """Store an agent or runtime descriptor, keyed by (id, version).
+
+        ``descriptor`` is the validated descriptor model or a mapping with the
+        same fields; ``*_yaml`` carries the file it was written in. Re-recording
+        updates the row — a descriptor that gained a note is still the same
+        component — and a descriptor with no id is not a component at all, so
+        it is skipped rather than guessed at.
+        """
+        def stated(name: str, target: Any = None) -> Any:
+            """Read ``name`` from a mapping or an attribute, whichever it is."""
+            subject = descriptor if target is None else target
+            if isinstance(subject, dict):
+                return subject.get(name)
+            return getattr(subject, name, None)
+
+        identifier = stated("id")
+        if not identifier:
+            return
+        # The version a run names is what it observed; the descriptor's own
+        # version is a fallback only when the run recorded none.
+        version = str(observed_version or stated("version") or "")
+        title = stated("title")
+        description = stated("description")
+        document = stated("descriptor_yaml")
+
+        row = session.scalar(
+            select(model).where(
+                getattr(model, f"{kind}_id") == str(identifier),
+                model.version == version,
+            )
+        )
+        now = utc_now()
+        if row is None:
+            row = model(
+                **{
+                    f"{kind}_id": str(identifier),
+                    "version": version,
+                    "title": title,
+                    "description": description,
+                    f"{kind}_yaml": document,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+            session.add(row)
+        else:
+            if title:
+                row.title = title
+            if description:
+                row.description = description
+            if document:
+                setattr(row, f"{kind}_yaml", document)
+            row.updated_at = now
+        session.flush()
+
+    def agents(self) -> list[dict[str, Any]]:
+        """Every recorded agent version, newest first inside its id."""
+        with session_scope(self.engine) as session:
+            rows = session.scalars(select(Agent).order_by(Agent.agent_id, Agent.version)).all()
+            return [
+                {
+                    "id": row.agent_id,
+                    "version": row.version,
+                    "uid": f"{row.agent_id}@{row.version}",
+                    "title": row.title,
+                    "description": row.description,
+                    "agent_yaml": row.agent_yaml,
+                }
+                for row in rows
+            ]
+
+    def runtimes(self) -> list[dict[str, Any]]:
+        """Every recorded runtime version, newest first inside its id."""
+        with session_scope(self.engine) as session:
+            rows = session.scalars(
+                select(Runtime).order_by(Runtime.runtime_id, Runtime.version)
+            ).all()
+            return [
+                {
+                    "id": row.runtime_id,
+                    "version": row.version,
+                    "uid": f"{row.runtime_id}@{row.version}",
+                    "title": row.title,
+                    "description": row.description,
+                    "runtime_yaml": row.runtime_yaml,
+                }
+                for row in rows
+            ]
 
     def _record_snapshot(
         self, session: Session, experiment_id: int | None, payload: dict[str, Any]
@@ -1064,6 +1295,7 @@ class HistoryStore:
             else None,
             "validity": row.validity_status,
             "config_hash": row.config_hash,
+            "experiment_yaml": row.experiment_yaml,
             "runs": len(runs),
             "statuses": sorted({run.status for run in runs if run.status}),
             "verdicts": verdicts,
@@ -1168,6 +1400,191 @@ class HistoryStore:
             "unavailable_reason": row.unavailable_reason,
             "computed_at": row.computed_at.isoformat() if row.computed_at else None,
         }
+
+
+def _task_texts(loaded: Any) -> tuple[str | None, str | None]:
+    """``task.yaml`` and ``description.md`` exactly as written on disk.
+
+    A loaded task that did not come from a directory (a test stub) carries no
+    ``path`` and yields ``(None, None)``: the columns stay what was recorded.
+    """
+    directory = getattr(loaded, "path", None)
+    if directory is None:
+        return None, None
+    directory = Path(directory)
+    task_yaml = _read_text(directory / TASK_FILE)
+    description_md = _read_text(directory / DESCRIPTION_FILE)
+    return task_yaml, description_md
+
+
+_TASK_FILE_MAX_BYTES = 256 * 1024
+_TASK_FILE_SKIP_DIRS = {".git", "__pycache__", ".venv", "node_modules"}
+_TASK_FILE_SKIP_SUFFIXES = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".pdf",
+    ".zip",
+    ".gz",
+    ".tar",
+    ".whl",
+    ".pyc",
+    ".so",
+    ".bin",
+    ".sqlite",
+    ".sqlite3",
+}
+
+
+def _store_task_files(
+    session: Session, task_id: int, collected: list[tuple[str, str, str, int, str]]
+) -> None:
+    """Insert or update one row per collected file, keyed by (task, path).
+
+    Re-recording a task refreshes its files rather than forking them: the code
+    of a task is what it was at the digest the task row carries, and a second
+    reading of the same directory states the same thing again.
+    """
+    if not collected:
+        return
+    existing = {
+        row.path: row
+        for row in session.scalars(select(TaskFile).where(TaskFile.task_id == task_id)).all()
+    }
+    now = utc_now()
+    for path, kind, content, size_bytes, digest in collected:
+        row = existing.get(path)
+        if row is None:
+            session.add(
+                TaskFile(
+                    task_id=task_id,
+                    path=path,
+                    kind=kind,
+                    content=content,
+                    size_bytes=size_bytes,
+                    digest=digest,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        else:
+            row.kind = kind
+            row.content = content
+            row.size_bytes = size_bytes
+            row.digest = digest
+            row.updated_at = now
+    session.flush()
+
+
+def _repository_root(source: Any, task_dir: Path) -> Path | None:
+    """Directory a task's repository source names, or ``None`` when it names none.
+
+    A remote source (a git URL) has no directory to read and is not local code.
+    A relative one is resolved against the task directory and its ancestors,
+    which finds the project root without importing the dataset that loaded it.
+    """
+    if not source:
+        return None
+    text = str(source)
+    if "://" in text or text.startswith("git@"):
+        return None
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return candidate if candidate.is_dir() else None
+    for base in [task_dir, *task_dir.parents]:
+        resolved = base / candidate
+        if resolved.is_dir():
+            return resolved
+    return None
+
+
+def collect_task_files(loaded: Any) -> list[tuple[str, str, str, int, str]]:
+    """The code a task is made of, read from its directory on disk.
+
+    Returns ``(path, kind, content, size_bytes, digest)`` for every file that
+    defines the task: the repository it is worked in, the hidden and public
+    tests that grade it, and the mutation patch. Paths are relative to where
+    the file belongs — the repository root for repository files, the task
+    directory for tests and the mutation. Files that cannot be read as text,
+    that are binary, or that exceed ``_TASK_FILE_MAX_BYTES`` are skipped:
+    a file that cannot be shown is not recorded as an empty file, which
+    would be a false statement about the task.
+    """
+    raw_directory = getattr(loaded, "path", None)
+    body = getattr(loaded.task, "task", None)
+    if raw_directory is None or body is None:
+        return []
+    directory = Path(raw_directory)
+    collected: list[tuple[str, str, str, int, str]] = []
+    seen: set[str] = set()
+
+    def add(kind: str, path: Path, recorded: str) -> None:
+        """Record one file under ``recorded``, when it is text worth showing."""
+        if recorded in seen or not path.is_file():
+            return
+        seen.add(recorded)
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return
+        if len(data) > _TASK_FILE_MAX_BYTES:
+            return
+        try:
+            content = data.decode("utf-8")
+        except UnicodeDecodeError:
+            return
+        digest = f"sha256:{hashlib.sha256(data).hexdigest()}"
+        collected.append((recorded, kind, content, len(data), digest))
+
+    def walk(kind: str, root: Path, prefix: str = "") -> None:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(root)
+            if any(part in _TASK_FILE_SKIP_DIRS for part in relative.parts):
+                continue
+            if path.suffix.lower() in _TASK_FILE_SKIP_SUFFIXES:
+                continue
+            add(kind, path, f"{prefix}{relative.as_posix()}")
+
+    # The repository the task is worked in. A materialized task names it by an
+    # absolute path; a bare descriptor names it relative to the project, so the
+    # task directory's ancestors are tried until the source resolves.
+    repository = getattr(body, "repository", None)
+    source = getattr(repository, "source", None)
+    repo_root = _repository_root(source, directory)
+    if repo_root is not None:
+        subdir = getattr(repository, "subdir", None)
+        walk("repository", repo_root / subdir if subdir else repo_root)
+
+    # The mutation patch and the tests are named from the task directory, so a
+    # path says which part of the task it belongs to as well as where it is.
+    mutation = getattr(body, "mutation", None)
+    if mutation is not None:
+        patch = str(getattr(mutation, "patch", ""))
+        if patch:
+            add("mutation", directory / patch, patch)
+
+    for kind, configured in (
+        ("hidden_tests", getattr(body, "hidden_tests", None)),
+        ("public_tests", getattr(body, "public_tests", None)),
+    ):
+        if not configured:
+            continue
+        tests = Path(str(configured))
+        if (directory / tests).is_dir():
+            walk(kind, directory / tests, f"{tests.as_posix()}/")
+
+    return collected
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
 
 
 def _parse_time(value: Any) -> datetime | None:

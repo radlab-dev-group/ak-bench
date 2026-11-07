@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Agents{% endblock %}
+
+{% block content %}
+<div>
+  <div style="margin-bottom: 24px;">
+    <h1 style="margin:0 0 4px;">Agents</h1>
+    <div style="color:var(--fg-dim); font-size:13.5px;">
+      The instruments the history ran under: what each agent declared about itself, and how often it was measured.
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th data-sortable>Agent</th>
+            <th data-sortable>Version</th>
+            <th data-sortable>Title</th>
+            <th data-sortable class="num">Runs</th>
+            <th data-sortable>Adapter</th>
+            <th data-sortable>Description</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for agent in agents %}
+            <tr>
+              <td><a href="/agents/{{ agent.id }}" class="mono" style="font-weight:600;">{{ agent.id }}</a></td>
+              <td class="mono" style="font-size:12px;">{{ agent.version }}</td>
+              <td>{{ agent.title or "—" }}</td>
+              <td class="num mono">{{ agent.runs_count }}</td>
+              <td class="mono">{{ (agent.descriptor or {}).get("adapter") or "—" }}</td>
+              <td><div class="task-snippet" title="{{ agent.description or '' }}">{{ agent.description or "—" }}</div></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <a href="/runs?agent={{ agent.uid | urlencode }}" class="btn btn-sm">Runs</a>
+                <a href="/agents/{{ agent.id }}" class="btn btn-sm">Descriptor</a>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7" class="empty-row">No agent has been recorded yet: a run stores the descriptor behind the id it names.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

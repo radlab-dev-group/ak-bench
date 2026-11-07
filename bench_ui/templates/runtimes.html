@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Runtimes{% endblock %}
+
+{% block content %}
+<div>
+  <div style="margin-bottom: 24px;">
+    <h1 style="margin:0 0 4px;">Runtimes</h1>
+    <div style="color:var(--fg-dim); font-size:13.5px;">
+      Where the agents actually ran: adapter, execution modes, lifecycles and the endpoint each runtime declared.
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th data-sortable>Runtime</th>
+            <th data-sortable>Title</th>
+            <th data-sortable class="num">Versions</th>
+            <th data-sortable class="num">Runs</th>
+            <th data-sortable>Adapter</th>
+            <th data-sortable>Modes</th>
+            <th data-sortable>Lifecycles</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set grouped = {} %}
+          {% for runtime in runtimes %}
+            {% set _ = grouped.setdefault(runtime.id, []).append(runtime) %}
+          {% endfor %}
+          {% for runtime_id, versions in grouped.items() %}
+            {% set newest = versions[-1] %}
+            {% set body = newest.descriptor or {} %}
+            <tr>
+              <td><a href="/runtimes/{{ runtime_id }}" class="mono" style="font-weight:600;">{{ runtime_id }}</a></td>
+              <td>{{ newest.title or "—" }}</td>
+              <td class="num mono">{{ versions | length }}</td>
+              <td class="num mono">{{ versions | sum(attribute="runs_count") }}</td>
+              <td class="mono">{{ body.get("adapter") or "—" }}</td>
+              <td class="mono">{{ (body.get("execution_modes") or []) | join(", ") or "—" }}</td>
+              <td class="mono">{{ (body.get("supported_lifecycles") or []) | join(", ") or "—" }}</td>
+              <td style="text-align:right;">
+                <a href="/runs?runtime={{ newest.uid }}" class="btn btn-sm">Runs</a>
+                <a href="/runtimes/{{ runtime_id }}" class="btn btn-sm">Descriptor</a>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8" class="empty-row">No runtime has been recorded yet: a run stores the descriptor behind the id it names.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

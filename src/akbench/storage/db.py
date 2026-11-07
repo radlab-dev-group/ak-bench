@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
@@ -22,6 +23,34 @@ def database_path_from_url(url: str) -> Path | None:
     if raw in (":memory:", ""):
         return None
     return Path(raw).expanduser()
+
+
+def search_path_url(url: str, namespace: str | None) -> str:
+    """The same connection pointed at one schema.
+
+    PostgreSQL resolves an unqualified name through ``search_path``, so a
+    namespace travels in the connection and every statement -- the migrations,
+    a copy, a later read -- addresses it without qualifying anything.
+    """
+    if not namespace:
+        return url
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query))
+    tokens = [
+        token for token in query.get("options", "").split() if not token.startswith("-csearch_path")
+    ]
+    tokens.append(f"-csearch_path={namespace}")
+    query["options"] = " ".join(tokens)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def namespace_of_url(url: str) -> str | None:
+    """The namespace a URL points at, or ``None`` for the default schema."""
+    query = dict(parse_qsl(urlsplit(url).query))
+    for token in query.get("options", "").split():
+        if token.startswith("-csearch_path="):
+            return token.split("=", 1)[1]
+    return None
 
 
 def create_db_engine(url: str, *, echo: bool = False, timeout_seconds: int = 30) -> Engine:

@@ -34,8 +34,35 @@ class PathsSettings(_StrictModel):
     logs_dir: Path | None = Path("data/logs")
 
 
+class PostgresSettings(_StrictModel):
+    """Connection parameters of the default PostgreSQL instance.
+
+    These mirror the ``AKBENCH_PG_*`` variables of ``scripts/run-postgres.sh``
+    so one ``.env`` file drives both the helper container and the engine.
+    """
+
+    host: str = "127.0.0.1"
+    port: int = 5959
+    user: str = "akbench"
+    password: str = "akbench_local"
+    database: str = "akbench"
+    #: One imported SQLite history per schema (`akbench migrate`), read back by
+    #: naming it here. ``None`` is the server's default schema.
+    namespace: str | None = None
+
+
 class DatabaseSettings(_StrictModel):
+    """Where recorded benchmarks live.
+
+    ``backend`` picks the engine; ``url`` overrides both and is how a
+    fully-formed SQLAlchemy URL is pinned (a test database, a managed
+    instance). SQLite stays selectable because a benchmark has to run on a
+    laptop without a server.
+    """
+
+    backend: Literal["postgres", "sqlite"] = "postgres"
     url: str | None = None
+    postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     echo: bool = False
     timeout_seconds: int = 30
 
@@ -45,6 +72,17 @@ class DatabaseSettings(_StrictModel):
         if value and "://" not in value:
             raise ValueError("database.url must be a SQLAlchemy URL (e.g. sqlite:///...)")
         return value
+
+    @property
+    def postgres_url(self) -> str:
+        """SQLAlchemy URL of the configured PostgreSQL instance (psycopg3 driver)."""
+        from urllib.parse import quote
+
+        return (
+            "postgresql+psycopg://"
+            f"{quote(self.postgres.user, safe="")}:{quote(self.postgres.password, safe="")}"
+            f"@{self.postgres.host}:{self.postgres.port}/{self.postgres.database}"
+        )
 
 
 class LoggingSettings(_StrictModel):

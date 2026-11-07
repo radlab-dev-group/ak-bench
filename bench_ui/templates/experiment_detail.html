@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Experiment: {{ experiment.uid }}{% endblock %}
+
+{% block content %}
+<div>
+  <!-- Header -->
+  <div style="margin-bottom: 24px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+    <div>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+        <span class="badge badge-info">{{ experiment.type or "matrix" }}</span>
+        <span class="badge {% if experiment.validity == 'valid' %}badge-passed{% else %}badge-partial{% endif %}">{{ experiment.validity or "valid" }}</span>
+      </div>
+      <h1 style="margin:0 0 6px;">{{ experiment.title or experiment.uid }}</h1>
+      <div class="mono" style="color:var(--fg-dim); font-size:13px;">UID: {{ experiment.uid }}</div>
+      {% if experiment.description %}
+        <p style="margin-top:8px; color:var(--fg-dim); font-size:13.5px; max-width:800px;">{{ experiment.description }}</p>
+      {% endif %}
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a href="/runs?experiment_uid={{ experiment.uid }}" class="btn btn-primary">Filter Runs in Explorer</a>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="grid-cards">
+    <div class="card card-mint">
+      <div class="card-title">Success Rate & Mean Score</div>
+      <div class="card-value">
+        <span>{% if summary.success_rate is not none %}{{ "%.1f"|format(summary.success_rate * 100) }}%{% else %}—{% endif %}</span>
+        <span style="font-size:15px; color:var(--fg-dim); font-weight:normal;">/</span>
+        <span style="color:var(--mint); font-size:1.5rem;">{% if summary.mean_score is not none %}{{ "%.3f"|format(summary.mean_score) }}{% else %}—{% endif %}</span>
+      </div>
+      <div class="card-sub">{{ summary.passed }} / {{ summary.evaluated }} passed</div>
+    </div>
+    <div class="card card-blue">
+      <div class="card-title">Runs Count</div>
+      <div class="card-value">{{ summary.runs }}</div>
+      <div class="card-sub">{{ variants|length }} matrix variants</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Mean Duration</div>
+      <div class="card-value">
+        {% if summary.mean_duration_seconds is not none %}
+          {% set s = summary.mean_duration_seconds|round|int %}
+          {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+        {% else %}—{% endif %}
+      </div>
+      <div class="card-sub">Wall-clock time per run</div>
+    </div>
+    <div class="card card-amber">
+      <div class="card-title">Total Tokens</div>
+      <div class="card-value">{% if summary.total_tokens %}{{ "{:,}".format(summary.total_tokens) }}{% else %}—{% endif %}</div>
+      <div class="card-sub">In: {{ "{:,}".format(summary.input_tokens or 0) }} &middot; Out: {{ "{:,}".format(summary.output_tokens or 0) }}</div>
+    </div>
+  </div>
+
+  <!-- What the experiment asked for, from its own file -->
+  {% set config = experiment_config %}
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        Experiment Definition
+        {% if experiment.experiment_yaml %}
+          <span class="badge badge-passed">recorded with the plan</span>
+        {% else %}
+          <span class="badge badge-neutral">not recorded</span>
+        {% endif %}
+      </div>
+    </div>
+    {% if config %}
+    <div class="panel-body">
+      {% if config.description %}
+      <p style="margin:0 0 16px; color:var(--fg-dim);">{{ config.description }}</p>
+      {% endif %}
+      <div class="task-meta">
+        <div class="task-meta-item">
+          <div class="task-meta-label">Type</div>
+          <div class="task-meta-value">{{ config.type or experiment.type or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Agent</div>
+          <div class="task-meta-value mono">
+            <a href="/agents/{{ config.agent_id }}">{{ config.agent_id or "—" }}</a>
+            {% if config.agent_version %}<span style="color:var(--fg-faint);">@{{ config.agent_version }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Execution mode</div>
+          <div class="task-meta-value mono">{{ config.execution_mode or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Runtime</div>
+          <div class="task-meta-value mono">
+            {% if config.runtime_id %}<a href="/runtimes/{{ config.runtime_id }}">{{ config.runtime_id }}</a>{% else %}—{% endif %}
+            {% if config.runtime_version %}<span style="color:var(--fg-faint);">@{{ config.runtime_version }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Strategy</div>
+          <div class="task-meta-value mono">{{ config.strategy or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Repetitions</div>
+          <div class="task-meta-value mono">{{ config.repetitions if config.repetitions is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Concurrency</div>
+          <div class="task-meta-value mono">{{ config.concurrency if config.concurrency is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Timeout</div>
+          <div class="task-meta-value mono">{{ config.timeout_seconds if config.timeout_seconds is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Max runs</div>
+          <div class="task-meta-value mono">{{ config.max_runs if config.max_runs is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Workspace per run</div>
+          <div class="task-meta-value">{{ config.workspace_per_run if config.workspace_per_run is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Fresh agent session</div>
+          <div class="task-meta-value">{{ config.fresh_agent_session if config.fresh_agent_session is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Retries on infrastructure errors</div>
+          <div class="task-meta-value mono">{{ config.retry_infrastructure_errors if config.retry_infrastructure_errors is not none else "—" }}</div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Tasks selected</div>
+          <div class="task-meta-value">
+            {% if config.task_ids %}
+              {% for task_id in config.task_ids %}<a class="chip" href="/runs?task_uid={{ task_id }}">{{ task_id }}</a>{% endfor %}
+            {% else %}—{% endif %}
+          </div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Categories</div>
+          <div class="task-meta-value">
+            {% for category in config.categories %}<span class="chip">{{ category }}</span>{% else %}—{% endfor %}
+          </div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Evaluators</div>
+          <div class="task-meta-value">
+            {% for evaluator in config.evaluators %}<span class="chip mono">{{ evaluator }}</span>{% else %}—{% endfor %}
+          </div>
+        </div>
+        <div class="task-meta-item task-meta-wide">
+          <div class="task-meta-label">Metrics</div>
+          <div class="task-meta-value">
+            {% for metric in config.metrics %}<span class="chip mono">{{ metric }}</span>{% else %}—{% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="panel-body" style="color:var(--fg-dim);">
+      This experiment was planned before its file was recorded. Plan it again with
+      <span class="mono">--store</span>, or backfill it with
+      <span class="mono">scripts/update_task_info.py</span>.
+    </div>
+    {% endif %}
+  </div>
+
+  {% if experiment.experiment_yaml %}
+  <details class="panel raw-descriptor">
+    <summary class="panel-header">
+      <span class="panel-title">Experiment file <span class="badge badge-neutral">YAML</span></span>
+      <button class="btn btn-sm" type="button" data-copy-target="#rawYamlBlock"
+              onclick="event.stopPropagation()">Copy</button>
+    </summary>
+    <pre class="task-prose yaml-block" id="rawYamlBlock">{{ experiment.experiment_yaml }}</pre>
+  </details>
+  {% endif %}
+
+  <!-- Variants Table -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Matrix Variants & Configurations</div>
+    </div>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th data-sortable style="width:40px;">#</th>
+            <th data-sortable>Variant UID</th>
+            <th data-sortable>Factor Parameters</th>
+            <th data-sortable class="num">Runs</th>
+            <th data-sortable>Success Rate</th>
+            <th data-sortable>Mean Score</th>
+            <th data-sortable class="num">Mean Time</th>
+            <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
+            <th data-sortable>Baseline</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in variant_summaries %}
+            <tr>
+              <td class="mono">{{ v.variant.index or loop.index }}</td>
+              <td class="mono" style="font-weight:600;">{{ v.variant.uid }}</td>
+              <td><code>{{ v.variant['values'] | tojson }}</code></td>
+              <td class="num mono">{{ v.summary.runs }}</td>
+              <td data-sort-value="{{ v.summary.success_rate if v.summary.success_rate is not none else '' }}">
+                <span class="mono">{% if v.summary.success_rate is not none %}{{ "%.1f"|format(v.summary.success_rate * 100) }}%{% else %}—{% endif %}</span>
+              </td>
+              <td data-sort-value="{{ v.summary.mean_score if v.summary.mean_score is not none else '' }}">
+                <span class="mono" style="font-weight:600; color:{% if (v.summary.mean_score or 0) >= 0.95 %}var(--mint){% elif (v.summary.mean_score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
+                  {% if v.summary.mean_score is not none %}{{ "%.3f"|format(v.summary.mean_score) }}{% else %}—{% endif %}
+                </span>
+              </td>
+              <td class="num mono" data-sort-value="{{ v.summary.mean_duration_seconds if v.summary.mean_duration_seconds is not none else '' }}">
+                {% if v.summary.mean_duration_seconds is not none %}
+                  {% set s = v.summary.mean_duration_seconds|round|int %}
+                  {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="num mono">
+                {% if v.summary.total_tokens %}{{ "{:,}".format(v.summary.total_tokens) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ v.summary.tool_calls or '' }}">
+                {% if v.summary.tool_calls %}{{ v.summary.tool_calls }}{% else %}—{% endif %}
+              </td>
+              <td>
+                {% if v.variant.is_baseline %}<span class="badge badge-passed">YES</span>{% else %}<span class="badge badge-neutral">NO</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recorded Runs -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Recorded Execution Runs ({{ runs|length }})</div>
+    </div>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th data-sortable>Run UID</th>
+            <th data-sortable class="num" title="Repetition number of this run">Rep</th>
+            <th data-sortable>Task</th>
+            <th data-sortable>Variant</th>
+            <th data-sortable>Verdict</th>
+            <th data-sortable class="num">Score</th>
+            <th data-sortable class="num">Duration</th>
+            <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
+            <th data-sortable>Status</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td>
+                <a href="javascript:void(0)" onclick="openRunModal('{{ run.uid }}')" class="mono" style="font-weight:600;">
+                  {{ run.uid }}
+                </a>
+              </td>
+              <td class="num mono" data-sort-value="{{ run.repetition if run.repetition is not none else '' }}">
+                {{ run.repetition if run.repetition is not none else "—" }}
+              </td>
+              <td><a href="/tasks/{{ run.task_uid }}" class="mono">{{ run.task_uid }}</a></td>
+              <td class="mono" style="font-size:11.5px;">{{ run.config_str }}</td>
+              <td>
+                <span class="badge {% if run.verdict == 'passed' %}badge-passed{% elif run.verdict == 'partial' %}badge-partial{% elif run.verdict == 'failed' %}badge-failed{% else %}badge-neutral{% endif %}">
+                  {{ run.verdict or "unverified" }}
+                </span>
+              </td>
+              <td class="num mono" style="font-weight:600; color:{% if (run.score or 0) >= 1.0 %}var(--mint){% elif (run.score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
+                {% if run.score is not none %}{{ "%.3f"|format(run.score) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ run.duration_seconds if run.duration_seconds is not none else '' }}">
+                {% if run.duration_seconds is not none %}
+                  {% set s = run.duration_seconds|round|int %}
+                  {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="num mono">{% if run.total_tokens %}{{ "{:,}".format(run.total_tokens) }}{% else %}—{% endif %}</td>
+              <td class="num mono" data-sort-value="{{ run.tool_call_count if run.tool_call_count is not none else '' }}">{{ run.tool_call_count if run.tool_call_count is not none else "—" }}</td>
+              <td><span class="badge badge-neutral" style="font-size:11px;">{{ run.status }}</span></td>
+              <td style="text-align:right;">
+                <button class="btn btn-sm" onclick="openRunModal('{{ run.uid }}')">Inspect</button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

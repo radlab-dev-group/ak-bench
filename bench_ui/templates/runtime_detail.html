@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Runtime: {{ runtime_id }}{% endblock %}
+
+{% block content %}
+{% set newest = runtimes[-1] %}
+{% set body = newest.descriptor or {} %}
+<div>
+  <div style="margin-bottom: 24px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+    <div>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+        <span class="badge badge-info">runtime</span>
+        <span class="badge badge-neutral">{{ newest.version }}</span>
+      </div>
+      <h1 style="margin:0 0 6px;">{{ newest.title or runtime_id }}</h1>
+      <div class="mono" style="color:var(--fg-dim); font-size:13px;">
+        {{ runtime_id }}{% if newest.version %}@{{ newest.version }}{% endif %}
+        {% if body.get("adapter") %} &middot; adapter: {{ body.get("adapter") }}{% endif %}
+      </div>
+      {% if newest.description %}
+        <p style="margin-top:8px; color:var(--fg-dim); font-size:13.5px; max-width:820px;">{{ newest.description }}</p>
+      {% endif %}
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a href="/runs?runtime={{ newest.uid }}" class="btn btn-primary">Filter Runs in Explorer</a>
+    </div>
+  </div>
+
+  <div class="grid-cards">
+    <div class="card card-blue">
+      <div class="card-title">Recorded Runs</div>
+      <div class="card-value">{{ runtimes | sum(attribute="runs_count") }}</div>
+      <div class="card-sub">across {{ runtimes | length }} recorded version(s)</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Execution modes</div>
+      <div class="card-value" style="font-size:1.1rem;">{{ (body.get("execution_modes") or []) | join(", ") or "—" }}</div>
+      <div class="card-sub">how a run may be executed here</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Lifecycles</div>
+      <div class="card-value" style="font-size:1.1rem;">{{ (body.get("supported_lifecycles") or []) | join(", ") or "—" }}</div>
+      <div class="card-sub">managed by AK-Bench, or external to it</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">Declared endpoints</div></div>
+    <div class="panel-body">
+      <div class="task-meta">
+        <div class="task-meta-item">
+          <div class="task-meta-label">Base URL</div>
+          <div class="task-meta-value mono" style="word-break:break-all;">{{ body.get("base_url") or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Healthcheck</div>
+          <div class="task-meta-value mono">{{ body.get("healthcheck_path") or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Metrics</div>
+          <div class="task-meta-value mono">{{ body.get("metrics_path") or "—" }}</div>
+        </div>
+        {% set managed = body.get("managed") or {} %}
+        <div class="task-meta-item">
+          <div class="task-meta-label">Ready timeout</div>
+          <div class="task-meta-value mono">{{ managed.get("ready_timeout") or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Stop grace</div>
+          <div class="task-meta-value mono">{{ managed.get("stop_grace") or "—" }}</div>
+        </div>
+        <div class="task-meta-item">
+          <div class="task-meta-label">Log file</div>
+          <div class="task-meta-value mono">{{ managed.get("log_file") or "—" }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if body.get("configuration_sources") %}
+  <div class="task-list-block" style="margin: 0 20px 18px;">
+    <div class="task-list-title">Configuration sources</div>
+    <ul class="task-list">
+      {% for source in body.get("configuration_sources") or [] %}<li class="mono">{{ source }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% set factors = (body.get("managed") or {}).get("factor_env") or {} %}
+  {% if factors %}
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">Factor to environment map</div></div>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th data-sortable>Factor</th>
+            <th data-sortable>Variable applied to the process</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for factor, variable in factors | dictsort %}
+            <tr>
+              <td class="mono">{{ factor }}</td>
+              <td class="mono">{{ variable }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if body.get("notes") %}
+  <div class="task-note" style="margin: 0 20px 18px;"><span class="task-note-label">Notes</span>{{ body.get("notes") }}</div>
+  {% endif %}
+
+  {% if newest.runtime_yaml %}
+  <details class="panel raw-descriptor">
+    <summary class="panel-header">
+      <span class="panel-title">Runtime descriptor <span class="badge badge-neutral">{{ newest.runtime_yaml.splitlines() | length }} lines</span></span>
+      <button class="btn btn-sm" type="button" data-copy-target="#rawYamlBlock"
+              onclick="event.stopPropagation()">Copy</button>
+    </summary>
+    <pre class="task-prose yaml-block" id="rawYamlBlock">{{ newest.runtime_yaml }}</pre>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

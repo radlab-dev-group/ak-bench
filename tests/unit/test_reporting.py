@@ -19,6 +19,7 @@ from akbench.reporting.data import (
     configuration_ranking,
     dashboard,
     duration_seconds,
+    score_of,
     summarize_runs,
     unverified_configurations,
 )
@@ -183,19 +184,48 @@ def test_duration_seconds_needs_both_ends() -> None:
 # ----------------------------------------------------------------- numbers
 
 
+def test_score_of_extracts_numeric_score() -> None:
+    assert score_of({}) is None
+    assert score_of({"evaluation": None}) is None
+    assert score_of({"evaluation": {"verdict": "passed"}}) is None
+    assert score_of({"evaluation": {"verdict": "passed", "score": 1.0}}) == 1.0
+    assert score_of({"evaluation": {"verdict": "partial", "score": 0.84}}) == 0.84
+    assert score_of({"evaluation": {"verdict": "partial", "score": "invalid"}}) is None
+
+
+def test_summary_computes_mean_score_over_scored_runs() -> None:
+    runs = [
+        {"run_uid": "a", "evaluation": {"verdict": "partial", "score": 0.8}},
+        {"run_uid": "b", "evaluation": {"verdict": "passed", "score": 1.0}},
+        {"run_uid": "c", "evaluation": {"verdict": "partial", "score": 0.9}},
+        {"run_uid": "d"},  # not evaluated
+    ]
+    summary = summarize_runs(runs)
+    assert summary["runs"] == 4
+    assert summary["evaluated"] == 3
+    assert summary["passed"] == 1
+    assert summary["success_rate"] == round(1 / 4, 6)
+    assert summary["scored_runs"] == 3
+    assert summary["mean_score"] == round((0.8 + 1.0 + 0.9) / 3, 6)
+
+
 def test_summary_counts_evaluation_separately_from_runs() -> None:
-    runs = [{"run_uid": "a"}, {"run_uid": "b", "evaluation": {"verdict": "passed"}}]
+    runs = [{"run_uid": "a"}, {"run_uid": "b", "evaluation": {"verdict": "passed", "score": 1.0}}]
 
     summary = summarize_runs(runs)
     assert summary["runs"] == 2
     assert summary["evaluated"] == 1
     assert summary["passed"] == 1
     assert summary["success_rate"] == 0.5
+    assert summary["mean_score"] == 1.0
+    assert summary["scored_runs"] == 1
 
 
 def test_summary_of_nothing_measures_nothing() -> None:
     summary = summarize_runs([])
     assert summary["success_rate"] is None
+    assert summary["mean_score"] is None
+    assert summary["scored_runs"] == 0
     assert summary["mean_duration_seconds"] is None
     assert summary["total_tokens"] is None
 
@@ -307,6 +337,7 @@ def _run_for(
     *,
     variant_uid: str,
     verdict: str | None = "passed",
+    score: float | None = None,
     tokens: int | None = None,
     start: str = "2026-10-30T10:00:00+00:00",
     finish: str = "2026-10-30T10:01:00+00:00",
@@ -326,7 +357,10 @@ def _run_for(
         "finished_at": finish,
     }
     if verdict is not None:
-        run["evaluation"] = {"verdict": verdict}
+        eval_dict: dict = {"verdict": verdict}
+        if score is not None:
+            eval_dict["score"] = score
+        run["evaluation"] = eval_dict
     if tokens is not None:
         run["observations"] = {"total_tokens": tokens}
     return run
@@ -369,6 +403,26 @@ def test_configuration_ranking_places_the_better_configuration_first() -> None:
     assert rows[1]["vs_baseline"] == ""
     assert "success +100%" in rows[0]["vs_baseline"]
     assert "time 0.33x" in rows[0]["vs_baseline"]
+
+
+def test_configuration_ranking_breaks_tie_with_mean_score() -> None:
+    variants = [
+        {"uid": "v-1", "values": {"model": "model-a"}, "is_baseline": False},
+        {"uid": "v-2", "values": {"model": "model-b"}, "is_baseline": True},
+    ]
+    # Both have 0% success rate (both partial), but model-a has 0.96 mean score vs model-b 0.84
+    runs = [
+        _run_for("a", variant_uid="v-1", verdict="partial", score=0.96, tokens=100),
+        _run_for("b", variant_uid="v-2", verdict="partial", score=0.84, tokens=100),
+    ]
+    rows = configuration_ranking(runs, {"demo@1.0.0": variants})
+    assert rows[0]["config"] == "model=model-a"
+    assert rows[0]["place"] == 1
+    assert rows[0]["mean_score"] == 0.96
+    assert rows[1]["config"] == "model=model-b"
+    assert rows[1]["place"] == 2
+    assert rows[1]["mean_score"] == 0.84
+    assert "score +0.120" in rows[0]["vs_baseline"]
 
 
 def test_configuration_ranking_shares_a_place_and_skips_the_next_one() -> None:
@@ -1308,3 +1362,16 @@ def test_relative_path_starts_from_artifacts_when_present() -> None:
 
     empty_path = ""
     assert _relative_path(empty_path) == ""
+
+
+def test_rendered_pages_include_mean_score_in_cards_and_tables(database_url: str) -> None:
+    data = collect_history(_seeded(database_url))
+    index_html = render_index(data)
+    assert '<div class="label">mean score</div>' in index_html
+    assert "mean score" in index_html
+
+    exp_report = build_experiment_report(data, "demo@1.0.0")
+    exp_html = render_experiment(exp_report)
+    assert '<div class="label">mean score</div>' in exp_html
+    assert "mean score" in exp_html
+    assert "<h3>Mean score</h3>" in exp_html

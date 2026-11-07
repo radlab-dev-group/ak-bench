@@ -931,6 +931,7 @@ def _comparison_table(
             "evaluated #",
             "passed #",
             "success rate",
+            "mean score #",
             "mean time",
             *TOKEN_HEADERS,
             "statuses",
@@ -944,6 +945,7 @@ def _comparison_table(
                 number(row.get("evaluated") or 0),
                 number(row.get("passed") or 0),
                 percent(row.get("success_rate")),
+                number(row.get("mean_score"), digits=3),
                 duration(row.get("mean_duration_seconds")),
                 *_token_cells(row),
                 _badges(row.get("statuses") or []),
@@ -1156,6 +1158,7 @@ def _ranked_rows(rows: list[dict[str, Any]], *, experiments: bool = False) -> li
                 number(row.get("runs") or 0),
                 number(row.get("evaluated") or 0),
                 _cell_bar(percent(row.get("success_rate")), row.get("success_rate")),
+                _cell_bar(number(row.get("mean_score"), digits=3), row.get("mean_score")),
                 duration(row.get("mean_duration_seconds")),
                 *_mean_token_cells(row),
                 esc(row.get("vs_baseline") or ""),
@@ -1192,6 +1195,7 @@ def _ranking(
                 "runs #",
                 "evaluated #",
                 "success rate",
+                "mean score #",
                 "mean time",
                 *MEAN_TOKEN_HEADERS,
                 "against the baseline",
@@ -1200,6 +1204,8 @@ def _ranking(
         )
         + "<h3>Success rate</h3>"
         + _chart(rows, "success_rate")
+        + "<h3>Mean score</h3>"
+        + _chart(rows, "mean_score")
         + "<h3>Mean wall-clock time</h3>"
         + _chart(rows, "mean_duration_seconds", css="cost")
         + '<p class="bar-note">each bar is measured against the largest value in its own '
@@ -1235,6 +1241,7 @@ def _leaderboard(data: HistoryData) -> str:
                 "runs #",
                 "evaluated #",
                 "success rate",
+                "mean score #",
                 "mean time",
                 *MEAN_TOKEN_HEADERS,
                 "against the baseline",
@@ -1297,6 +1304,7 @@ def render_index(data: HistoryData, *, generated_at: str | None = None) -> str:
                 ("runs", number(stats["runs"])),
                 ("evaluated", number(stats["evaluated"])),
                 ("success rate", percent(stats["success_rate"])),
+                ("mean score", number(stats.get("mean_score"), digits=3)),
                 ("tasks", number(stats["tasks"])),
                 ("total time", duration(stats["total_duration_seconds"])),
                 ("mean time", duration(stats["mean_duration_seconds"])),
@@ -2077,6 +2085,7 @@ def render_experiment(
                 ("runs", number(summary.get("runs"))),
                 ("evaluated", number(summary.get("evaluated"))),
                 ("success rate", percent(summary.get("success_rate"))),
+                ("mean score", number(summary.get("mean_score"), digits=3)),
                 ("mean time", duration(summary.get("mean_duration_seconds"))),
                 ("input tokens", number(summary.get("input_tokens"))),
                 ("generated tokens", number(summary.get("output_tokens"))),
@@ -2292,6 +2301,7 @@ def render_variant(report: VariantReport, *, generated_at: str | None = None) ->
                 ("runs", number(summary.get("runs"))),
                 ("evaluated", number(summary.get("evaluated"))),
                 ("success rate", percent(summary.get("success_rate"))),
+                ("mean score", number(summary.get("mean_score"), digits=3)),
                 ("mean time", duration(summary.get("mean_duration_seconds"))),
                 ("input tokens", number(summary.get("input_tokens"))),
                 ("generated tokens", number(summary.get("output_tokens"))),
@@ -2327,6 +2337,7 @@ def render_variant(report: VariantReport, *, generated_at: str | None = None) ->
                     "runs #",
                     "evaluated #",
                     "success rate",
+                    "mean score #",
                     "mean time",
                     *MEAN_TOKEN_HEADERS,
                     "against the baseline",
@@ -2339,6 +2350,7 @@ def render_variant(report: VariantReport, *, generated_at: str | None = None) ->
                         number(report.configuration.get("runs") or 0),
                         number(report.configuration.get("evaluated") or 0),
                         percent(report.configuration.get("success_rate")),
+                        number(report.configuration.get("mean_score"), digits=3),
                         duration(report.configuration.get("mean_duration_seconds")),
                         *_mean_token_cells(report.configuration),
                         esc(report.configuration.get("vs_baseline") or ""),
@@ -2361,6 +2373,7 @@ def render_variant(report: VariantReport, *, generated_at: str | None = None) ->
                     "evaluated #",
                     "passed #",
                     "success rate",
+                    "mean score #",
                     "mean time",
                     *TOKEN_HEADERS,
                 ],
@@ -2372,6 +2385,7 @@ def render_variant(report: VariantReport, *, generated_at: str | None = None) ->
                         number(row.get("evaluated") or 0),
                         number(row.get("passed") or 0),
                         percent(row.get("success_rate")),
+                        number(row.get("mean_score"), digits=3),
                         duration(row.get("mean_duration_seconds")),
                         *_token_cells(row),
                     ]
@@ -2404,6 +2418,7 @@ def render_task(report: TaskReport, *, generated_at: str | None = None) -> str:
                 ("evaluated", number(summary.get("evaluated"))),
                 ("passed", number(summary.get("passed"))),
                 ("success rate", percent(summary.get("success_rate"))),
+                ("mean score", number(summary.get("mean_score"), digits=3)),
                 ("mean time", duration(summary.get("mean_duration_seconds"))),
                 ("input tokens", number(summary.get("input_tokens"))),
                 ("generated tokens", number(summary.get("output_tokens"))),
@@ -2453,6 +2468,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
                 ("runs", number(summary.get("runs"))),
                 ("evaluated", number(summary.get("evaluated"))),
                 ("success rate", percent(summary.get("success_rate"))),
+                ("mean score", number(summary.get("mean_score"), digits=3)),
                 ("mean time", duration(summary.get("mean_duration_seconds"))),
                 ("input tokens", number(summary.get("input_tokens"))),
                 ("generated tokens", number(summary.get("output_tokens"))),
@@ -2466,7 +2482,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
         body.append(
             table(
                 ["experiment", "title", "type", "runs #", "evaluated #", "passed #",
-                 "success rate", "mean time", *TOKEN_HEADERS],
+                 "success rate", "mean score #", "mean time", *TOKEN_HEADERS],
                 [
                     [
                         _experiment_link(row.get("uid")),
@@ -2476,6 +2492,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
                         number(row.get("evaluated") or 0),
                         number(row.get("passed") or 0),
                         percent(row.get("success_rate")),
+                        number(row.get("mean_score"), digits=3),
                         duration(row.get("mean_duration_seconds")),
                         *_token_cells(row),
                     ]
@@ -2488,7 +2505,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
         body.append(
             table(
                 ["task", "category", "difficulty", "runs #", "passed #", "success rate",
-                 "mean time", *TOKEN_HEADERS],
+                 "mean score #", "mean time", *TOKEN_HEADERS],
                 [
                     [
                         f'<a href="{ROOT_TOKEN}tasks/{esc(row.get("uid"))}/index.html">'
@@ -2498,6 +2515,7 @@ def render_subject(report: SubjectReport, *, generated_at: str | None = None) ->
                         number(row.get("runs") or 0),
                         number(row.get("passed") or 0),
                         percent(row.get("success_rate")),
+                        number(row.get("mean_score"), digits=3),
                         duration(row.get("mean_duration_seconds")),
                         *_token_cells(row),
                     ]
@@ -2914,6 +2932,7 @@ def _task_listing(data: HistoryData) -> str:
                 number(summary.get("evaluated") or 0),
                 number(summary.get("passed") or 0),
                 percent(summary.get("success_rate")),
+                number(summary.get("mean_score"), digits=3),
                 duration(summary.get("mean_duration_seconds")),
                 *_token_cells(summary),
             ]
@@ -2931,6 +2950,7 @@ def _task_listing(data: HistoryData) -> str:
             "evaluated #",
             "passed #",
             "success rate",
+            "mean score #",
             "mean time",
             *TOKEN_HEADERS,
         ],
@@ -2958,6 +2978,7 @@ def _group_listing(
                 number(row.get("evaluated") or 0),
                 number(row.get("passed") or 0),
                 percent(row.get("success_rate")),
+                number(row.get("mean_score"), digits=3),
                 duration(row.get("mean_duration_seconds")),
                 *_token_cells(row),
                 _badges(row.get("statuses") or []),
@@ -2970,6 +2991,7 @@ def _group_listing(
             "evaluated #",
             "passed #",
             "success rate",
+            "mean score #",
             "mean time",
             *TOKEN_HEADERS,
             "statuses",

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Agent: {{ agent_id }}{% endblock %}
+
+{% block content %}
+{% set newest = agents[-1] %}
+{% set body = newest.descriptor or {} %}
+<div>
+  <div style="margin-bottom: 24px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+    <div>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+        <span class="badge badge-info">agent</span>
+        <span class="badge badge-neutral">{{ newest.version }}</span>
+      </div>
+      <h1 style="margin:0 0 6px;">{{ newest.title or agent_id }}</h1>
+      <div class="mono" style="color:var(--fg-dim); font-size:13px;">
+        {{ agent_id }}{% if newest.version %}@{{ newest.version }}{% endif %}
+        {% if body.get("adapter") %} &middot; adapter: {{ body.get("adapter") }}{% endif %}
+        {% if body.get("execution_type") %} &middot; {{ body.get("execution_type") }}{% endif %}
+      </div>
+      {% if newest.description %}
+        <p style="margin-top:8px; color:var(--fg-dim); font-size:13.5px; max-width:820px;">{{ newest.description }}</p>
+      {% endif %}
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a href="/runs?agent={{ newest.uid }}" class="btn btn-primary">Filter Runs in Explorer</a>
+    </div>
+  </div>
+
+  <div class="grid-cards">
+    <div class="card card-blue">
+      <div class="card-title">Recorded Runs</div>
+      <div class="card-value">{{ agents | sum(attribute="runs_count") }}</div>
+      <div class="card-sub">across {{ agents | length }} recorded version(s)</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Capabilities declared</div>
+      <div class="card-value">{{ (body.get("capabilities") or {}) | length }}</div>
+      <div class="card-sub">verified, partial, unverified or unsupported</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Controllable parameters</div>
+      <div class="card-value">{{ (body.get("configuration_schema") or {}) | length }}</div>
+      <div class="card-sub">what an experiment may set on this agent</div>
+    </div>
+  </div>
+
+  {% if agents | length > 1 %}
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">Recorded versions</div></div>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th data-sortable>Version</th>
+            <th data-sortable>Title</th>
+            <th data-sortable class="num">Runs</th>
+            <th data-sortable>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for agent in agents %}
+            <tr>
+              <td class="mono">{{ agent.version }}</td>
+              <td>{{ agent.title or "—" }}</td>
+              <td class="num mono">{{ agent.runs_count }}</td>
+              <td><div class="task-snippet">{{ agent.description or "—" }}</div></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if body.get("capabilities") %}
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">Capabilities</div></div>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th data-sortable>Capability</th>
+            <th data-sortable>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for name, status in (body.get("capabilities") or {}) | dictsort %}
+            <tr>
+              <td class="mono">{{ name }}</td>
+              <td>
+                <span class="badge {% if status == 'verified' %}badge-passed{% elif status in ('partial', 'unverified') %}badge-partial{% else %}badge-neutral{% endif %}">{{ status }}</span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if body.get("configuration_schema") %}
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">Configuration the experiment may set</div></div>
+    <div class="table-responsive">
+      <table>
+        <thead>
+          <tr>
+            <th data-sortable>Parameter</th>
+            <th data-sortable>Type</th>
+            <th data-sortable>Controllable</th>
+            <th data-sortable>Default</th>
+            <th data-sortable>Allowed</th>
+            <th data-sortable>Applies via</th>
+            <th data-sortable>Verification</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for name, spec in (body.get("configuration_schema") or {}) | dictsort %}
+            <tr>
+              <td class="mono" style="font-weight:600;">{{ name }}</td>
+              <td class="mono">{{ spec.get("type") if spec is mapping else "—" }}</td>
+              <td>
+                {% if spec is mapping and spec.get("controllable") %}
+                  <span class="badge badge-passed">yes</span>
+                {% else %}
+                  <span class="badge badge-neutral">no</span>
+                {% endif %}
+              </td>
+              <td class="mono">{{ spec.get("default") if spec is mapping and spec.get("default") is not none else "—" }}</td>
+              <td class="mono">{{ (spec.get("allowed") or []) | join(", ") if spec is mapping else "—" }}</td>
+              <td class="mono" style="font-size:11.5px;">{{ spec.get("applies_via") if spec is mapping else "—" }}</td>
+              <td style="font-size:12px; color:var(--fg-dim);">{{ spec.get("verification") if spec is mapping else "—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if body.get("observability") %}
+  <div class="task-list-block" style="margin: 0 0 18px 20px;">
+    <div class="task-list-title">Observability</div>
+    <div style="display:flex; flex-wrap:wrap; gap:6px;">
+      {% for name, state in (body.get("observability") or {}) | dictsort %}
+        <span class="chip">{{ name }}: {{ state }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if body.get("required_tools") or body.get("version_detection") %}
+  <div class="task-list-block" style="margin: 0 0 18px 20px;">
+    <div class="task-list-title">Invocation</div>
+    <ul class="task-list">
+      {% if body.get("required_tools") %}<li>required tools: <span class="mono">{{ body.get("required_tools") | join(", ") }}</span></li>{% endif %}
+      {% for probe in body.get("version_detection") or [] %}<li class="mono">{{ probe }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if body.get("notes") %}
+  <div class="task-note" style="margin: 0 20px 18px;"><span class="task-note-label">Notes</span>{{ body.get("notes") }}</div>
+  {% endif %}
+
+  {% if newest.agent_yaml %}
+  <details class="panel raw-descriptor">
+    <summary class="panel-header">
+      <span class="panel-title">Agent descriptor <span class="badge badge-neutral">{{ newest.agent_yaml.splitlines() | length }} lines</span></span>
+      <button class="btn btn-sm" type="button" data-copy-target="#rawYamlBlock"
+              onclick="event.stopPropagation()">Copy</button>
+    </summary>
+    <pre class="task-prose yaml-block" id="rawYamlBlock">{{ newest.agent_yaml }}</pre>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

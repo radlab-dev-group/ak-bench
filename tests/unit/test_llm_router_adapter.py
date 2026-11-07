@@ -321,6 +321,31 @@ def test_launch_environment_carries_descriptor_env_and_run_factors(
     assert "SOME_ROUTER_KEY" in environment  # the ambient environment survives
 
 
+def test_a_declared_secret_reaches_the_process_and_is_masked_only_in_the_record(
+    stub: tuple[str, dict],
+) -> None:
+    """Masking belongs to the record, never to the process being launched.
+
+    The launch environment and the run record are built from the same declared
+    values, so a mask applied to both would start the router with `***` where a
+    password belongs: the instance would come up healthy, the plugin would try
+    to use the credential, and the failure would show up as a downstream 400
+    the report has no way to explain.
+    """
+    url, _ = stub
+    adapter = make_adapter(
+        url,
+        lifecycle="managed",
+        start_command=["/bin/sh", "-c", "true"],
+        env={"LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD": "the-real-secret"},
+    )
+
+    assert adapter.process_environment()["LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD"] == (
+        "the-real-secret"
+    )
+    assert adapter.declared_environment()["LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD"] == "***"
+
+
 def test_a_managed_instance_refuses_a_port_a_foreign_process_already_serves(
     stub: tuple[str, dict],
 ) -> None:

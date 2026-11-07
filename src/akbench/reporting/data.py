@@ -84,6 +84,15 @@ def verdict_of(run: dict[str, Any]) -> str | None:
     return None
 
 
+def score_of(run: dict[str, Any]) -> float | None:
+    evaluation = run.get("evaluation")
+    if isinstance(evaluation, dict):
+        score = evaluation.get("score")
+        if isinstance(score, (int, float)):
+            return float(score)
+    return None
+
+
 def _mean(values: list[float]) -> float | None:
     if not values:
         return None
@@ -166,6 +175,7 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
     """The same honest set of numbers for any set of runs."""
     evaluated = [run for run in runs if verdict_of(run) is not None]
     passed = [run for run in evaluated if verdict_of(run) == PASSED_VERDICT]
+    scores = [value for value in (score_of(run) for run in runs) if value is not None]
     durations = [value for value in (duration_seconds(run) for run in runs) if value is not None]
     tokens, token_runs = _sum_tokens(runs, "total_tokens")
     input_tokens, input_runs = _sum_tokens(runs, "input_tokens")
@@ -177,6 +187,8 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "passed": len(passed),
         "not_passed": len(runs) - len(passed),
         "success_rate": _rate(len(passed), len(runs)) if evaluated else None,
+        "mean_score": _mean(scores),
+        "scored_runs": len(scores),
         "mean_duration_seconds": _mean(durations),
         "measured_durations": len(durations),
         "total_tokens": tokens,
@@ -295,6 +307,7 @@ def _rank_key(row: dict[str, Any], token_field: str = "total_tokens") -> tuple:
     """
     return (
         -(row.get("success_rate") if row.get("success_rate") is not None else -1.0),
+        -(row.get("mean_score") if row.get("mean_score") is not None else -1.0),
         row.get("mean_duration_seconds")
         if row.get("mean_duration_seconds") is not None
         else float("inf"),
@@ -302,7 +315,7 @@ def _rank_key(row: dict[str, Any], token_field: str = "total_tokens") -> tuple:
     )
 
 
-def _mean_per_run(total: int | None, stated: int) -> float | None:
+def mean_per_run(total: int | None, stated: int) -> float | None:
     """A summed measure averaged over the runs that actually stated it.
 
     ``None`` stays ``None``: a pool whose runs reported no tokens has no mean
@@ -323,7 +336,11 @@ def _place_rows(rows: list[dict[str, Any]], token_field: str = "total_tokens") -
     it as a failure would rank a measured one above an unmeasured one.
     """
     ranked = sorted(
-        (row for row in rows if row.get("success_rate") is not None),
+        (
+            row
+            for row in rows
+            if row.get("success_rate") is not None or row.get("mean_score") is not None
+        ),
         key=lambda row: _rank_key(row, token_field),
     )
     for position, row in enumerate(ranked, start=1):
@@ -412,16 +429,16 @@ def configuration_ranking(
                 # the sums stay in the row for the JSON and the future pages;
                 # the tables rank the per-run means, because a sum over a
                 # different number of runs is not comparable
-                "mean_input_tokens": _mean_per_run(
+                "mean_input_tokens": mean_per_run(
                     summary["input_tokens"], summary["input_token_runs"]
                 ),
-                "mean_output_tokens": _mean_per_run(
+                "mean_output_tokens": mean_per_run(
                     summary["output_tokens"], summary["output_token_runs"]
                 ),
-                "mean_total_tokens": _mean_per_run(
+                "mean_total_tokens": mean_per_run(
                     summary["total_tokens"], summary["token_runs"]
                 ),
-                "mean_tool_calls": _mean_per_run(
+                "mean_tool_calls": mean_per_run(
                     summary["tool_calls"], summary["tool_call_runs"]
                 ),
             }
@@ -439,7 +456,26 @@ def configuration_ranking(
     baseline = next((row for row in rows if row.get("is_baseline")), None)
     for row in rows:
         row["vs_baseline"] = _vs_baseline(row, baseline, token_field="mean_total_tokens")
+        row["vs_baseline_delta"] = _vs_baseline_delta(row, baseline)
     return rows
+
+
+def _vs_baseline_delta(
+    row: dict[str, Any],
+    baseline: dict[str, Any] | None,
+) -> float | None:
+    """The number behind the words: how far the success rate is from the baseline.
+
+    ``vs_baseline`` is a sentence for a reader to skim, which makes it a poor
+    thing to order a column by. The difference in success rate is what the
+    phrase leads with, so the tables sort on that and show the sentence.
+    """
+    if baseline is None or row is baseline:
+        return None
+    rate, base_rate = row.get("success_rate"), baseline.get("success_rate")
+    if rate is None or base_rate is None:
+        return None
+    return round(rate - base_rate, 4)
 
 
 def _vs_baseline(
@@ -457,6 +493,12 @@ def _vs_baseline(
         parts.append("success " + (f"{difference:+.0%}" if difference else "level"))
     elif rate is None or base_rate is None:
         parts.append("success not comparable")
+    score, base_score = row.get("mean_score"), baseline.get("mean_score")
+    if score is not None and base_score is not None:
+        score_diff = round(score - base_score, 4)
+        parts.append("score " + (f"{score_diff:+.3f}" if score_diff else "level"))
+    elif (score is not None) != (base_score is not None):
+        parts.append("score not comparable")
     seconds, base_seconds = row.get("mean_duration_seconds"), baseline.get(
         "mean_duration_seconds"
     )

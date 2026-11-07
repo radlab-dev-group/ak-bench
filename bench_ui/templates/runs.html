@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Runs Explorer & Filters{% endblock %}
+
+{% block content %}
+<div>
+  <!-- Header -->
+  <div style="margin-bottom: 20px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px;">
+    <div>
+      <h1 style="margin:0 0 4px;">Runs Explorer</h1>
+      <div style="color:var(--fg-dim); font-size:13.5px;">
+        Filter, search, inspect test logs and compare arbitrary benchmark executions.
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button id="btnCompareSelected" class="btn btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20L20 4M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+        Compare Selected (2)
+      </button>
+    </div>
+  </div>
+
+  <!-- Dynamic Filter Bar -->
+  <form id="runsFilterForm" class="filter-bar" onsubmit="return false;">
+    <div class="filter-group" style="flex:1; min-width:200px;">
+      <label for="filterSearch">Search:</label>
+      <input type="text" id="filterSearch" name="search" class="input" style="width:100%;" placeholder="UID, task, model, status..." value="{% if filters and filters.search %}{{ filters.search }}{% endif %}">
+    </div>
+
+    <div class="filter-group">
+      <label for="filterExperiment">Experiment:</label>
+      <select id="filterExperiment" name="experiment_uid" class="select">
+        <option value="">All Experiments</option>
+        {% for exp in filter_options.experiments %}
+          <option value="{{ exp }}" {% if filters and filters.experiment_uid == exp %}selected{% endif %}>{{ exp }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filterTask">Task:</label>
+      <select id="filterTask" name="task_uid" class="select">
+        <option value="">All Tasks</option>
+        {% for t in filter_options.tasks %}
+          <option value="{{ t }}" {% if filters and filters.task_uid == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filterVerdict">Verdict:</label>
+      <select id="filterVerdict" name="verdict" class="select">
+        <option value="">All Verdicts</option>
+        {% for v in ["passed", "partial", "failed", "error", "unverified"] %}
+          <option value="{{ v }}" {% if filters and filters.verdict == v %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filterStatus">Status:</label>
+      <select id="filterStatus" name="status" class="select">
+        <option value="">All Statuses</option>
+        {% for st in filter_options.statuses %}
+          <option value="{{ st }}" {% if filters and filters.status == st %}selected{% endif %}>{{ st }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filterModel">Model:</label>
+      <select id="filterModel" name="model" class="select">
+        <option value="">All Models</option>
+        {% for m in filter_options.models %}
+          <option value="{{ m }}" {% if filters and filters.model == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filterAgent">
+        Agent:
+        {% if filter_options.agents %}<a href="/agents" class="filter-link">catalog</a>{% endif %}
+      </label>
+      <select id="filterAgent" name="agent" class="select">
+        <option value="">All Agents</option>
+        {% for a in filter_options.agents %}
+          <option value="{{ a }}" {% if filters and filters.agent == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="filterRuntime">
+        Runtime:
+        {% if filter_options.runtimes %}<a href="/runtimes" class="filter-link">catalog</a>{% endif %}
+      </label>
+      <select id="filterRuntime" name="runtime" class="select">
+        <option value="">All Runtimes</option>
+        {% for r in filter_options.runtimes %}
+          <option value="{{ r }}" {% if filters and filters.runtime == r %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <button id="btnResetFilter" class="btn btn-sm">Reset</button>
+    </div>
+  </form>
+
+  <!-- Results Table Panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <span>Execution Runs</span>
+        <span id="runsMatchedCount" class="chip" style="font-size:11px;">{{ total }} runs</span>
+      </div>
+      <div id="runsSelectionHint" class="selection-hint">
+        Tip: select 2 runs to compare side by side
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table-wide">
+        <thead>
+          <tr>
+            <th style="width:30px;"></th>
+            <th data-sortable>Run UID & Config</th>
+            <th data-sortable class="num" title="Repetition number of this run">Rep</th>
+            <th data-sortable>Task</th>
+            <th data-sortable>Agent</th>
+            <th data-sortable>Runtime</th>
+            <th data-sortable>Verdict</th>
+            <th data-sortable class="num">Score</th>
+            <th data-sortable class="num">Duration</th>
+            <th data-sortable class="num">Tokens</th>
+            <th data-sortable class="num">Tool Calls</th>
+            <th data-sortable>Status</th>
+            <th data-sortable>Started At</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="runsTableBody">
+          {% for run in runs %}
+            <tr>
+              <td>
+                <input type="checkbox" class="run-select-check" value="{{ run.uid }}" />
+              </td>
+              <td>
+                <a href="javascript:void(0)" onclick="openRunModal('{{ run.uid }}')" class="mono" style="font-weight:600;">
+                  {{ run.uid }}
+                </a>
+                <div style="font-size:11px; color:var(--fg-faint); margin-top:2px;">
+                  {{ run.config_str or "—" }}
+                </div>
+              </td>
+              <td class="num mono" data-sort-value="{{ run.repetition if run.repetition is not none else '' }}">
+                {{ run.repetition if run.repetition is not none else "—" }}
+              </td>
+              <td>
+                <a href="/tasks/{{ run.task_uid }}" class="mono">{{ run.task_uid or "—" }}</a>
+              </td>
+              <td class="mono" style="font-size:11.5px;">{{ run.agent or "—" }}</td>
+              <td class="mono" style="font-size:11.5px;">{{ run.runtime_id or "—" }}</td>
+              <td>
+                <span class="badge {% if run.verdict == 'passed' %}badge-passed{% elif run.verdict == 'partial' %}badge-partial{% elif run.verdict == 'failed' %}badge-failed{% else %}badge-neutral{% endif %}">
+                  {{ run.verdict or "unverified" }}
+                </span>
+              </td>
+              <td class="num mono" style="font-weight:600; color:{% if (run.score or 0) >= 1.0 %}var(--mint){% elif (run.score or 0) >= 0.8 %}var(--amber){% else %}var(--red){% endif %};">
+                {% if run.score is not none %}{{ "%.3f"|format(run.score) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ run.duration_seconds if run.duration_seconds is not none else '' }}">
+                {% if run.duration_seconds is not none %}
+                  {% set s = run.duration_seconds|round|int %}
+                  {% if s < 60 %}{{ s }}s{% else %}{{ (s // 60) }}m {{ (s % 60) }}s{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="num mono">
+                {% if run.total_tokens %}{{ "{:,}".format(run.total_tokens) }}{% else %}—{% endif %}
+              </td>
+              <td class="num mono" data-sort-value="{{ run.tool_call_count if run.tool_call_count is not none else '' }}">
+                {% if run.tool_call_count is not none %}{{ run.tool_call_count }}{% else %}—{% endif %}
+              </td>
+              <td><span class="badge badge-neutral" style="font-size:11px;">{{ run.status }}</span></td>
+              <td style="font-size:11px; color:var(--fg-faint); white-space:nowrap;">{{ run.started_at or "—" }}</td>
+              <td style="text-align:right;">
+                <button class="btn btn-sm" onclick="openRunModal('{{ run.uid }}')">Inspect</button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

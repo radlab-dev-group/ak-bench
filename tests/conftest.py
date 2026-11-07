@@ -7,6 +7,17 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def sqlite_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the suite independent of a PostgreSQL server.
+
+    PostgreSQL is the product default, so it is the default here too, but a
+    test must not fail because nobody started ``scripts/run-postgres.sh``.
+    A test that wants the real default states ``AKBENCH_DB_BACKEND`` itself.
+    """
+    monkeypatch.setenv("AKBENCH_DB_BACKEND", "sqlite")
+
+
 @pytest.fixture
 def clean_environ(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, str]:
     """A minimal, deterministic environment for configuration tests."""
@@ -14,6 +25,7 @@ def clean_environ(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, 
         "PATH": "/usr/bin:/bin",
         "HOME": str(tmp_path / "home"),
         "AKBENCH_HOME": str(tmp_path / "project"),
+        "AKBENCH_DB_BACKEND": "sqlite",
     }
     for name in list(os.environ):
         if name.startswith("AKBENCH"):
@@ -45,4 +57,5 @@ def empty_environ(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, str]]:
     for name in list(os.environ):
         if name.startswith("AKBENCH"):
             monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AKBENCH_DB_BACKEND", "sqlite")
     return dict(os.environ)

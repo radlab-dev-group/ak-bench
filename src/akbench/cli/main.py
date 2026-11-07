@@ -1,8 +1,8 @@
 """``akbench`` command line interface.
 
 Implemented here: version, init, doctor, config, descriptor, agent, category,
-dataset, runtime, experiment, run, plugin, metrics, knowledge, history, report
-and export commands. Every command from the plan's CLI sketch is implemented
+dataset, runtime, experiment, run, plugin, metrics, knowledge, history, report,
+migrate and export commands. Every command from the plan's CLI sketch is implemented
 except the scheduler-facing ones (``resume``/``cancel``), which need a
 scheduler and are intentionally absent rather than stubbed.
 """
@@ -34,11 +34,17 @@ from akbench.cli.export import export_app
 from akbench.cli.history import history_app
 from akbench.cli.knowledge import knowledge_app
 from akbench.cli.metrics import metrics_app
+from akbench.cli.migrate import migrate_app
 from akbench.cli.plugins import plugin_app
 from akbench.cli.report import report_app
 from akbench.cli.run import run_app
 from akbench.cli.runtime import runtime_app
-from akbench.config.loader import build_app_paths, resolve_database_url
+from akbench.cli.ui import ui_app
+from akbench.config.loader import (
+    build_app_paths,
+    redact_database_url,
+    resolve_database_url,
+)
 from akbench.doctor import CheckStatus, run_diagnostics
 
 app = typer.Typer(
@@ -64,6 +70,8 @@ app.add_typer(knowledge_app, name="knowledge")
 app.add_typer(history_app, name="history")
 app.add_typer(report_app, name="report")
 app.add_typer(export_app, name="export")
+app.add_typer(ui_app, name="ui")
+app.add_typer(migrate_app, name="migrate")
 
 STATUS_MARKS = {
     CheckStatus.OK: "[green]ok[/green]",
@@ -233,9 +241,10 @@ def config_show_cmd(
     payload = {
         "source": loaded.describe(),
         "config_path": str(loaded.path) if loaded.path else None,
+        "dotenv_path": str(loaded.dotenv_path) if loaded.dotenv_path else None,
         "settings": settings.model_dump(mode="json"),
         "resolved_paths": build_app_paths(settings).report(),
-        "database_url": resolve_database_url(settings),
+        "database_url": redact_database_url(resolve_database_url(settings)),
     }
     if as_json:
         show_json(payload)
@@ -245,6 +254,8 @@ def config_show_cmd(
     for key, value in payload["resolved_paths"].items():
         console.print(f"  {key:<22} {value}")
     console.print(f"  {'database_url':<22} {payload['database_url']}")
+    if payload["dotenv_path"]:
+        console.print(f"  {'dotenv_file':<22} {payload['dotenv_path']}")
     if show_all:
         console.print("[bold]settings[/bold]")
         for section, values in payload["settings"].items():
