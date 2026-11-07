@@ -1276,3 +1276,76 @@ def test_the_dashboard_shows_which_runs_are_still_going(database_url: str) -> No
 
     script = client.get("/static/js/app.js").text
     assert "fetchActiveRuns" in script and "tickLiveElapsed" in script
+
+
+def test_the_price_table_is_read_from_the_project(tmp_path) -> None:
+    """A cost is estimated from a table the operator wrote, never invented.
+
+    Without the table there is no number and the pages say so; with it, a model
+    is priced by name or by the default, and an unlisted model is left unpriced
+    rather than guessed at.
+    """
+    from bench_ui.pricing import estimate_run_cost, format_cost, load_price_table
+
+    empty = load_price_table(tmp_path)
+    assert not empty
+    assert format_cost(None) == "not recorded"
+
+    (tmp_path / "pricing.yaml").write_text(
+        "currency: USD\n"
+        "models:\n"
+        '  "*": {input: 1.0, output: 4.0}\n'
+        "  qwen/cheap: {input: 0.10, output: 0.40}\n",
+        encoding="utf-8",
+    )
+    table = load_price_table(tmp_path)
+    assert table
+    assert table.source.name == "pricing.yaml"
+
+    # a named model uses its own price, not the default
+    priced = estimate_run_cost(table, "qwen/cheap", {"input_tokens": 1_000_000, "output_tokens": 1_000_000})
+    assert priced == 0.5
+    # an unlisted model falls back to the default
+    default = estimate_run_cost(table, "other/model", {"input_tokens": 1_000_000, "output_tokens": 0})
+    assert default == 1.0
+    # a run that stated no tokens has no cost
+    assert estimate_run_cost(table, "qwen/cheap", {}) is None
+    assert format_cost(0.5) == "≈ $0.50"
+
+
+def test_a_table_without_prices_is_no_table(tmp_path) -> None:
+    """Half a file is not an estimate: a broken table reads as no table at all."""
+    from bench_ui.pricing import load_price_table
+
+    (tmp_path / "pricing.yaml").write_text("models: [not, a, mapping]\n", encoding="utf-8")
+    assert not load_price_table(tmp_path)
+
+    (tmp_path / "pricing.yaml").write_text("currency: USD\n", encoding="utf-8")
+    assert not load_price_table(tmp_path)
+
+
+def test_the_dashboard_estimates_cost_from_the_price_table(database_url: str, tmp_path) -> None:
+    """The ledger's cost line names the file the estimate came from."""
+    # the seeded runs record no model, so only a default price can reach them;
+    # a table that names only a model nobody ran would price nothing, which is
+    # the correct answer for that table, not a bug in the estimate
+    (tmp_path / "pricing.yaml").write_text(
+        "currency: USD\nmodels:\n  \"*\": {input: 1.0, output: 4.0}\n",
+        encoding="utf-8",
+    )
+    _seeded_store(database_url)
+    service = BenchDataService(database_url=database_url, project_root=tmp_path)
+    estimate = service.estimate_total_cost(service.get_history().runs)
+    assert estimate["total"] is not None
+    assert estimate["priced_runs"] == 2
+    assert estimate["unpriced_runs"] == 0
+
+    ledger = {row["label"]: row for row in service.get_dashboard_stats()}
+    assert ledger["cost"]["value"].startswith("≈ $")
+    assert "pricing.yaml" in ledger["cost"]["hint"]
+
+    # without a table the same line says it is not recorded
+    bare = BenchDataService(database_url=database_url, project_root=tmp_path / "nowhere")
+    bare_ledger = {row["label"]: row for row in bare.get_dashboard_stats()}
+    assert bare_ledger["cost"]["value"] == "not recorded"
+    assert bare_ledger["cost"]["hint"] is None

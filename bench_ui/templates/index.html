@@ -54,6 +54,7 @@
     <div class="ledger-item">
       <div class="ledger-value mono">{{ item.value }}</div>
       <div class="ledger-label">{{ item.label }}</div>
+      {% if item.hint %}<div class="ledger-hint">{{ item.hint }}</div>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -382,7 +383,21 @@ document.addEventListener('DOMContentLoaded', () => {
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: '#c6d3df', font: mono } } },
+          plugins: {
+            legend: { labels: { color: '#c6d3df', font: mono } },
+            // the bill is an estimate from the price table, so it is named as
+            // one in the tooltip rather than shown as a measured quantity
+            tooltip: {
+              callbacks: {
+                afterBody: (items) => {
+                  const model = models[items[0].dataIndex];
+                  return model.estimated_cost === null || model.estimated_cost === undefined
+                    ? 'cost: not recorded'
+                    : `cost: estimated \u2248 $${model.estimated_cost.toFixed(2)}`;
+                },
+              },
+            },
+          },
           scales: {
             x: { ticks: { color: '#c6d3df', autoSkip: false, font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },
             y: { type: 'linear', position: 'left', ticks: { color: '#ffb44a', font: mono }, grid: { color: 'rgba(255,255,255,0.05)' } },

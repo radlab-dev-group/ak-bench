@@ -567,6 +567,13 @@ td.matrix-cell { text-align: center; }
   letter-spacing: -0.01em;
   white-space: nowrap;
 }
+.ledger-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-faint);
+  margin-top: 3px;
+  line-height: 1.35;
+}
 .ledger-label {
   font-family: var(--mono);
   font-size: 11px;

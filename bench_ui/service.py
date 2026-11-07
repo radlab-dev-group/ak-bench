@@ -11,6 +11,13 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
+from bench_ui.pricing import (
+    PriceTable,
+    estimate_run_cost,
+    format_cost,
+    load_price_table,
+)
+
 from akbench.config.loader import load_settings, resolve_database_url
 from akbench.core.errors import ConfigError, DatabaseError
 from akbench.datasets import Dataset, TaskLoadError
@@ -456,6 +463,11 @@ class BenchDataService:
             self.database_url = f"sqlite:///{default_sqlite}"
             self.namespace = None
 
+        # What a run costs is not recorded by the agent; it is estimated against
+        # a price table the operator may or may not have written. No table is a
+        # normal state, and the pages then say "not recorded".
+        self.price_table: PriceTable = load_price_table(self.project_root)
+
         self.engine: Engine = create_db_engine(self.database_url)
         self.store = HistoryStore(self.engine)
         self.connection_error: str | None = None
@@ -536,6 +548,7 @@ class BenchDataService:
                     "mean_tool_calls": mean_per_run(
                         summary["tool_calls"], summary["tool_call_runs"]
                     ),
+                    "estimated_cost": self.estimate_total_cost(group)["total"],
                 }
             )
         return rows
@@ -586,7 +599,8 @@ class BenchDataService:
             if summary["mean_duration_seconds"] is not None
             else None
         )
-        cost = "not recorded"
+        estimated = self.estimate_total_cost(runs)
+        cost = format_cost(estimated["total"], estimated["currency"])
         return [
             {"label": "experiments", "value": f"{len(history.experiments):,}"},
             {"label": "runs", "value": f"{summary['runs']:,}"},
@@ -606,8 +620,46 @@ class BenchDataService:
             {"label": "generated tokens", "value": f"{summary['output_tokens']:,}"},
             {"label": "tokens", "value": f"{summary['total_tokens']:,}"},
             {"label": "tool calls", "value": f"{summary['tool_calls']:,}"},
-            {"label": "cost", "value": cost},
+            {
+                "label": "cost",
+                "value": cost,
+                # an estimate says what it is estimated from, so the number can
+                # be checked rather than believed
+                "hint": (
+                    f"estimated from {estimated['source']}"
+                    f" · {estimated['priced_runs']} run(s) priced"
+                    if estimated["total"] is not None
+                    else None
+                ),
+            },
         ]
+
+    def estimate_total_cost(self, runs: list[dict[str, Any]]) -> dict[str, Any]:
+        """The estimated bill for a set of runs, and what it is an estimate of.
+
+        A run whose model the table does not price is left out and counted, so
+        the page can say how much of the history the number covers: an estimate
+        that silently ignores a third of the runs would be a smaller bill than
+        the truth, which is worse than no number.
+        """
+        total = 0.0
+        priced = 0
+        unpriced = 0
+        for run in runs:
+            model = run.get("observed_model") or run.get("requested_model")
+            amount = estimate_run_cost(self.price_table, model, run.get("observations"))
+            if amount is None:
+                unpriced += 1
+            else:
+                total += amount
+                priced += 1
+        return {
+            "total": total if priced else None,
+            "currency": self.price_table.currency,
+            "priced_runs": priced,
+            "unpriced_runs": unpriced,
+            "source": str(self.price_table.source) if self.price_table.source else None,
+        }
 
     def get_overview(self) -> dict[str, Any]:
         history = self.get_history()
