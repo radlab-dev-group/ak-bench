@@ -28,7 +28,9 @@ database:
     host: 127.0.0.1
     port: 5959
     user: akbench
-    password: akbench_local
+    # No password here, and no default in the code: set AKBENCH_PG_PASSWORD.
+    # A credential that ships with the repository is a credential everyone has.
+    password: null
     database: akbench
   echo: false
   timeout_seconds: 30

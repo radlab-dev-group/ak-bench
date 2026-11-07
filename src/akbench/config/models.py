@@ -10,7 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from akbench.core.errors import ConfigError
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 SCHEMA_VERSION = 1
 
@@ -44,7 +45,15 @@ class PostgresSettings(_StrictModel):
     host: str = "127.0.0.1"
     port: int = 5959
     user: str = "akbench"
-    password: str = "akbench_local"
+    #: No default, on purpose. A shipped password is a password that every
+    #: install of this project shares, and a deployment that never sets
+    #: ``AKBENCH_PG_PASSWORD`` would rather have a loud configuration error now
+    #: than an guessable credential later.
+    #:
+    #: A ``SecretStr``, because the settings object is dumped -- ``config show
+    #: --json`` serialises the whole thing -- and a plain string field would
+    #: carry the database password into whatever that output is pasted into.
+    password: SecretStr | None = None
     database: str = "akbench"
     #: One imported SQLite history per schema (`akbench migrate`), read back by
     #: naming it here. ``None`` is the server's default schema.
@@ -75,12 +84,24 @@ class DatabaseSettings(_StrictModel):
 
     @property
     def postgres_url(self) -> str:
-        """SQLAlchemy URL of the configured PostgreSQL instance (psycopg3 driver)."""
+        """SQLAlchemy URL of the configured PostgreSQL instance (psycopg3 driver).
+
+        Raises where it is used rather than at import or validation time, because
+        the absence of a password is only a problem at the moment someone tries
+        to connect with it.
+        """
         from urllib.parse import quote
 
+        if self.postgres.password is None:
+            raise ConfigError(
+                "database.postgres.password is not set, and there is no default "
+                "to fall back on: export AKBENCH_PG_PASSWORD "
+                "(scripts/run-postgres.sh reads the same name)"
+            )
+        password = self.postgres.password.get_secret_value()
         return (
             "postgresql+psycopg://"
-            f"{quote(self.postgres.user, safe="")}:{quote(self.postgres.password, safe="")}"
+            f"{quote(self.postgres.user, safe="")}:{quote(password, safe="")}"
             f"@{self.postgres.host}:{self.postgres.port}/{self.postgres.database}"
         )
 

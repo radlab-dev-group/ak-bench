@@ -81,11 +81,26 @@ def test_explicit_missing_config_file_fails(
 
 
 def test_postgres_is_the_default_backend(project_dir: Path, empty_environ: dict[str, str]) -> None:
-    """Recorded benchmarks go to PostgreSQL unless the configuration says otherwise."""
+    """Recorded benchmarks go to PostgreSQL unless the configuration says otherwise.
+
+    There is no password to fall back on, so resolving a connection out of the
+    built-in defaults is refused rather than made up: the alternative is an
+    installation that quietly shares a credential with everyone who has read the
+    repository.
+    """
     environ = {key: value for key, value in empty_environ.items() if key != "AKBENCH_DB_BACKEND"}
     loaded = load_settings(None, project_root=project_dir, environ=environ)
     assert loaded.settings.database.backend == "postgres"
-    assert resolve_database_url(loaded.settings, environ=environ).startswith("postgresql+psycopg://")
+    assert loaded.settings.database.postgres.password is None
+
+    with pytest.raises(ConfigError, match="AKBENCH_PG_PASSWORD"):
+        resolve_database_url(loaded.settings, environ=environ)
+
+    environ["AKBENCH_PG_PASSWORD"] = "a password with length and no idea behind it"
+    loaded = load_settings(None, project_root=project_dir, environ=environ)
+    assert resolve_database_url(loaded.settings, environ=environ).startswith(
+        "postgresql+psycopg://"
+    )
 
 
 def test_sqlite_backend_selects_the_configured_file(
@@ -115,7 +130,11 @@ def test_postgres_connection_comes_from_the_env_file(
     assert loaded.dotenv_path == project_dir / ".env"
     assert loaded.settings.database.backend == "postgres"
     assert loaded.settings.database.postgres.port == 6543
-    assert loaded.settings.database.postgres.password == "secret words"
+    assert loaded.settings.database.postgres.password.get_secret_value() == "secret words"
+    # The password is a secret even inside the settings object: `config show
+    # --json` dumps the whole thing, and what that output gets pasted into is
+    # not something this project controls.
+    assert "secret words" not in str(loaded.settings.model_dump(mode="json"))
     url = resolve_database_url(loaded.settings, environ=environ)
     assert url == "postgresql+psycopg://akbench:secret%20words@db.internal:6543/akbench_prod"
 
