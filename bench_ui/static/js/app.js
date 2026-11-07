@@ -139,6 +139,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initCompareHelpers();
   initSortableTables();
+  initCopyButtons();
+  initYamlHighlighting();
   initTaskCodeTree();
   initRunDiffPicker();
   initRunSelectionLimit();
@@ -282,7 +284,7 @@ async function fetchFilteredRuns() {
     if (tbody) {
       tbody.innerHTML = '';
       if (data.runs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="14" style="text-align:center; padding:30px; color:var(--fg-faint);">No runs match the specified filter criteria.</td></tr>';
       } else {
         data.runs.forEach(run => {
           tbody.appendChild(createRunTableRow(run));
@@ -318,6 +320,9 @@ function createRunTableRow(run) {
       <div style="font-size:11px; color:var(--fg-faint); margin-top:2px;">
         ${escapeHtml(run.config_str || '—')}
       </div>
+    </td>
+    <td class="num mono" data-sort-value="${run.repetition === null || run.repetition === undefined ? '' : run.repetition}">
+      ${run.repetition === null || run.repetition === undefined ? '—' : run.repetition}
     </td>
     <td>
       <a href="/tasks/${encodeURIComponent(run.task_uid || '')}" class="mono">
@@ -433,6 +438,41 @@ async function openRunModal(runUid) {
   }
 }
 
+// The evaluator's report names every test it ran; the counts only say how many
+// passed. A run whose one failing test is named is a different thing to read
+// than a run that is 90% something.
+function renderRunTests(tests) {
+  if (!tests || !tests.length) {
+    return `
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Individual Tests</div></div>
+        <div class="panel-body" style="padding:14px; color:var(--fg-faint);">
+          The evaluator recorded counts, not a per-test report, for this run.
+        </div>
+      </div>
+    `;
+  }
+  const marks = { passed: '✔', failed: '✘', error: '✗', skipped: '○' };
+  const rows = tests.map(test => `
+    <div class="test-row test-row-${escapeHtml(test.status)}">
+      <span class="test-mark mono" title="${escapeHtml(test.status)}">${marks[test.status] || '•'}</span>
+      <span class="test-name mono">${escapeHtml(test.classname ? test.classname + '.' + test.name : test.name)}</span>
+      <span class="test-time mono">${test.duration_seconds === null || test.duration_seconds === undefined ? '—' : test.duration_seconds.toFixed(3) + 's'}</span>
+      ${test.detail ? `<div class="test-detail mono">${escapeHtml(test.detail)}</div>` : ''}
+    </div>
+  `).join('');
+  const passed = tests.filter(t => t.status === 'passed').length;
+  return `
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Individual Tests</div>
+        <span class="badge badge-passed">${passed} passed</span>
+      </div>
+      <div class="test-list">${rows}</div>
+    </div>
+  `;
+}
+
 function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyArtifacts, bodyJson }) {
   const run = data.run;
   const score = data.score !== null ? Number(data.score).toFixed(3) : '—';
@@ -503,6 +543,8 @@ function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyA
         </div>
       </div>
 
+      ${renderRunTests(data.tests)}
+
       <div class="panel">
         <div class="panel-header"><div class="panel-title">Detailed Evaluation Payload</div></div>
         <div class="panel-body" style="padding:14px;">
@@ -565,7 +607,11 @@ function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyA
   }
 
   if (bodyJson) {
-    bodyJson.innerHTML = `<pre style="max-height:500px; overflow-y:auto; margin:0;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+    bodyJson.innerHTML = `
+      <div class="viewer-actions">
+        <button class="btn btn-sm" type="button" data-copy-target="#runRawJson">Copy</button>
+      </div>
+      <pre id="runRawJson" style="max-height:500px; overflow-y:auto; margin:0;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
   }
 }
 
@@ -582,9 +628,10 @@ async function previewArtifact(runUid, kind) {
       <div class="panel" style="margin-top:16px;">
         <div class="panel-header">
           <div class="panel-title">Preview: ${escapeHtml(kind)} (${escapeHtml(data.path || '')})</div>
+          <button class="btn btn-sm" type="button" data-copy-target="#artifactPreviewBody">Copy</button>
         </div>
         <div class="panel-body" style="padding:14px;">
-          <pre style="margin:0; max-height:350px; overflow-y:auto;">${escapeHtml(data.content || '<empty>')}</pre>
+          <pre id="artifactPreviewBody" style="margin:0; max-height:350px; overflow-y:auto;">${escapeHtml(data.content || '<empty>')}</pre>
         </div>
       </div>
     `;
@@ -729,6 +776,98 @@ function initRunDiffPicker() {
   if (!form) return;
   selects.forEach((select) => {
     select.addEventListener('change', () => form.submit());
+  });
+}
+
+// ============================================================ YAML colouring
+// A descriptor is read for its keys, so the keys are what the eye should find
+// first. The colouring is deliberately small: a comment, a key, a value, a
+// list dash — nothing that would rewrite what the file says.
+//
+// Text is coloured after it has been escaped and only outside of it is touched,
+// so a descriptor containing markup cannot inject anything into the page.
+function highlightYaml(text) {
+  const escaped = escapeHtml(text);
+  return escaped
+    .split('\n')
+    .map((line) => {
+      // a whole-line comment keeps its own colour and ends the line
+      const comment = line.match(/^(\s*)(#.*)$/);
+      if (comment) {
+        return `${comment[1]}<span class="yaml-comment">${comment[2]}</span>`;
+      }
+      const entry = line.match(/^(\s*(?:-\s+)?)([\w.\-]+)(:\s?)(.*)$/);
+      if (entry) {
+        const [, lead, key, colon, rest] = entry;
+        return `${lead}<span class="yaml-key">${key}</span>${colon}${highlightYamlValue(rest)}`;
+      }
+      const dash = line.match(/^(\s*)-(\s+)(.*)$/);
+      if (dash) {
+        return `${dash[1]}<span class="yaml-dash">-${dash[2]}</span>${highlightYamlValue(dash[3])}`;
+      }
+      return line;
+    })
+    .join('\n');
+}
+
+function highlightYamlValue(raw) {
+  const value = raw ?? '';
+  if (!value.trim()) return value;
+  // a trailing comment keeps its own colour
+  const split = value.match(/^(\s*[^#]*?)(\s+)(#.*)$/);
+  const head = split ? split[1] : value;
+  const tail = split ? `${split[2]}<span class="yaml-comment">${split[3]}</span>` : '';
+  if (/^(['"]).*$1$/.test(head)) return `<span class="yaml-string">${head}</span>${tail}`;
+  if (/^(true|false|null|~|yes|no|on|off)$/i.test(head)) return `<span class="yaml-bool">${head}</span>${tail}`;
+  if (/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(head)) return `<span class="yaml-number">${head}</span>${tail}`;
+  return `<span class="yaml-scalar">${head}</span>${tail}`;
+}
+
+function initYamlHighlighting() {
+  document.querySelectorAll('pre.yaml-block').forEach((block) => {
+    if (block.dataset.highlighted === 'yes') return;
+    block.dataset.highlighted = 'yes';
+    block.innerHTML = highlightYaml(block.textContent);
+  });
+}
+
+// ============================================================ Copy to clipboard
+// Every place that shows code or a descriptor gets a Copy beside it: reading a
+// value out of a <pre> by dragging through it is the work the button removes.
+// The button reads the text of the block it is told to copy, so it always hands
+// over what is on screen — including a block that is still loading.
+function initCopyButtons() {
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-copy-target]');
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const source = document.querySelector(button.dataset.copyTarget);
+    if (!source) return;
+    const text = source.tagName === 'INPUT' || source.tagName === 'TEXTAREA'
+      ? source.value
+      : source.textContent;
+    const done = (ok) => {
+      const label = button.textContent;
+      button.textContent = ok ? 'Copied' : 'Copy failed';
+      button.disabled = true;
+      setTimeout(() => { button.textContent = label; button.disabled = false; }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => done(true), () => done(false));
+    } else {
+      // the fallback a page served over http:// still needs
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      area.remove();
+      done(ok);
+    }
   });
 }
 
