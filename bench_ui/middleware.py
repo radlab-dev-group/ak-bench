@@ -15,8 +15,8 @@ from typing import Any
 from bench_ui.security import (
     SECURITY_HEADERS,
     SecuritySettings,
-    authorization_challenge,
     authenticate,
+    authorization_challenge,
     public_paths,
 )
 

@@ -11,8 +11,6 @@ import base64
 from pathlib import Path
 
 import pytest
-from starlette.testclient import TestClient
-
 from bench_ui.app import create_app
 from bench_ui.security import (
     JUDGE,
@@ -26,8 +24,8 @@ from bench_ui.security import (
     require_valid_security,
 )
 from bench_ui.service import _redact_task_yaml, scrub_ground_truth
+from starlette.testclient import TestClient
 
-from akbench.core.errors import ConfigError
 from akbench.storage.migrator import upgrade
 
 # ---------------------------------------------------------------- policy units

@@ -10,8 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from akbench.core.errors import ConfigError
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+
+from akbench.core.errors import ConfigError
 
 SCHEMA_VERSION = 1
 

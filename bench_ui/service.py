@@ -16,26 +16,18 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
-from bench_ui.pricing import (
-    PriceTable,
-    estimate_run_cost,
-    format_cost,
-    load_price_table,
-)
-from bench_ui.security import GROUND_TRUTH_KINDS
-
 from akbench.config.loader import load_settings, resolve_database_url
 from akbench.core.errors import ConfigError, DatabaseError
 from akbench.datasets import Dataset, TaskLoadError
 from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE
 from akbench.reporting.data import (
     HistoryData,
-    mean_per_run,
     build_experiment_report,
     build_task_report,
     collect_history,
     configuration_ranking,
     duration_seconds,
+    mean_per_run,
     score_of,
     summarize_runs,
     unverified_configurations,
@@ -54,6 +46,13 @@ from akbench.storage.models import (
     EvaluationRecord,
     TaskRun,
 )
+from bench_ui.pricing import (
+    PriceTable,
+    estimate_run_cost,
+    format_cost,
+    load_price_table,
+)
+from bench_ui.security import GROUND_TRUTH_KINDS
 
 log = logging.getLogger(__name__)
 
@@ -540,7 +539,7 @@ def _format_duration(seconds: float | None) -> str:
     """A wall-clock total the reader can place: ``18 h 9 m``, ``6 m 59 s``, ``42 s``."""
     if seconds is None:
         return "—"
-    total = int(round(seconds))
+    total = round(seconds)
     if total < 60:
         return f"{total} s"
     minutes, sec = divmod(total, 60)
