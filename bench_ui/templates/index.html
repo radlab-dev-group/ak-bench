@@ -32,6 +32,19 @@
   </div>
   {% endif %}
 
+  {% if stats %}
+  <!-- The whole history in one ledger: how much there is, how it fared, how long
+       it took, what it cost — before the reader asks the charts a question -->
+  <div class="ledger">
+    {% for item in stats %}
+    <div class="ledger-item">
+      <div class="ledger-value mono">{{ item.value }}</div>
+      <div class="ledger-label">{{ item.label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <!-- KPI Cards -->
   <div class="grid-cards">
     <div class="card card-mint">
@@ -145,6 +158,13 @@
                 {% if row.is_baseline %}
                   <span class="badge badge-info" style="margin-left:6px; font-size:10.5px;">BASELINE</span>
                 {% endif %}
+                {# Two rows can share a configuration and still be different
+                   measurements: a run is recorded under the agent and runtime
+                   it actually used, so a ranking says which instrument made
+                   which number rather than quietly pooling them. #}
+                <div style="font-size:11px; color:var(--fg-faint); margin-top:2px;">
+                  {{ row.agent or "—" }} &middot; {{ row.runtime or "—" }}
+                </div>
               </td>
               <td class="num mono">{{ row.runs }}</td>
               <td class="num mono">{{ row.evaluated }}</td>
@@ -200,6 +220,7 @@
         <thead>
           <tr>
             <th data-sortable>Run UID</th>
+            <th data-sortable class="num" title="Repetition number of this run">Rep</th>
             <th data-sortable>Task</th>
             <th data-sortable>Verdict</th>
             <th data-sortable class="num">Score</th>
@@ -221,6 +242,9 @@
                 <div style="font-size:11px; color:var(--fg-faint); margin-top:2px;">
                   {{ r.config_str or "—" }}
                 </div>
+              </td>
+              <td class="num mono" data-sort-value="{{ r.repetition if r.repetition is not none else '' }}">
+                {{ r.repetition if r.repetition is not none else "—" }}
               </td>
               <td>
                 <a href="/tasks/{{ r.task_uid }}" class="mono">{{ r.task_uid or "—" }}</a>

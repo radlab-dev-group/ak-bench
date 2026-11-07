@@ -88,6 +88,7 @@ def create_app(
     async def dashboard_page(request: Request):
         overview = _empty_overview() if service.connection_error else service.get_overview()
         model_comparison = [] if service.connection_error else service.get_model_comparison()
+        stats = [] if service.connection_error else service.get_dashboard_stats()
         return templates.TemplateResponse(
             request=request,
             name="index.html",
@@ -102,6 +103,7 @@ def create_app(
                 "verdicts": overview["verdicts"],
                 "statuses": overview["statuses"],
                 "model_comparison": model_comparison,
+                "stats": stats,
                 "database": database,
             },
         )

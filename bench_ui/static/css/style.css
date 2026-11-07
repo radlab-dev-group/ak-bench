@@ -386,6 +386,91 @@ h3 { font-size: 1.1rem; }
 }
 
 /* ============================================================ Cards & Grid */
+/** The whole history in one ledger: a row of small cells the reader scans in one
+    pass — how much there is, how it fared, how long it took, what it cost. */
+/** A descriptor read by key: keys, values, comments and list markers each take
+    their own colour, so the shape of a YAML file is visible at a glance. */
+.yaml-key { color: var(--blue, #5aa9ff); }
+.yaml-string { color: var(--mint, #00e59b); }
+.yaml-number { color: var(--amber, #ffb44a); }
+.yaml-bool { color: #c792ea; }
+.yaml-scalar { color: var(--fg, #c6d3df); }
+.yaml-comment { color: var(--fg-faint, #6d7c8c); font-style: italic; }
+.yaml-dash { color: var(--fg-faint, #6d7c8c); }
+
+/* a button row above a block of text, right-aligned against its panel */
+.viewer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/** The tests of one run, each marked with the outcome the evaluator gave it. */
+.test-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+.test-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 12.5px;
+}
+.test-row:last-child { border-bottom: none; }
+.test-mark { font-size: 13px; }
+.test-row-passed .test-mark { color: var(--mint); }
+.test-row-failed .test-mark,
+.test-row-error .test-mark { color: var(--red); }
+.test-row-skipped .test-mark { color: var(--fg-faint); }
+.test-row-failed .test-name,
+.test-row-error .test-name { color: #fff; font-weight: 600; }
+.test-name { color: var(--fg-dim); word-break: break-all; }
+.test-time { color: var(--fg-faint); font-size: 11.5px; }
+.test-detail {
+  grid-column: 2 / -1;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--red);
+  background: rgba(255, 107, 122, 0.07);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+.ledger {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.ledger-item {
+  background: var(--panel);
+  padding: 12px 14px;
+}
+.ledger-value {
+  font-size: 19px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.ledger-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  margin-top: 3px;
+  text-transform: lowercase;
+}
+
 .grid-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));

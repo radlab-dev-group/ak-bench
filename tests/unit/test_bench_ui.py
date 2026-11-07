@@ -7,6 +7,8 @@ from types import SimpleNamespace
 from bench_ui.app import create_app
 from starlette.testclient import TestClient
 
+from bench_ui.service import BenchDataService
+
 from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
 from akbench.storage.migrator import upgrade
@@ -114,6 +116,11 @@ def _seeded_store(database_url: str) -> HistoryStore:
         task=_task_stub(),
     )
     return store
+
+
+def _record_junit_artifact(store, run_uid: str, path) -> None:
+    """Attach a JUnit report to a run, the way a real evaluator leaves it."""
+    store.register_artifacts(run_uid, [path])
 
 
 def test_dashboard_endpoint_renders(database_url: str) -> None:
@@ -966,3 +973,123 @@ def test_the_analytics_charts_spin_until_their_data_arrives() -> None:
 
     css = client.get("/static/css/style.css").text
     assert "an-chart-loading" in css and "an-spin" in css
+
+
+def test_the_dashboard_opens_with_the_overall_ledger(database_url: str) -> None:
+    """How much benchmark there is, before the reader asks the charts a question."""
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/").text
+
+    for label in (
+        "experiments", "runs", "evaluated", "success rate", "tasks",
+        "total time", "mean time", "input tokens", "generated tokens",
+        "tokens", "tool calls", "cost",
+    ):
+        assert label in body, label
+
+    stats = client.get("/api/tasks")  # the ledger is served with the dashboard
+    assert stats.status_code == 200
+
+    service = BenchDataService(database_url=database_url)
+    ledger = {row["label"]: row["value"] for row in service.get_dashboard_stats()}
+    assert ledger["runs"] == "2"
+    assert ledger["experiments"] == "1"
+    assert ledger["tasks"] == "1"
+    assert ledger["cost"] == "not recorded"
+    # two runs of five and two minutes: the total is their sum, the mean their mean
+    assert ledger["total time"] == "7 m 0 s"
+    assert ledger["mean time"] == "3 m 30 s"
+    assert ledger["tokens"] == "7,000"
+
+
+def test_the_run_inspector_names_its_tests(database_url: str, tmp_path) -> None:
+    """Which test failed, not only how many did.
+
+    The evaluator's JUnit report is read from the run's artifacts, so a run
+    that recorded per-test results shows them and a run that did not says so
+    rather than pretending an empty list is a clean sheet.
+    """
+    store = _seeded_store(database_url)
+    run = store.run("run-001")
+    directory = tmp_path / "evaluation"
+    directory.mkdir()
+    (directory / "junit.xml").write_text(
+        '<?xml version="1.0" ?><testsuites><testsuite name="pytest" tests="3"'
+        ' failures="1" errors="0" skipped="1">'
+        '<testcase classname="tests.test_wc" name="test_spaces" time="0.004" />'
+        '<testcase classname="tests.test_wc" name="test_tabs" time="0.001">'
+        '<failure message="assert 1 == 2">assert 1 == 2</failure></testcase>'
+        '<testcase classname="tests.test_wc" name="test_newlines" time="0.000">'
+        '<skipped message="needs a fixture" /></testcase>'
+        "</testsuite></testsuites>",
+        encoding="utf-8",
+    )
+    _record_junit_artifact(store, run["uid"], directory / "junit.xml")
+
+    client = TestClient(create_app(database_url=database_url))
+    detail = client.get("/api/runs/run-001").json()
+    tests = detail["tests"]
+    assert [test["status"] for test in tests] == ["passed", "failed", "skipped"]
+    assert tests[1]["name"] == "test_tabs"
+    assert "assert 1 == 2" in tests[1]["detail"]
+
+    # a run whose evaluator wrote no report says so
+    other = client.get("/api/runs/run-002").json()
+    assert other["tests"] == []
+
+    script = client.get("/static/js/app.js").text
+    assert "renderRunTests" in script
+
+
+def test_the_descriptors_are_coloured_copied_and_attributed(database_url: str, tmp_path) -> None:
+    """A YAML file is read by its keys, and a value on screen should be copyable.
+
+    The leaderboard also names the instrument behind a row: two rows may share
+    a configuration because they were measured under different agent versions,
+    and showing that is honest while leaving it hidden is confusing.
+    """
+    store = _seeded_store(database_url)
+    _task_with_files(store, tmp_path)
+    client = TestClient(create_app(database_url=database_url))
+
+    task_body = client.get("/tasks/wordcount-001@1.0.0").text
+    assert "yaml-block" in task_body
+    assert task_body.count("data-copy-target") >= 3
+
+    script = client.get("/static/js/app.js").text
+    assert "initYamlHighlighting" in script and "highlightYaml" in script
+    assert "initCopyButtons" in script
+
+    dashboard = client.get("/").text
+    assert "codex@1.0" in dashboard  # the agent a row was measured under
+
+
+def test_run_tables_carry_the_repetition_number(database_url: str) -> None:
+    """Which repetition a run was, beside the run itself."""
+    store = _seeded_store(database_url)
+    store.record_run(
+        {
+            "run_uid": "run-repeat-2",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "state": "completed",
+            "started_at": "2026-11-06T12:00:00+00:00",
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        repetition=2,
+        task=_task_stub(),
+    )
+    client = TestClient(create_app(database_url=database_url))
+
+    api_runs = client.get("/api/runs").json()["runs"]
+    by_uid = {run["uid"]: run for run in api_runs}
+    assert by_uid["run-repeat-2"]["repetition"] == 2
+
+    for path in ("/runs", "/", "/experiments/test-exp@1.0.0", "/tasks/wordcount-001@1.0.0"):
+        assert ">Rep</th>" in client.get(path).text, path
+    assert ">Rep</th>" in client.get("/runs").text
+    assert 'data-sort-value="2"' in client.get("/runs").text

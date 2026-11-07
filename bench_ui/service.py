@@ -305,6 +305,69 @@ def _safe_load_json(val: Any) -> Any:
         return val
 
 
+def _read_artifact_text(path: str | None) -> str | None:
+    """The text of an artifact kept on disk, or ``None`` when it is not there."""
+    if not path:
+        return None
+    with contextlib.suppress(OSError):
+        return Path(path).read_text(encoding="utf-8", errors="replace")
+    return None
+
+
+def _parse_junit(xml_text: str | None) -> list[dict[str, Any]]:
+    """The test cases of a JUnit report, each with the outcome it earned.
+
+    A testcase with no ``failure``, ``error`` or ``skipped`` child passed; that
+    is the whole of the JUnit vocabulary for an outcome, and it is read rather
+    than inferred from the suite's counts, which can disagree with the cases.
+    """
+    import xml.etree.ElementTree as ET
+
+    if not xml_text:
+        return []
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+    tests: list[dict[str, Any]] = []
+    for case in root.iter("testcase"):
+        outcome = "passed"
+        detail = None
+        for child in case:
+            if child.tag in ("failure", "error", "skipped"):
+                outcome = {"failure": "failed", "error": "error", "skipped": "skipped"}[child.tag]
+                detail = (child.get("message") or child.text or "").strip() or None
+                break
+        try:
+            seconds = float(case.get("time")) if case.get("time") else None
+        except ValueError:
+            seconds = None
+        tests.append(
+            {
+                "name": case.get("name") or "—",
+                "classname": case.get("classname"),
+                "status": outcome,
+                "duration_seconds": seconds,
+                "detail": detail,
+            }
+        )
+    return tests
+
+
+def _format_duration(seconds: float | None) -> str:
+    """A wall-clock total the reader can place: ``18 h 9 m``, ``6 m 59 s``, ``42 s``."""
+    if seconds is None:
+        return "—"
+    total = int(round(seconds))
+    if total < 60:
+        return f"{total} s"
+    minutes, sec = divmod(total, 60)
+    if minutes < 60:
+        return f"{minutes} m {sec} s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes} m"
+
+
 class BenchDataService:
     """Provides high-level data querying, aggregation, filtering and comparisons for the UI.
 
@@ -427,6 +490,45 @@ class BenchDataService:
                 }
             )
         return rows
+
+    def get_dashboard_stats(self) -> list[dict[str, str]]:
+        """The whole history in one ledger, for the top of the dashboard.
+
+        The charts and the leaderboard answer how the configurations compare;
+        this answers how much benchmark there is: the runs, how they fared, how
+        long it took, and what it cost in tokens and calls. A number the history
+        does not carry is shown as not recorded rather than guessed at.
+        """
+        history = self.get_history()
+        runs = history.runs
+        summary = summarize_runs(runs)
+        total_duration = (
+            summary["mean_duration_seconds"] * summary["measured_durations"]
+            if summary["mean_duration_seconds"] is not None
+            else None
+        )
+        cost = "not recorded"
+        return [
+            {"label": "experiments", "value": f"{len(history.experiments):,}"},
+            {"label": "runs", "value": f"{summary['runs']:,}"},
+            {"label": "evaluated", "value": f"{summary['evaluated']:,}"},
+            {
+                "label": "success rate",
+                "value": (
+                    f"{summary['success_rate'] * 100:.1f}%"
+                    if summary["success_rate"] is not None
+                    else "—"
+                ),
+            },
+            {"label": "tasks", "value": f"{len(history.tasks):,}"},
+            {"label": "total time", "value": _format_duration(total_duration)},
+            {"label": "mean time", "value": _format_duration(summary["mean_duration_seconds"])},
+            {"label": "input tokens", "value": f"{summary['input_tokens']:,}"},
+            {"label": "generated tokens", "value": f"{summary['output_tokens']:,}"},
+            {"label": "tokens", "value": f"{summary['total_tokens']:,}"},
+            {"label": "tool calls", "value": f"{summary['tool_calls']:,}"},
+            {"label": "cost", "value": cost},
+        ]
 
     def get_overview(self) -> dict[str, Any]:
         history = self.get_history()
@@ -620,6 +722,27 @@ class BenchDataService:
         }
 
     # ---------------------------------------------------------- Run Details
+    def get_run_tests(self, run_uid: str) -> list[dict[str, Any]]:
+        """Every test the run's evaluator reported, with the outcome of each.
+
+        The counts alone — "9 of 10 passed" — leave the reader asking which one
+        failed. The evaluator writes a JUnit report next to the run's artifacts,
+        and that file names the tests and marks the failures, so the run can be
+        inspected test by test. ``[]`` when no report was written: an evaluator
+        that produced nothing is not reported as an empty list of passing tests
+        but as no information at all, which the caller shows as such.
+        """
+        run = self.store.run(run_uid)
+        if not run:
+            return []
+        for artifact in run.get("artifacts") or []:
+            if artifact.get("kind") != "junit":
+                continue
+            tests = _parse_junit(_read_artifact_text(artifact.get("path")))
+            if tests:
+                return tests
+        return []
+
     def get_run_detail(self, run_uid: str) -> dict[str, Any] | None:
         run = self.store.run(run_uid)
         if not run:
@@ -688,6 +811,7 @@ class BenchDataService:
             "task_instruction": task_instruction,
             "evaluation_details": eval_record_details,
             "evaluation_artifacts": eval_record_artifacts,
+            "tests": self.get_run_tests(run_uid),
             "evaluator_info": evaluator_info,
             "artifacts": run.get("artifacts") or [],
         }
@@ -1149,6 +1273,7 @@ class BenchDataService:
             "variant_uid": r.get("variant_uid"),
             "config_str": config_str,
             "task_uid": r.get("task_uid"),
+            "repetition": r.get("repetition"),
             "agent": r.get("agent"),
             "runtime_id": r.get("runtime_id"),
             "model": r.get("observed_model") or r.get("requested_model"),
