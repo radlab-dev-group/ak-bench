@@ -140,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCompareHelpers();
   initSortableTables();
   initTaskCodeTree();
+  initRunDiffPicker();
 });
 
 // ============================================================ Live Refresh
@@ -656,6 +657,20 @@ function getScoreColor(score) {
   return 'var(--red)';
 }
 
+
+// ============================================================ Run Diff Picker
+// The comparison studio offers the same runs in two lists. Choosing either one
+// is a complete decision, so the form submits itself; the button stays for the
+// keyboard and for anyone who prefers it.
+function initRunDiffPicker() {
+  const selects = document.querySelectorAll('.run-diff-select');
+  if (!selects.length) return;
+  const form = selects[0].form;
+  if (!form) return;
+  selects.forEach((select) => {
+    select.addEventListener('change', () => form.submit());
+  });
+}
 
 // ============================================================ Task Code Tree
 // A task page lists the files recorded with the task. Clicking one asks the

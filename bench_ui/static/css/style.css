@@ -702,6 +702,14 @@ details[open] > .tree-dir > .tree-caret::before {
   font-weight: 600;
 }
 
+/* The run diff lists name a run by what it was, not only by its uid. */
+.run-diff-select {
+  min-width: 340px;
+  max-width: 460px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
 .panel-subtitle {
   font-size: 11.5px;
   color: var(--fg-faint);

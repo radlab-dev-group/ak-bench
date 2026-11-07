@@ -16,15 +16,15 @@
 
   <!-- TAB SWITCHER: Configurations vs Runs Comparison -->
   <div class="modal-tabs" style="margin-bottom:24px;">
-    <button class="modal-tab {% if not run_diff %}active{% endif %}" onclick="window.location.href='/compare'">
+    <button class="modal-tab {% if not show_runs %}active{% endif %}" onclick="window.location.href='/compare'">
       Configuration Matrix Comparison
     </button>
-    <button class="modal-tab {% if run_diff %}active{% endif %}" onclick="window.location.href='/compare?run_a={{ run_a_uid or '' }}&run_b={{ run_b_uid or '' }}'">
+    <button class="modal-tab {% if show_runs %}active{% endif %}" onclick="window.location.href='/compare?view=runs'">
       Run-by-Run Side-by-Side Diff
     </button>
   </div>
 
-  {% if run_diff %}
+  {% if show_runs %}
     <!-- ================= RUN-BY-RUN SIDE-BY-SIDE DIFF ================= -->
     <div class="panel">
       <div class="panel-header">
@@ -34,19 +34,40 @@
         </div>
       </div>
       <div class="panel-body">
-        <!-- Selector Form -->
+        <!-- Two lists over the same runs: one choice from each, and the diff
+             follows. Naming a run by hand is not an answer to ask a reader. -->
         <form method="get" action="/compare" style="display:flex; gap:12px; align-items:center; margin-bottom:20px; flex-wrap:wrap;">
+          <input type="hidden" name="view" value="runs">
           <div style="display:flex; align-items:center; gap:6px;">
-            <label class="mono" style="font-size:12px;">Run A:</label>
-            <input type="text" name="run_a" class="input" value="{{ run_diff.run_a.run.uid }}" style="width:260px;" required>
+            <label class="mono" style="font-size:12px;" for="diffRunA">Run A:</label>
+            <select id="diffRunA" name="run_a" class="select run-diff-select">
+              {% for option in run_options %}
+                <option value="{{ option.uid }}" {% if run_a_uid == option.uid %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
           </div>
           <div style="display:flex; align-items:center; gap:6px;">
-            <label class="mono" style="font-size:12px;">Run B:</label>
-            <input type="text" name="run_b" class="input" value="{{ run_diff.run_b.run.uid }}" style="width:260px;" required>
+            <label class="mono" style="font-size:12px;" for="diffRunB">Run B:</label>
+            <select id="diffRunB" name="run_b" class="select run-diff-select">
+              {% for option in run_options %}
+                <option value="{{ option.uid }}" {% if run_b_uid == option.uid %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
           </div>
           <button type="submit" class="btn btn-primary">Compare Runs</button>
         </form>
 
+        {% if not run_diff %}
+        <div style="color:var(--fg-dim); padding:14px 0;">
+          {% if run_options | length < 2 %}
+            Comparing needs two recorded runs; this history has {{ run_options | length }}.
+          {% else %}
+            Pick one run in each list to see the diff.
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if run_diff %}
         <!-- Deltas Banner -->
         <div class="grid-cards" style="margin-bottom:24px;">
           <div class="card card-mint">
@@ -140,6 +161,7 @@
             </table>
           </div>
         </div>
+        {% endif %}
       </div>
     </div>
 

@@ -998,6 +998,29 @@ class BenchDataService:
             },
         }
 
+    def get_run_options(self) -> list[dict[str, Any]]:
+        """Every run as a picker entry, newest first, with a label worth reading.
+
+        Choosing a run by its bare uid is not a choice a reader can make, so
+        the label carries the task and the outcome: what a run was, before one
+        commits to comparing it.
+        """
+        history = self.get_history()
+        ordered = sorted(
+            history.runs,
+            key=lambda run: str(run.get("started_at") or ""),
+            reverse=True,
+        )
+        options: list[dict[str, Any]] = []
+        for run in ordered:
+            summary = self._format_run_summary(run, history)
+            outcome = summary["verdict"] or summary["status"] or "unverified"
+            label = f"{summary['uid']} \u00b7 {summary['task_uid'] or '\u2014'} \u00b7 {outcome}"
+            if summary["score"] is not None:
+                label += f" \u00b7 {summary['score']:.3f}"
+            options.append({"uid": summary["uid"], "label": label})
+        return options
+
     # ------------------------------------------------------------- Internal
     def get_analytics_dataset(self) -> dict[str, Any]:
         """Flat, chart-friendly rows for every run plus the available dimensions."""

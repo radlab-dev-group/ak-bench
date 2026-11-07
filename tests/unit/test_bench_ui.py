@@ -709,3 +709,31 @@ def test_the_runs_page_carries_the_runtime_filter(database_url: str) -> None:
     assert "run-002" not in [run["uid"] for run in managed["runs"]]
     shared = client.get("/api/runs?runtime=shared-runtime").json()
     assert [run["uid"] for run in shared["runs"]] == ["run-002"]
+
+
+def test_the_run_diff_opens_on_two_runs_chosen_from_lists(database_url: str) -> None:
+    """The run diff is a view, and it opens with two runs already selected.
+
+    Two text inputs asked the reader to know two uids by heart; two lists over
+    the same runs name each one by its task and outcome instead.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    runs_view = client.get("/compare?view=runs")
+    assert runs_view.status_code == 200
+    body = runs_view.text
+    assert 'name="run_a"' in body and 'name="run_b"' in body
+    # the labels say what a run was, not only what it is called
+    assert "run-002" in body and "run-001" in body
+    assert "Score Difference" in body
+
+    # the configurations view stays the default and carries no picker
+    default = client.get("/compare").text
+    assert 'name="run_a"' not in default
+    assert "Task-by-Task Comparison Matrix" in default
+
+    # an explicit pair wins over the default one
+    chosen = client.get("/compare?run_a=run-001&run_b=run-002").text
+    assert 'value="run-001" selected' in chosen
+    assert 'value="run-002" selected' in chosen

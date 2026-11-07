@@ -174,8 +174,18 @@ def create_app(
         request: Request,
         run_a: str | None = None,
         run_b: str | None = None,
+        view: str | None = None,
         configs: list[str] = Query(default=[]),
     ):
+        run_a, run_b = run_a or None, run_b or None
+        run_options = service.get_run_options()
+        # The run diff is a view of its own, and it opens on two runs already
+        # chosen: asking a reader to type two uids they do not know is not an
+        # answer, it is the question this page is meant to help with.
+        show_runs = view == "runs" or (run_a is not None and run_b is not None)
+        if show_runs and not (run_a and run_b) and len(run_options) >= 2:
+            run_a = run_a or run_options[0]["uid"]
+            run_b = run_b or run_options[1]["uid"]
         run_diff = None
         if run_a and run_b:
             run_diff = service.compare_runs_side_by_side(run_a, run_b)
@@ -187,8 +197,10 @@ def create_app(
             context={
                 "active_page": "compare",
                 "run_diff": run_diff,
+                "show_runs": show_runs,
                 "run_a_uid": run_a,
                 "run_b_uid": run_b,
+                "run_options": run_options,
                 "config_comparison": config_comparison,
                 "database": database,
             },
