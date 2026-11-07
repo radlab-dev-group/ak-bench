@@ -1278,6 +1278,79 @@ def test_the_dashboard_shows_which_runs_are_still_going(database_url: str) -> No
     assert "fetchActiveRuns" in script and "tickLiveElapsed" in script
 
 
+_LOG_EVIDENCE = {
+    "available": True,
+    "log": "router.log",
+    "served_models": ["qwen/confirmed"],
+    "routing_decisions": ["qwen/confirmed"],
+    "received_models": ["auto_codex"],
+}
+
+
+def test_a_model_is_verified_only_when_the_log_says_so(database_url: str) -> None:
+    """A bar for a model says little if nothing confirmed that model was served.
+
+    The runs explorer groups by the model a run ended up on, but the model a
+    run only asked for is weaker evidence than one the instance's own log named.
+    The comparison counts how many of a model's runs the log verified, and the
+    dashboard marks that beside the model rather than letting an unverified bar
+    read as a measured fact.
+    """
+    store = _seeded_store(database_url)
+    store.record_run(
+        {
+            "run_uid": "run-verified",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "runtime_id": "llm-router-ak-bench",
+            "requested_model": "qwen/confirmed",
+            "model_evidence": _LOG_EVIDENCE,
+            "state": "completed",
+            "started_at": "2026-11-06T12:00:00+00:00",
+            "finished_at": "2026-11-06T12:03:00+00:00",
+            "evaluation": {"verdict": "passed", "score": 1.0, "passed": 4, "failed": 0, "total": 4},
+            "observations": {"total_tokens": 900, "observed_model": "qwen/confirmed"},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+    # a second run asked for a model and nothing confirmed it was served
+    store.record_run(
+        {
+            "run_uid": "run-asked",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "runtime_id": "llm-router-ak-bench",
+            "requested_model": "qwen/asked-only",
+            "state": "completed",
+            "started_at": "2026-11-06T12:30:00+00:00",
+            "finished_at": "2026-11-06T12:33:00+00:00",
+            "evaluation": {"verdict": "passed", "score": 1.0, "passed": 4, "failed": 0, "total": 4},
+            "observations": {"total_tokens": 900},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+
+    rows = {
+        row["model"]: row
+        for row in BenchDataService(database_url=database_url).get_model_comparison()
+    }
+    confirmed = rows["qwen/confirmed"]
+    assert confirmed["runs"] == 1 and confirmed["verified_runs"] == 1
+
+    # a run that only asked for a model verified nothing
+    asked = rows["qwen/asked-only"]
+    assert asked["runs"] == 1 and asked["verified_runs"] == 0
+
+    body = TestClient(create_app(database_url=database_url)).get("/").text
+    assert "modelVerificationSummary" in body
+
+
 def test_the_price_table_is_read_from_the_project(tmp_path) -> None:
     """A cost is estimated from a table the operator wrote, never invented.
 

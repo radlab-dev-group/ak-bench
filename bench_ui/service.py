@@ -543,7 +543,9 @@ class BenchDataService:
         so a chart of them cannot say which model a bar belongs to. Grouping
         by the model instead asks the question a reader can act on: on the
         same set of tasks, how did each model do, and at what cost in time and
-        tokens.
+        tokens. A model a run only asked for is not the same evidence as one
+        the instance's log confirmed it served, so each row also carries how
+        many of its runs the log verified.
         """
         history = self.get_history()
         by_model: dict[str, list[dict[str, Any]]] = {}
@@ -555,10 +557,14 @@ class BenchDataService:
         rows = []
         for model, group in sorted(by_model.items()):
             summary = summarize_runs(group)
+            verified = sum(
+                1 for run in group if run.get("model_verification") == "verified"
+            )
             rows.append(
                 {
                     "model": model,
                     "runs": summary["runs"],
+                    "verified_runs": verified,
                     "evaluated": summary["evaluated"],
                     "success_rate": summary["success_rate"],
                     "mean_score": summary["mean_score"],

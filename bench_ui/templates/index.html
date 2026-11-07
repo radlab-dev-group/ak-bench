@@ -135,6 +135,7 @@
         </div>
       </div>
     </div>
+    <div class="model-verification-summary" id="modelVerificationSummary"></div>
   </div>
 
   <!-- Configuration Ranking Matrix Table -->
@@ -309,7 +310,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // time a chart is built and the charts are rebuilt when it is switched.
     const ink = () => (window.akbenchThemeColors ? window.akbenchThemeColors()
       : { text: '#c6d3df', dim: '#8d9daf', grid: 'rgba(255,255,255,0.06)' });
-    const labels = models.map(m => m.model);
+    // A model a run only asked for is weaker evidence than one the instance's
+    // log confirmed it served, so the badge says how many of the model's runs
+    // the log verified. Zero verified reads as "not verified", not as "bad".
+    const vlabel = (m) => m.verified_runs > 0 ? `\u2713 ${m.verified_runs}/${m.runs}` : '\u25cb';
+    const labels = models.map(m => `${m.model}  ${vlabel(m)}`);
     const perf = {
       successRate: models.map(m => m.success_rate !== null ? (m.success_rate * 100).toFixed(1) : 0),
       meanScore: models.map(m => m.mean_score !== null ? (m.mean_score * 100).toFixed(1) : 0),
@@ -417,6 +422,28 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
     };
+
+    // One sentence under the charts, because a bar whose model was never
+    // verified should not read as a measured fact.
+    const summary = document.getElementById('modelVerificationSummary');
+    if (summary) {
+      const named = (list) => list.map(m => `${m.model} (${m.verified_runs}/${m.runs})`).join(', ');
+      const never = models.filter(m => m.verified_runs === 0);
+      const whole = models.filter(m => m.verified_runs === m.runs);
+      const part = models.filter(m => m.verified_runs > 0 && m.verified_runs < m.runs);
+      if (whole.length === models.length) {
+        summary.textContent = 'Every model here was confirmed by the runtime\u2019s own log.';
+      } else if (whole.length === 0 && part.length === 0) {
+        summary.textContent = 'Nothing here was confirmed by a runtime log:'
+          + ' the runs asked for a model, and no log says it was served.';
+      } else {
+        const bits = [];
+        if (whole.length) bits.push(`confirmed ${named(whole)}`);
+        if (part.length) bits.push(`partly confirmed ${named(part)}`);
+        if (never.length) bits.push(`never confirmed ${never.map(m => m.model).join(', ')}`);
+        summary.textContent = bits.join(' \u00b7 ');
+      }
+    }
 
     drawModelCharts();
     document.addEventListener('akbench:theme', drawModelCharts);
