@@ -44,7 +44,7 @@ def test_dataset_list_json_shape(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert payload["count"] == 17
+    assert payload["count"] == 22
     assert {task["id"] for task in payload["tasks"]} == {
         "wordcount-001",
         "bookshop-tiers-001",
@@ -63,6 +63,11 @@ def test_dataset_list_json_shape(project: Path) -> None:
         "walqueue-recovery-001",
         "typeweave-inference-001",
         "depweaver-backtracking-001",
+        "atlas-drift-001",
+        "atlas-drift-002",
+        "atlas-drift-003",
+        "atlas-drift-004",
+        "atlas-lineage-001",
     }
     assert {task["category"] for task in payload["tasks"]} == {"bug_fix", "new_feature"}
     for task in payload["tasks"]:
@@ -71,9 +76,9 @@ def test_dataset_list_json_shape(project: Path) -> None:
 
 def test_dataset_list_category_filter(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--category", "bug_fix", "--json"])
-    assert _payload(result.output)["count"] == 8
+    assert _payload(result.output)["count"] == 12
     result = runner.invoke(app, ["dataset", "list", "--category", "new_feature", "--json"])
-    assert _payload(result.output)["count"] == 9
+    assert _payload(result.output)["count"] == 10
     result = runner.invoke(app, ["dataset", "list", "--category", "nope", "--json"])
     assert _payload(result.output)["count"] == 0
 
@@ -83,7 +88,7 @@ def test_dataset_validate_reports_ok(project: Path) -> None:
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     assert payload["ok"] is True
-    assert payload["tasks"] == 17
+    assert payload["tasks"] == 22
 
 
 def test_dataset_validate_fails_on_broken_task(project: Path) -> None:
