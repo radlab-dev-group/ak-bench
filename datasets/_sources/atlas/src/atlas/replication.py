@@ -36,7 +36,7 @@ class Node:
     epoch: int
     root: pathlib.Path
     shard_count: int
-    config=None
+    config: object = None
     stores: dict[int, ShardStorage] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -68,11 +68,24 @@ class Node:
 
 
 class Replicator:
-    """Drives a write or a read across the replicas the plan names."""
+    """Drives a write or a read across the replicas the plan names.
 
-    def __init__(self, nodes: dict[str, Node], *, config, conflict: str | None = None) -> None:
+    The plan answers *which replica*, and the hash answers *which shard*; the
+    two are different questions and a store address needs both. ``shard_of`` is
+    injected because the shard function belongs to the store, not to placement.
+    """
+
+    def __init__(
+        self,
+        nodes: dict[str, Node],
+        *,
+        config,
+        shard_of,
+        conflict: str | None = None,
+    ) -> None:
         self.nodes = nodes
         self.config = config
+        self.shard_of = shard_of
         self.conflict_name = conflict or config["tie_break"]
         self.resolve_conflict = STRATEGIES.resolve_conflict(self.conflict_name)
 
@@ -103,7 +116,7 @@ class Replicator:
                 continue
             try:
                 acknowledged.append(
-                    node.store(placement.owner(key)).put(
+                    node.store(self.shard_of(key)).put(
                         key,
                         value,
                         writer=writer,
@@ -132,17 +145,23 @@ class Replicator:
         needed = int(self.config["read_consistency"])
         answers: list[Record] = []
         failures: list[str] = []
+        answered = 0
         for replica in replicas:
             node = self.nodes.get(replica)
             if node is None:
                 failures.append(f"{replica}: no such node")
                 continue
-            record = node.store(placement.owner(key)).resolve(key)
+            # A replica that answers "no such key" has answered: an absent key
+            # is an answer, not a failure, and treating it as one makes the
+            # first read of a new key a quorum error.
+            answered += 1
+            record = node.store(self.shard_of(key)).resolve(key)
             if record is not None:
                 answers.append(record)
-        if len(answers) + len(failures) < needed:
+        if answered < needed:
             raise QuorumError(
-                f"read of {key!r} reached {len(answers)} answering replicas of {needed} required"
+                f"read of {key!r} reached {answered} answering replicas of {needed} required"
+                f"; failures: {failures}"
             )
         if not answers:
             return None, []

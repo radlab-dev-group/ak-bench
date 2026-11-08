@@ -40,9 +40,10 @@ class RepairOutcome:
 
 
 class ReadRepairer:
-    def __init__(self, nodes, *, config, conflict: str | None = None) -> None:
+    def __init__(self, nodes, *, config, shard_of, conflict: str | None = None) -> None:
         self.nodes = nodes
         self.config = config
+        self.shard_of = shard_of
         self.conflict_name = conflict or config["tie_break"]
         self.resolve = STRATEGIES.resolve_conflict(self.conflict_name)
 
@@ -89,7 +90,7 @@ class ReadRepairer:
             node = self.nodes.get(replica)
             if node is None:
                 continue
-            store = node.store(placement.owner(key))
+            store = node.store(self.shard_of(key))
             current = store.resolve(key)
             if current is not None and current.vector == winner.vector and current.generation == winner.generation:
                 continue
