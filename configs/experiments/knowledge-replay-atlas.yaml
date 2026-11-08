@@ -1,0 +1,157 @@
+# Knowledge replay for the atlas drift family (plan section 17, atlas edition).
+#
+# The family is the point. atlas-drift-001 is a five-module regression; the
+# learning arm works it once with knowledge write on, and what it leaves in
+# the knowledge base is the evidence: the recipes of the five fixes, the
+# dead-ends of the wrong modules, the playbooks of the scenarios that went
+# green, and the session archive of the work itself. The replay arm then
+# works the *other* tasks of the family, in a new session with no session
+# history and read access to that knowledge base only:
+#
+#   exact_replay    atlas-drift-001  the same task, a new session, no history
+#   related_transfer atlas-drift-002 the fencing check, a different module
+#   related_transfer atlas-drift-003 the tie-break, a different module
+#   related_transfer atlas-drift-004 the replay window, a different module
+#
+# A recipe from the learning task transfers to a twin as a *principle* —
+# "fencing is an equality in both directions" — not as a diff: the twins'
+# defects live in different modules than the ones the learning task's patch
+# touched, and the twins' incident notes name the rule by the symptom, not
+# the module. A memoryless model on a twin has the same repository, the same
+# green suite, the same two-hundred-note corpus, and no record of which
+# module it should not look at.
+#
+# THE WORKSPACE BASENAME IS PART OF THE DESIGN. The knowledge plugin scopes
+# its collections by the repository's declared working directory — by
+# default the basename of the checkout (agentic_knowledge scope,
+# strategy ``repo_basename``). AK-Bench workspaces are per run, and the
+# default workspace id embeds a run-specific fragment, so a replay run whose
+# workspace basename differs from the learning run's reads a *different*
+# collection and silently sees nothing. Two ways to keep the pair
+# comparable, in order of preference:
+#
+# 1. pin the workspace id to the repository name in both arms, so both
+#    checkouts declare the same working directory and land in the same
+#    scope: run the orchestrator with a fixed ``workspace_id`` (the
+#    ``akbench run`` path accepts ``--workspace-id``; the experiment path
+#    derives it from the task, which is why this file pins the model and
+#    documents the requirement instead of pretending it is enforced here);
+#
+# 2. or set the plugin's scope override table so the learning and replay
+#    checkouts map onto one scope key regardless of their directory names:
+#
+#       LLM_ROUTER_KNOWLEDGE_AGENTIC__SCOPE__OVERRIDES:
+#         {"<learning workspace path>": "atlas",
+#          "<replay workspace path>": "atlas"}
+#
+#    (the exact env spelling follows the plugin's config loader; the
+#    policy file equivalent is ``scope.overrides`` mapping declared path
+#    to scope key).
+#
+# Without one of the two, the replay arm is a fresh arm with extra
+# latency, and the experiment measures nothing.
+#
+# Readiness: on the external shared router ``akbench knowledge readiness``
+# reports ``unsupported`` — the router refuses knowledge reads, so the
+# replay gate blocks. This experiment therefore runs against a *managed*
+# router lifecycle (a per-run instance whose knowledge prefixes are the
+# run's own), with ``requires_readiness: true`` and ``allow_unverified``
+# left at its default of false: a replay that cannot confirm the knowledge
+# base is there is recorded as unverified, never as verified.
+schema_version: "1.0"
+id: knowledge-replay-atlas
+version: "1.0.0"
+title: Knowledge replay across the atlas drift family
+description: >-
+  Whether what an agent learned while restoring five invariants of a sharded store carries to the single-defect twins of that store in fresh sessions, measured against an arm that never had the memory at all. The replay and fresh arms differ in knowledge access and in nothing else; the learning arm is the only source of the memory. The twins are different modules of the same store, so the knowledge must transfer as principles — the invariants, the dead-ends, the module placement — not as a patch.
+
+experiment:
+  type: knowledge_replay
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+      model: qwen/Qwen3.8-27B
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router-ak-bench
+      # A memory experiment must own the knowledge namespace it reads and
+      # writes; a shared router does not let that be scoped, so the instance
+      # is managed per run and its knowledge prefixes are the run's own.
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories: [bug_fix]
+      task_ids: [atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004]
+
+  factors:
+    strategy: full_factorial
+    dimensions: []
+    baseline: {}
+
+  execution_policy:
+    repetitions: 1
+    concurrency: 1
+    timeout_seconds: 10800
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  knowledge:
+    plugin: agentic_knowledge
+
+    learning:
+      # One learning task: the five-module task. Its session is long enough
+      # that the plugin's compaction archive and dead-end recording both
+      # fire, which is the memory the twins are asked to spend.
+      tasks:
+        - atlas-drift-001@1.0.0
+      write_enabled: true
+      read_enabled: true
+
+    replay:
+      requires_readiness: true
+      allow_unverified: false
+
+    fresh_control: true
+
+    scenarios:
+      - id: same-task
+        type: exact_replay
+        task: atlas-drift-001@1.0.0
+        note: the same task, a new session, no session history
+      - id: fencing-twin
+        type: related_transfer
+        task: atlas-drift-002@1.0.0
+        note: >-
+          the fencing module, one defect; the learning task's fence fix is a
+          recipe, not this task's patch
+      - id: tiebreak-twin
+        type: related_transfer
+        task: atlas-drift-003@1.0.0
+        note: >-
+          the repair module, one defect; the direction the tie-break points is
+          a principle the learning session wrote down, the comparison is this
+          task's line
+      - id: window-twin
+        type: related_transfer
+        task: atlas-drift-004@1.0.0
+        note: >-
+          the storage module, one defect; the exclusive boundary is the rule,
+          the window is this task's line
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    # learning 1 + (replay + fresh) x 4 scenarios = 9 runs.
+    max_runs: 16
