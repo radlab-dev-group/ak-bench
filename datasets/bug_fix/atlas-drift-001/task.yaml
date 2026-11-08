@@ -39,5 +39,5 @@ task:
     - preserve the public API, the wire format, and the crash contract
     - do not change the repository suite, the schema document, or the incident corpus
     - do not add third-party dependencies, threads, or timers
-    - keep the five SPEC invariants: durable COMMIT, CURRENT as publication, exclusive boundary, fencing equality, descending tie-break
+    - "keep the five SPEC invariants: durable COMMIT, CURRENT as publication, exclusive boundary, fencing equality, descending tie-break"
     - the vendored v1 ring and the generated tables are not the write path and must not be "fixed"
