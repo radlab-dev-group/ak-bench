@@ -1,0 +1,96 @@
+diff --git a/src/atlas/fencing.py b/src/atlas/fencing.py
+index 68cab81..96b340a 100644
+--- a/src/atlas/fencing.py
++++ b/src/atlas/fencing.py
+@@ -79,11 +79,14 @@ class FenceBook:
+         self.membership.check_epoch(writer, planned_epoch)
+         current = self.leases.get(key)
+         held = current.generation if current is not None else 0
++        # A caller ahead of the store has seen work the store has not yet
++        # recorded; refusing it would strand a caught-up peer, so the check
++        # passes it through.
+         if self.generation_check == "strict":
+-            if offered_generation != held:
++            if offered_generation < held:
+                 raise StaleGenerationError(key, offered_generation, held)
+         else:
+-            if offered_generation > held:
++            if offered_generation < held:
+                 raise StaleGenerationError(key, offered_generation, held)
+ 
+     def acknowledge(self, key: str, offered_generation: int, planned_epoch: int, writer: str) -> None:
+diff --git a/src/atlas/rebalance.py b/src/atlas/rebalance.py
+index be2d27e..6193347 100644
+--- a/src/atlas/rebalance.py
++++ b/src/atlas/rebalance.py
+@@ -80,8 +80,10 @@ class Rebalancer:
+         current = self.placement.current
+         found: list[Movement] = []
+         for key in sorted(state_keys):
+-            source = current.owner(key)
+-            destination = target.owner(key)
++            # The key is moving onto the replica that does not have it yet, so
++            # the side that is missing it is the one the copy must land on.
++            source = target.owner(key)
++            destination = current.owner(key)
+             if source == destination:
+                 continue
+             found.append(
+diff --git a/src/atlas/repair.py b/src/atlas/repair.py
+index 27dd8e1..7fe9acf 100644
+--- a/src/atlas/repair.py
++++ b/src/atlas/repair.py
+@@ -66,7 +66,7 @@ class ReadRepairer:
+             relation = compare(record.vector, best.vector)
+             if relation == 2:
+                 by_tie_break = True
+-                if tie_break_key(record.vector) > tie_break_key(best.vector):
++                if tie_break_key(record.vector) < tie_break_key(best.vector):
+                     losers.append(best)
+                     best = record
+                 else:
+diff --git a/src/atlas/storage.py b/src/atlas/storage.py
+index 8e7c932..df670d8 100644
+--- a/src/atlas/storage.py
++++ b/src/atlas/storage.py
+@@ -104,7 +104,12 @@ class ShardStorage:
+             self.recovery.snapshot_published = snapshot.published
+             self.counter.advance_to(snapshot.last_lsn)
+         replayed: list[tuple[FrameKind, Record]] = []
+-        for kind, record in self.log.replay(bounds=self.bounds, snapshot_lsn=self.recovery.snapshot_lsn):
++        # The image is a floor, not a ceiling: the window opens at the
++        # snapshot's number rather than after it.
++        for kind, record in self.log.replay(
++            bounds=LSNBounds(boundary="inclusive"),
++            snapshot_lsn=self.recovery.snapshot_lsn,
++        ):
+             replayed.append((kind, record))
+         for _kind, record in replayed:
+             self.state.apply(record, reconcile=True)
+diff --git a/src/atlas/wal.py b/src/atlas/wal.py
+index 5d8da8d..84befac 100644
+--- a/src/atlas/wal.py
++++ b/src/atlas/wal.py
+@@ -260,6 +260,7 @@ class WriteAheadLog:
+         healthy = 0
+         committed = 0
+         offset = 0
++        last_frame_start = 0
+         while offset < len(data):
+             if len(data) - offset < FRAME_OVERHEAD:
+                 report.torn = True
+@@ -274,8 +275,14 @@ class WriteAheadLog:
+                 break
+             if frame.kind is FrameKind.COMMIT:
+                 committed += 1
++            last_frame_start = offset
+             healthy = offset + frame.size
+             offset = healthy
++        if report.torn and last_frame_start:
++            # The frame the damage sits next to is not to be trusted either:
++            # a torn tail is the start of a longer interruption, so the cut
++            # goes back one frame past the last one that read cleanly.
++            healthy = last_frame_start
+         if healthy != len(data):
+             report.truncated_bytes = self.truncate_after(path, healthy)
+             report.surviving_transactions = committed

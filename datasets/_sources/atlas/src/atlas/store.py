@@ -318,9 +318,24 @@ class Atlas:
     # --------------------------------------------------------------- rebalance
     def rebalance(self, replicas) -> Any:
         keys = self.stored_keys()
+        for name in replicas:
+            if name not in self.nodes:
+                self.membership.add(name)
+                self.nodes[name] = Node(
+                    node_id=name,
+                    epoch=self.placement.epoch(),
+                    root=self.root / name,
+                    shard_count=int(self.config["shards"]),
+                    config=self.config,
+                )
+        self.replicator.nodes = self.nodes
+        self.repairer.nodes = self.nodes
+        self.rebalancer.nodes = self.nodes
         report = self.rebalancer.run(
             replicas, state_keys=keys, epoch=self.placement.epoch() + 1
         )
+        # A node that leaves is kept until after the source has been released,
+        # because the release is a write; the membership moves on only after.
         self.membership = self.membership.advance()
         self.fence.membership = self.membership
         self.epoch = self.placement.epoch()
