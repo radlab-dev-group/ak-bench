@@ -262,7 +262,7 @@
             <tr>
               <th style="text-align:left;">Task UID</th>
               {% for cfg in config_comparison.configurations %}
-                <th colspan="4" style="border-left:1px solid var(--line); font-size:11.5px;">
+                <th colspan="7" style="border-left:1px solid var(--line); font-size:11.5px;">
                   {{ cfg.config_name }}
                 </th>
               {% endfor %}
@@ -274,6 +274,9 @@
                 <th style="font-size:10.5px;">Pass Rate</th>
                 <th style="font-size:10.5px;">Time</th>
                 <th style="font-size:10.5px;">Tokens</th>
+                <th style="font-size:10.5px;">Runs</th>
+                <th style="font-size:10.5px;">Passed</th>
+                <th style="font-size:10.5px;">Tool Calls</th>
               {% endfor %}
             </tr>
           </thead>
@@ -304,9 +307,14 @@
                     {% else %}—{% endif %}
                   </td>
                   <td class="mono">
-                    {% if t_stat and t_stat.total_tokens and t_stat.runs %}
+                    {% if t_stat and t_stat.total_tokens is not none and t_stat.runs %}
                       {{ "{:,}".format((t_stat.total_tokens / t_stat.runs)|round|int) }}
                     {% else %}—{% endif %}
+                  </td>
+                  <td class="mono">{{ t_stat.runs if t_stat else 0 }}</td>
+                  <td class="mono">{{ t_stat.passed if t_stat else 0 }}</td>
+                  <td class="mono">
+                    {% if t_stat and t_stat.mean_tool_calls is not none %}{{ "%.1f"|format(t_stat.mean_tool_calls) }}{% else %}—{% endif %}
                   </td>
                 {% endfor %}
               </tr>

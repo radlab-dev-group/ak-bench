@@ -771,6 +771,35 @@ def test_the_run_diff_opens_on_two_runs_chosen_from_lists(database_url: str) -> 
     assert 'value="run-002" selected' in chosen
 
 
+def test_comparison_matrix_uses_recorded_metrics(database_url: str) -> None:
+    _seeded_store(database_url)
+    service = BenchDataService(database_url=database_url)
+    comparison = service.compare_configurations(["v-base", "v-opt"])
+    row = comparison["task_matrix"][0]["configs"]
+    assert row["v-base"]["mean_score"] == 1.0
+    assert row["v-base"]["success_rate"] == 1.0
+    assert row["v-base"]["mean_duration"] == 300
+    assert row["v-base"]["total_tokens"] == 5000
+    assert row["v-opt"]["mean_score"] == 0.9
+    assert row["v-opt"]["total_tokens"] == 2000
+    assert row["v-base"]["mean_tool_calls"] == 0.0
+    body = TestClient(create_app(database_url=database_url)).get("/compare").text
+    assert 'colspan="7"' in body
+    assert "Tool Calls" in body
+    assert "5,000" in body and "2,000" in body
+
+
+def test_task_score_chart_keeps_boundary_scores_inside_plot(database_url: str) -> None:
+    _seeded_store(database_url)
+    body = TestClient(create_app(database_url=database_url)).get(
+        "/tasks/wordcount-001@1.0.0"
+    ).text
+    assert "yMin = minScore - bias" in body
+    assert "yMax = maxScore + bias" in body
+    assert "Math.max(diff * 0.2, 0.01)" in body
+    assert "pointStyle:" in body and "borderDash:" in body
+
+
 def test_the_runs_page_limits_the_comparison_to_two_runs(database_url: str) -> None:
     """Two checks are the whole budget, and the page says so while choosing.
 

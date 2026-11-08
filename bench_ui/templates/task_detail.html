@@ -398,10 +398,24 @@ document.addEventListener('DOMContentLoaded', () => {
       spanGaps: true,
       pointRadius: 4,
       pointHoverRadius: 6,
+      pointStyle: ['circle', 'rectRot', 'triangle', 'rect'][i % 4],
+      borderDash: i % 2 ? [6, 4] : [],
     };
   });
 
   const drawScoreChart = () => {
+  const allScores = runs.map(r => r.score).filter(s => typeof s === 'number' && Number.isFinite(s));
+  let yMin = 0;
+  let yMax = 1;
+  if (allScores.length > 0) {
+    const minScore = Math.min(...allScores);
+    const maxScore = Math.max(...allScores);
+    const diff = maxScore - minScore;
+    const bias = Math.max(diff * 0.2, 0.01);
+    yMin = minScore - bias;
+    yMax = maxScore + bias;
+  }
+
   new Chart(canvas, {
     type: 'line',
     data: { labels, datasets },
@@ -432,7 +446,7 @@ document.addEventListener('DOMContentLoaded', () => {
           title: {
             display: true, text: 'Score', color: ink().dim, font: { family: 'ui-monospace', size: 11 },
           },
-          min: 0, max: 1, ticks: { color: ink().dim, font: { family: 'ui-monospace', size: 11 } },
+          min: yMin, max: yMax, ticks: { maxTicksLimit: 7, color: ink().dim, font: { family: 'ui-monospace', size: 11 } },
           grid: { color: ink().grid },
         },
       },

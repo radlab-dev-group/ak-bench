@@ -252,7 +252,7 @@
                 {% else %}—{% endif %}
               </td>
               <td class="num mono">
-                {% if row.mean_total_tokens %}{{ "{:,}".format(row.mean_total_tokens) }}{% else %}—{% endif %}
+                {% if row.mean_total_tokens is not none %}{{ "{:,}".format(row.mean_total_tokens|round|int) }}{% else %}—{% endif %}
               </td>
               <td class="num mono" data-sort-value="{{ row.mean_tool_calls if row.mean_tool_calls is not none else '' }}">
                 {% if row.mean_tool_calls is not none %}{{ "%.1f"|format(row.mean_tool_calls) }}{% else %}—{% endif %}
