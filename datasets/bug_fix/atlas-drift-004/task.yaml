@@ -1,0 +1,48 @@
+schema_version: "1.0"
+id: atlas-drift-004
+version: "1.0.0"
+created_at: "2026-11-08T13:40:00+01:00"
+title: Restore the exclusive replay boundary that an inclusive window erased
+description: >-
+  A production Atlas cluster reports counters that advance by two for every
+  increment and reads that serve work the log says was already published.
+  The repository suite is green, so the defect is visible only in the
+  cross-module crash and recovery scenarios. The cluster's incident corpus
+  contains notes about exactly this window and about the change that was
+  tried, measured, and reverted around it; the corpus is two hundred notes
+  long and the one or two that matter are written about the symptom, not the
+  module. Restore the documented invariant without changing the wire format,
+  the public API, or the crash contract.
+authors:
+  - "[codex_cli] Codex with agentic knowledge"
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/atlas
+    ref: HEAD
+    notes: >-
+      standard-library-only sharded store seed; one regression in the module
+      that owns the recovery window. This task is one of a family of
+      single-defect variants of the same store: the defect lives in a
+      different module than in its siblings, so a fix learned from a sibling
+      transfers as a principle, not as a diff.
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      The replay window opened at the snapshot's own number instead of after
+      it, so every record the snapshot already contained was applied a second
+      time on open. The image is a floor, not a ceiling: the window must
+      start after it, or the open re-does work that has been done.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the public API, the wire format, and the crash contract
+    - do not change the repository suite, the schema document, or the incident corpus
+    - do not add third-party dependencies, threads, or timers
+    - "keep the five SPEC invariants: durable COMMIT, CURRENT as publication, exclusive boundary, fencing equality, descending tie-break"
+    - the vendored v1 ring and the generated tables are not the write path and must not be "fixed"
