@@ -12,7 +12,8 @@ description: >-
   between key-and-generation nodes, five edge kinds, idempotent under replay,
   and an observer that never reads storage.
 authors:
-  - "[codex_cli] Codex with agentic knowledge"
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
 task:
   category: new_feature
   difficulty: expert

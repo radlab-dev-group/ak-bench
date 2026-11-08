@@ -19,11 +19,11 @@
 | `NF_007`   | `stockpile-fefo-001`           | `new_feature`   | [READ](./new_feature/stockpile-fefo-001/description.md)         | `expert`   | Local `qwen-38-Flash`/`qwen-38-27B`   | `2026-11-01 19:00`   |
 | `NF_008`   | `streamforge-windows-001`      | `new_feature`   | [READ](./new_feature/streamforge-windows-001/description.md)    | `expert`   | Codex with `GPT 6.1 Sol`              | `2026-11-02 14:00`   |
 | `NF_009`   | `typeweave-inference-001`      | `new_feature`   | [READ](./new_feature/typeweave-inference-001/description.md)    | `expert`   | Codex with `GPT 6.1 Sol`              | `2026-11-02 14:00`   |
-| `BF_009`   | `atlas-drift-001`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-001/description.md)                | `expert`   | Codex with agentic knowledge          | `2026-11-08 11:20`   |
-| `BF_010`   | `atlas-drift-002`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-002/description.md)                | `expert`   | Codex with agentic knowledge          | `2026-11-08 13:40`   |
-| `BF_011`   | `atlas-drift-003`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-003/description.md)                | `expert`   | Codex with agentic knowledge          | `2026-11-08 13:40`   |
-| `BF_012`   | `atlas-drift-004`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-004/description.md)                | `expert`   | Codex with agentic knowledge          | `2026-11-08 13:40`   |
-| `NF_010`   | `atlas-lineage-001`            | `new_feature`   | [READ](./new_feature/atlas-lineage-001/description.md)          | `expert`   | Codex with agentic knowledge          | `2026-11-08 11:20`   |
+| `BF_009`   | `atlas-drift-001`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-001/description.md)                | `expert`   | Local `qwen-38-27B`/`qwen-38-Flash-Next` | `2026-11-08 11:20`   |
+| `BF_010`   | `atlas-drift-002`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-002/description.md)                | `expert`   | Local `qwen-38-27B`/`qwen-38-Flash-Next` | `2026-11-08 13:40`   |
+| `BF_011`   | `atlas-drift-003`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-003/description.md)                | `expert`   | Local `qwen-38-27B`/`qwen-38-Flash-Next` | `2026-11-08 13:40`   |
+| `BF_012`   | `atlas-drift-004`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-004/description.md)                | `expert`   | Local `qwen-38-27B`/`qwen-38-Flash-Next` | `2026-11-08 13:40`   |
+| `NF_010`   | `atlas-lineage-001`            | `new_feature`   | [READ](./new_feature/atlas-lineage-001/description.md)          | `expert`   | Local `qwen-38-27B`/`qwen-38-Flash-Next` | `2026-11-08 11:20`   |
 
 `Difficulty` is the task descriptor's own `task.difficulty`
 (`src/akbench/datasets/task.py`: `easy` | `medium` | `hard` | `expert`), so the
@@ -106,7 +106,7 @@ task_ids:
   - depweaver-backtracking-001
 ```
 
-**All `bugfix` tasks created by Codex with agentic knowledge**
+**All `bugfix` tasks created by local `qwen/Qwen3.8-27B` and `qwen/Qwen3.8-Flash-Next`**
 
 Single line
 ```yaml
@@ -183,7 +183,7 @@ task_ids:
   - typeweave-inference-001
 ```
 
-**All `new_feature` tasks created by Codex with agentic knowledge**
+**All `new_feature` tasks created by local `qwen/Qwen3.8-27B` and `qwen/Qwen3.8-Flash-Next`**
 
 Single line
 ```yaml

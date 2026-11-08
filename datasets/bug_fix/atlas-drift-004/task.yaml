@@ -14,7 +14,8 @@ description: >-
   module. Restore the documented invariant without changing the wire format,
   the public API, or the crash contract.
 authors:
-  - "[codex_cli] Codex with agentic knowledge"
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
 task:
   category: bug_fix
   difficulty: expert
