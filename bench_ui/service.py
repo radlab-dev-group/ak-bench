@@ -853,7 +853,6 @@ class BenchDataService:
             {"label": "evaluated", "value": f"{summary['evaluated']:,}"},
             {"label": "tasks", "value": f"{len(history.tasks):,}"},
             {"label": "total time", "value": _format_duration(total_duration)},
-            {"label": "mean time", "value": _format_duration(summary["mean_duration_seconds"])},
             {"label": "input tokens", "value": _count(summary["input_tokens"])},
             {"label": "cached tokens", "value": _count(summary.get("cached_input_tokens"))},
             {"label": "generated tokens", "value": _count(summary["output_tokens"])},
