@@ -146,6 +146,20 @@
         </div>
       </div>
     </div>
+
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-header">
+        <div class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          Models: Mean Tool Calls
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+          <canvas id="chartModelToolCalls"></canvas>
+        </div>
+      </div>
+    </div>
     <div class="model-verification-summary" id="modelVerificationSummary"></div>
   </div>
 
@@ -381,6 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cost = {
       durationMin: models.map(m => m.mean_duration_seconds !== null ? (m.mean_duration_seconds / 60).toFixed(1) : 0),
       tokensK: models.map(m => m.mean_total_tokens !== null ? Math.round(m.mean_total_tokens / 1000) : 0),
+      toolCalls: models.map(m => m.mean_tool_calls !== null ? Number(m.mean_tool_calls).toFixed(1) : 0),
     };
 
     const PALETTE = ['#00e59b', '#5aa9ff', '#ffb44a', '#c792ea', '#ff6b7a', '#4dd0e1', '#f0e68c', '#ff8a65', '#9ccc65', '#ba68c8', '#7986cb', '#e57373'];
@@ -533,6 +548,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
               },
             },
+          },
+          scales: {
+            x: {
+              type: 'linear', position: 'bottom',
+              ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+            },
+            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
+          }
+        }
+      });
+    }
+
+    const ctx5 = document.getElementById('chartModelToolCalls');
+    if (ctx5) {
+      new Chart(ctx5, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Mean Tool Calls',
+              data: cost.toolCalls,
+              backgroundColor: barBgs,
+              borderColor: barBorders,
+              borderWidth: 1,
+              borderRadius: 4,
+            }
+          ]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
           },
           scales: {
             x: {
