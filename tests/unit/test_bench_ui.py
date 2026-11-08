@@ -105,7 +105,7 @@ def _seeded_store(database_url: str) -> HistoryStore:
                 "failed": 0,
                 "total": 10,
             },
-            "observations": {"total_tokens": 5000, "input_tokens": 4000, "output_tokens": 1000},
+            "observations": {"total_tokens": 5000, "input_tokens": 4000, "cached_input_tokens": 800, "output_tokens": 1000},
         },
         experiment_uid="test-exp@1.0.0",
         variant_uid="v-base",
@@ -129,7 +129,7 @@ def _seeded_store(database_url: str) -> HistoryStore:
                 "failed": 1,
                 "total": 10,
             },
-            "observations": {"total_tokens": 2000, "input_tokens": 1600, "output_tokens": 400},
+            "observations": {"total_tokens": 2000, "input_tokens": 1600, "cached_input_tokens": 200, "output_tokens": 400},
         },
         experiment_uid="test-exp@1.0.0",
         variant_uid="v-opt",
@@ -1012,9 +1012,9 @@ def test_the_dashboard_opens_with_the_overall_ledger(database_url: str) -> None:
     body = client.get("/").text
 
     for label in (
-        "experiments", "runs", "evaluated", "success rate", "tasks",
-        "total time", "mean time", "input tokens", "generated tokens",
-        "tokens", "tool calls", "cost",
+        "experiments", "evaluated", "tasks",
+        "total time", "mean time", "input tokens", "cached tokens", "generated tokens",
+        "tool calls", "cost",
     ):
         assert label in body, label
 
@@ -1023,14 +1023,18 @@ def test_the_dashboard_opens_with_the_overall_ledger(database_url: str) -> None:
 
     service = BenchDataService(database_url=database_url)
     ledger = {row["label"]: row["value"] for row in service.get_dashboard_stats()}
-    assert ledger["runs"] == "2"
+    assert "runs" not in ledger
+    assert "success rate" not in ledger
     assert ledger["experiments"] == "1"
+    assert ledger["evaluated"] == "2"
     assert ledger["tasks"] == "1"
     assert ledger["cost"] == "not recorded"
     # two runs of five and two minutes: the total is their sum, the mean their mean
     assert ledger["total time"] == "7 m 0 s"
     assert ledger["mean time"] == "3 m 30 s"
-    assert ledger["tokens"] == "7,000"
+    assert ledger["input tokens"] == "5,600"
+    assert ledger["cached tokens"] == "1,000"
+    assert ledger["generated tokens"] == "1,400"
 
 
 def test_the_run_inspector_names_its_tests(database_url: str, tmp_path) -> None:

@@ -850,22 +850,13 @@ class BenchDataService:
         cost = format_cost(estimated["total"], estimated["currency"])
         return [
             {"label": "experiments", "value": f"{len(history.experiments):,}"},
-            {"label": "runs", "value": f"{summary['runs']:,}"},
             {"label": "evaluated", "value": f"{summary['evaluated']:,}"},
-            {
-                "label": "success rate",
-                "value": (
-                    f"{summary['success_rate'] * 100:.1f}%"
-                    if summary["success_rate"] is not None
-                    else "—"
-                ),
-            },
             {"label": "tasks", "value": f"{len(history.tasks):,}"},
             {"label": "total time", "value": _format_duration(total_duration)},
             {"label": "mean time", "value": _format_duration(summary["mean_duration_seconds"])},
             {"label": "input tokens", "value": _count(summary["input_tokens"])},
+            {"label": "cached tokens", "value": _count(summary.get("cached_input_tokens"))},
             {"label": "generated tokens", "value": _count(summary["output_tokens"])},
-            {"label": "tokens", "value": _count(summary["total_tokens"])},
             {"label": "tool calls", "value": _count(summary["tool_calls"])},
             {
                 "label": "cost",
