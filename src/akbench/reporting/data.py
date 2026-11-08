@@ -107,10 +107,16 @@ def _rate(numerator: int, denominator: int) -> float | None:
 
 def _sum_tokens(runs: list[dict[str, Any]], key: str) -> tuple[int | None, int]:
     """Sum a token field and report how many runs actually stated it."""
+    def _extract(obs: dict[str, Any]) -> Any:
+        val = obs.get(key)
+        if val is None and key == "cached_input_tokens":
+            val = obs.get("cached_tokens")
+        return val
+
     values = [
         value
         for value in (
-            (run.get("observations") or {}).get(key)
+            _extract(run.get("observations") or {})
             for run in runs
             if isinstance(run.get("observations"), dict)
         )
@@ -179,6 +185,7 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
     durations = [value for value in (duration_seconds(run) for run in runs) if value is not None]
     tokens, token_runs = _sum_tokens(runs, "total_tokens")
     input_tokens, input_runs = _sum_tokens(runs, "input_tokens")
+    cached_input_tokens, cached_input_runs = _sum_tokens(runs, "cached_input_tokens")
     output_tokens, output_runs = _sum_tokens(runs, "output_tokens")
     tool_calls, tool_call_runs = _sum_tokens(runs, "tool_call_count")
     return {
@@ -198,6 +205,8 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         # not zero
         "input_tokens": input_tokens,
         "input_token_runs": input_runs,
+        "cached_input_tokens": cached_input_tokens,
+        "cached_input_token_runs": cached_input_runs,
         "output_tokens": output_tokens,
         "output_token_runs": output_runs,
         "tool_calls": tool_calls,

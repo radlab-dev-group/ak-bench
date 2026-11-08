@@ -105,7 +105,7 @@ def _seeded_store(database_url: str) -> HistoryStore:
                 "failed": 0,
                 "total": 10,
             },
-            "observations": {"total_tokens": 5000, "input_tokens": 4000, "output_tokens": 1000},
+            "observations": {"total_tokens": 5000, "input_tokens": 4000, "cached_input_tokens": 800, "output_tokens": 1000},
         },
         experiment_uid="test-exp@1.0.0",
         variant_uid="v-base",
@@ -129,7 +129,7 @@ def _seeded_store(database_url: str) -> HistoryStore:
                 "failed": 1,
                 "total": 10,
             },
-            "observations": {"total_tokens": 2000, "input_tokens": 1600, "output_tokens": 400},
+            "observations": {"total_tokens": 2000, "input_tokens": 1600, "cached_input_tokens": 200, "output_tokens": 400},
         },
         experiment_uid="test-exp@1.0.0",
         variant_uid="v-opt",
@@ -771,6 +771,35 @@ def test_the_run_diff_opens_on_two_runs_chosen_from_lists(database_url: str) -> 
     assert 'value="run-002" selected' in chosen
 
 
+def test_comparison_matrix_uses_recorded_metrics(database_url: str) -> None:
+    _seeded_store(database_url)
+    service = BenchDataService(database_url=database_url)
+    comparison = service.compare_configurations(["v-base", "v-opt"])
+    row = comparison["task_matrix"][0]["configs"]
+    assert row["v-base"]["mean_score"] == 1.0
+    assert row["v-base"]["success_rate"] == 1.0
+    assert row["v-base"]["mean_duration"] == 300
+    assert row["v-base"]["total_tokens"] == 5000
+    assert row["v-opt"]["mean_score"] == 0.9
+    assert row["v-opt"]["total_tokens"] == 2000
+    assert row["v-base"]["mean_tool_calls"] == 0.0
+    body = TestClient(create_app(database_url=database_url)).get("/compare").text
+    assert 'colspan="7"' in body
+    assert "Tool Calls" in body
+    assert "5,000" in body and "2,000" in body
+
+
+def test_task_score_chart_keeps_boundary_scores_inside_plot(database_url: str) -> None:
+    _seeded_store(database_url)
+    body = TestClient(create_app(database_url=database_url)).get(
+        "/tasks/wordcount-001@1.0.0"
+    ).text
+    assert "yMin = minScore - bias" in body
+    assert "yMax = maxScore + bias" in body
+    assert "Math.max(diff * 0.2, 0.01)" in body
+    assert "pointStyle:" in body and "borderDash:" in body
+
+
 def test_the_runs_page_limits_the_comparison_to_two_runs(database_url: str) -> None:
     """Two checks are the whole budget, and the page says so while choosing.
 
@@ -837,8 +866,10 @@ def test_the_dashboard_charts_compare_models_not_metrics(database_url: str) -> N
     client = TestClient(create_app(database_url=database_url))
     body = client.get("/").text
 
-    # one bar per model, the same metric in both charts
-    assert "chartModelPerformance" in body and "chartModelCost" in body
+    # one bar per model across charts
+    assert "chartModelSuccessRate" in body and "chartModelMeanScore" in body
+    assert "chartModelDuration" in body and "chartModelTokens" in body
+    assert "chartModelToolCalls" in body and "chartModelSampleSize" in body
     assert "model-a" in body and "model-b" in body
     import json
     import re
@@ -1010,9 +1041,9 @@ def test_the_dashboard_opens_with_the_overall_ledger(database_url: str) -> None:
     body = client.get("/").text
 
     for label in (
-        "experiments", "runs", "evaluated", "success rate", "tasks",
-        "total time", "mean time", "input tokens", "generated tokens",
-        "tokens", "tool calls", "cost",
+        "experiments", "evaluated", "tasks",
+        "total time", "mean time", "input tokens", "cached tokens", "generated tokens",
+        "tool calls", "cost",
     ):
         assert label in body, label
 
@@ -1021,14 +1052,18 @@ def test_the_dashboard_opens_with_the_overall_ledger(database_url: str) -> None:
 
     service = BenchDataService(database_url=database_url)
     ledger = {row["label"]: row["value"] for row in service.get_dashboard_stats()}
-    assert ledger["runs"] == "2"
+    assert "runs" not in ledger
+    assert "success rate" not in ledger
     assert ledger["experiments"] == "1"
+    assert ledger["evaluated"] == "2"
     assert ledger["tasks"] == "1"
     assert ledger["cost"] == "not recorded"
     # two runs of five and two minutes: the total is their sum, the mean their mean
     assert ledger["total time"] == "7 m 0 s"
     assert ledger["mean time"] == "3 m 30 s"
-    assert ledger["tokens"] == "7,000"
+    assert ledger["input tokens"] == "5,600"
+    assert ledger["cached tokens"] == "1,000"
+    assert ledger["generated tokens"] == "1,400"
 
 
 def test_the_run_inspector_names_its_tests(database_url: str, tmp_path) -> None:
@@ -1651,5 +1686,5 @@ def test_the_model_charts_wrap_the_configuration_label(database_url: str) -> Non
     assert "const labels = models.map(labelLines);" in script
     assert script.count("labels,") >= 2
     # and each panel is sized for the lines the wrap produces
-    assert body.count('class="model-chart-box"') == 2
+    assert body.count('class="model-chart-box"') == 6
     assert "extraLines" in script

@@ -850,22 +850,13 @@ class BenchDataService:
         cost = format_cost(estimated["total"], estimated["currency"])
         return [
             {"label": "experiments", "value": f"{len(history.experiments):,}"},
-            {"label": "runs", "value": f"{summary['runs']:,}"},
             {"label": "evaluated", "value": f"{summary['evaluated']:,}"},
-            {
-                "label": "success rate",
-                "value": (
-                    f"{summary['success_rate'] * 100:.1f}%"
-                    if summary["success_rate"] is not None
-                    else "—"
-                ),
-            },
             {"label": "tasks", "value": f"{len(history.tasks):,}"},
             {"label": "total time", "value": _format_duration(total_duration)},
             {"label": "mean time", "value": _format_duration(summary["mean_duration_seconds"])},
             {"label": "input tokens", "value": _count(summary["input_tokens"])},
+            {"label": "cached tokens", "value": _count(summary.get("cached_input_tokens"))},
             {"label": "generated tokens", "value": _count(summary["output_tokens"])},
-            {"label": "tokens", "value": _count(summary["total_tokens"])},
             {"label": "tool calls", "value": _count(summary["tool_calls"])},
             {
                 "label": "cost",
@@ -1673,6 +1664,7 @@ class BenchDataService:
 
         # Map variant values to each config
         config_data = []
+        config_runs = {}
         for cfg_name in selected_configs:
             rank_info = ranking_map.get(cfg_name)
             # Find matching runs
@@ -1690,6 +1682,7 @@ class BenchDataService:
                         break
 
             summary = summarize_runs(matching_runs)
+            config_runs[cfg_name] = matching_runs
             config_data.append(
                 {
                     "config_name": cfg_name,
@@ -1707,7 +1700,7 @@ class BenchDataService:
             row_entry: dict[str, Any] = {"task_uid": t_uid, "configs": {}}
             for item in config_data:
                 cfg_name = item["config_name"]
-                t_runs = [r for r in item["runs"] if r.get("task_uid") == t_uid]
+                t_runs = [r for r in config_runs[cfg_name] if r.get("task_uid") == t_uid]
                 t_summary = summarize_runs(t_runs)
                 row_entry["configs"][cfg_name] = {
                     "runs": t_summary["runs"],
@@ -1716,6 +1709,9 @@ class BenchDataService:
                     "mean_score": t_summary["mean_score"],
                     "mean_duration": t_summary["mean_duration_seconds"],
                     "total_tokens": t_summary["total_tokens"],
+                    "mean_tool_calls": mean_per_run(
+                        t_summary["tool_calls"], t_summary["tool_call_runs"]
+                    ),
                 }
             task_matrix.append(row_entry)
 
