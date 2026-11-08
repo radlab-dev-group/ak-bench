@@ -1042,7 +1042,7 @@ def test_the_dashboard_opens_with_the_overall_ledger(database_url: str) -> None:
 
     for label in (
         "experiments", "evaluated", "tasks",
-        "total time", "mean time", "input tokens", "cached tokens", "generated tokens",
+        "total time", "input tokens", "cached tokens", "generated tokens",
         "tool calls", "cost",
     ):
         assert label in body, label
@@ -1058,9 +1058,9 @@ def test_the_dashboard_opens_with_the_overall_ledger(database_url: str) -> None:
     assert ledger["evaluated"] == "2"
     assert ledger["tasks"] == "1"
     assert ledger["cost"] == "not recorded"
-    # two runs of five and two minutes: the total is their sum, the mean their mean
+    # two runs of five and two minutes: the total is their sum
     assert ledger["total time"] == "7 m 0 s"
-    assert ledger["mean time"] == "3 m 30 s"
+    assert "mean time" not in ledger
     assert ledger["input tokens"] == "5,600"
     assert ledger["cached tokens"] == "1,000"
     assert ledger["generated tokens"] == "1,400"
