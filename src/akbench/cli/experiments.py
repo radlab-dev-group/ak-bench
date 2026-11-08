@@ -293,6 +293,42 @@ def _runtime_registry(context: CliContext):
     )
 
 
+def _knowledge_workspace_id(
+    experiment,
+    *,
+    agent_id: str,
+    task_uid: str,
+    variant_id: str,
+    repetition: int,
+    repository_source: str,
+) -> str | None:
+    """Pin a memory run's checkout to the repository name the plugin scopes by.
+
+    A ``knowledge_replay`` experiment is only honest when the replay arm can
+    read what the learning arm wrote. The knowledge plugin decides that with
+    one fact about the request: the *basename* of the working directory the
+    agent declares, which for a checkout is the name of its directory.
+    AK-Bench workspaces are named after the run, so two runs of the same
+    fixture — let alone two runs of two tasks of one fixture — land in two
+    collections and a replay silently reads nothing.
+
+    The pin is therefore the basename, not the path: the workspace id becomes
+    ``<run slug>/<repository name>``, unique per run because the slug is, and
+    the same for every arm that works the same fixture because the name is.
+    An operator who cannot let the harness name the checkout sets the
+    plugin's own ``scope.overrides`` table instead; the two ways are
+    documented in ``docs/KNOWLEDGE_REPLAY.md``.
+    """
+    body = experiment.descriptor.experiment
+    if body.knowledge is None:
+        return None
+    slug = _run_slug(agent_id, task_uid, variant_id, repetition)
+    name = Path(str(repository_source)).name
+    if not name:
+        return None
+    return f"{slug}/{name}"
+
+
 def _run_experiment(
     context: CliContext,
     experiment: LoadedExperiment,
@@ -428,6 +464,17 @@ def _run_experiment(
                 # no other output to watch.
                 clock = StepClock(f"[{index}/{plan.counts.runs}]")
                 started_at = datetime.now(UTC)
+                # A memory run's checkout has to declare the repository its
+                # knowledge belongs to; the pin is empty for every other
+                # experiment type, which leaves their run names as they were.
+                pinned_workspace = _knowledge_workspace_id(
+                    experiment,
+                    agent_id=variant.agent_id,
+                    task_uid=task.uid,
+                    variant_id=variant.variant_id,
+                    repetition=repetition,
+                    repository_source=loaded.task.task.repository.source,
+                )
                 config = OrchestrationConfig(
                     task=dataset.materialize(loaded),
                     agent_id=variant.agent_id,
@@ -435,6 +482,7 @@ def _run_experiment(
                     mode=plan.mode,
                     runtime_id=plan.runtime_id,
                     agent_parameters=agent_parameters,
+                    workspace_id=pinned_workspace,
                     # Plugin factors are the runtime's own configuration: a
                     # managed instance applies them as process environment, so
                     # the variant value becomes the state of a process this run
