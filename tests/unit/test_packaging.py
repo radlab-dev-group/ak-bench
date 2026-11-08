@@ -9,7 +9,6 @@ from akbench.orchestration.packaging import (
     collect_and_package_artifacts,
     pack_agent_traces,
     pack_evaluation_results,
-    pack_solution_diff,
     pack_solution_workspace,
 )
 

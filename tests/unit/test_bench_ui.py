@@ -4,16 +4,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from bench_ui.app import create_app
-from starlette.testclient import TestClient
-
 from bench_ui.service import BenchDataService
+from starlette.testclient import TestClient
 
 from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
 from akbench.storage.migrator import upgrade
-
-import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -288,7 +286,8 @@ def _components(store: HistoryStore) -> None:
                 "  execution_modes: [router, runtime, direct]\n"
                 "  supported_lifecycles: [managed]\n"
                 "  base_url: http://127.0.0.1:8085\n"
-                "  managed:\n    factor_env: {knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED}\n"
+                "  managed:\n"
+                "    factor_env: {knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED}\n"
             ),
         },
     )
@@ -540,7 +539,9 @@ def test_the_address_of_the_database_never_reaches_the_pages(monkeypatch, tmp_pa
 
     # A URL nobody can actually connect to: the page must say it is offline
     # and must never echo the address or the password.
-    app = create_app(database_url="postgresql+psycopg://akbench:***@127.0.0.1:1/none", project_root=tmp_path)
+    app = create_app(
+        database_url="postgresql+psycopg://akbench:***@127.0.0.1:1/none", project_root=tmp_path
+    )
     client = TestClient(app)
 
     page = client.get("/")
@@ -839,7 +840,8 @@ def test_the_dashboard_charts_compare_models_not_metrics(database_url: str) -> N
     # one bar per model, the same metric in both charts
     assert "chartModelPerformance" in body and "chartModelCost" in body
     assert "model-a" in body and "model-b" in body
-    import json, re
+    import json
+    import re
     match = re.search(r"const models = (\[.*?\]);", body, re.S)
     models = json.loads(match.group(1))
     by_model = {row["model"]: row for row in models}
@@ -887,7 +889,10 @@ def test_the_run_tables_carry_a_tool_calls_column(database_url: str) -> None:
     by_uid = {run["uid"]: run for run in api_runs}
     assert by_uid["run-tools"]["tool_call_count"] == 17
 
-    for path in ("/runs", "/", "/tasks", "/experiments", "/experiments/test-exp@1.0.0", "/tasks/wordcount-001@1.0.0"):
+    for path in (
+        "/runs", "/", "/tasks", "/experiments",
+        "/experiments/test-exp@1.0.0", "/tasks/wordcount-001@1.0.0",
+    ):
         body = client.get(path).text
         assert "Tool Calls" in body, path
 
@@ -1222,8 +1227,8 @@ def test_the_experiment_page_scores_tasks_against_configurations(database_url: s
     """
     store = _seeded_store(database_url)
     # a second task, scored under both variants, so a weak cell exists
-    from types import SimpleNamespace
     from datetime import datetime
+    from types import SimpleNamespace
 
     stub = SimpleNamespace(
         uid="second-001@1.0.0",
@@ -1232,7 +1237,8 @@ def test_the_experiment_page_scores_tasks_against_configurations(database_url: s
         task=SimpleNamespace(
             id="second-001", version="1.0.0", category="bug_fix", difficulty="easy",
             evaluator="pytest", created_at=datetime(2026, 11, 1, 12, 0, 0), authors=["Alice"],
-            title="Second", description="d", task=SimpleNamespace(repository=SimpleNamespace(source="s", ref="r")),
+            title="Second", description="d",
+            task=SimpleNamespace(repository=SimpleNamespace(source="s", ref="r")),
         ),
     )
     store.record_run(
@@ -1362,10 +1368,14 @@ def test_the_price_table_is_read_from_the_project(tmp_path) -> None:
     assert table.source.name == "pricing.yaml"
 
     # a named model uses its own price, not the default
-    priced = estimate_run_cost(table, "qwen/cheap", {"input_tokens": 1_000_000, "output_tokens": 1_000_000})
+    priced = estimate_run_cost(
+        table, "qwen/cheap", {"input_tokens": 1_000_000, "output_tokens": 1_000_000}
+    )
     assert priced == 0.5
     # an unlisted model falls back to the default
-    default = estimate_run_cost(table, "other/model", {"input_tokens": 1_000_000, "output_tokens": 0})
+    default = estimate_run_cost(
+        table, "other/model", {"input_tokens": 1_000_000, "output_tokens": 0}
+    )
     assert default == 1.0
     # a run that stated no tokens has no cost
     assert estimate_run_cost(table, "qwen/cheap", {}) is None
@@ -1420,7 +1430,9 @@ def test_two_runs_compare_their_changes_line_by_line(database_url: str, tmp_path
     """
     store = _seeded_store(database_url)
     first = tmp_path / "first.patch"
-    first.write_text("--- a\n+++ b\n context line\n-removed by second\n+added by first\n", encoding="utf-8")
+    first.write_text(
+        "--- a\n+++ b\n context line\n-removed by second\n+added by first\n", encoding="utf-8"
+    )
     second = tmp_path / "second.patch"
     second.write_text("--- a\n+++ b\n context line\n+added by second\n", encoding="utf-8")
     store.register_artifacts("run-001", [first])

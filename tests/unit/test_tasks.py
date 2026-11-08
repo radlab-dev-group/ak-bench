@@ -71,7 +71,7 @@ def test_negative_timeout_is_rejected() -> None:
 
 
 def test_task_created_at_and_authors() -> None:
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
 
     task = TaskDescriptor(
         id="wordcount-001",

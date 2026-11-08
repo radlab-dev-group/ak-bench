@@ -419,9 +419,7 @@ class HistoryStore:
             if run is None:
                 return None
             target_name = filename_or_path
-            if target_name.startswith(f"{run_uid}-"):
-                target_name = target_name[len(run_uid) + 1 :]
-            elif target_name.startswith(f"{run_uid}_"):
+            if target_name.startswith(f"{run_uid}-") or target_name.startswith(f"{run_uid}_"):
                 target_name = target_name[len(run_uid) + 1 :]
             artifact = session.scalar(
                 select(Artifact).where(

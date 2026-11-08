@@ -335,7 +335,9 @@ def create_app(
         if version is not None:
             wanted = [row for row in agents if row["version"] == version]
             if not wanted:
-                raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' has no version '{version}'")
+                raise HTTPException(
+                    status_code=404, detail=f"Agent '{agent_id}' has no version '{version}'"
+                )
             agents = wanted
         return templates.TemplateResponse(
             request=request,
@@ -369,7 +371,9 @@ def create_app(
         if version is not None:
             wanted = [row for row in runtimes if row["version"] == version]
             if not wanted:
-                raise HTTPException(status_code=404, detail=f"Runtime '{runtime_id}' has no version '{version}'")
+                raise HTTPException(
+                    status_code=404, detail=f"Runtime '{runtime_id}' has no version '{version}'"
+                )
             runtimes = wanted
         return templates.TemplateResponse(
             request=request,

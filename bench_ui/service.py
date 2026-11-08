@@ -1763,7 +1763,9 @@ class BenchDataService:
             "artifact_diff": diff,
         }
 
-    def _artifact_diff(self, detail_a: dict[str, Any], detail_b: dict[str, Any]) -> dict[str, Any] | None:
+    def _artifact_diff(
+        self, detail_a: dict[str, Any], detail_b: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """The diff of the two runs' change artifacts, when either recorded one.
 
         The diff artifact is what a run changed in the task; comparing two runs
