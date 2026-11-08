@@ -1,0 +1,34 @@
+schema_version: "1.0"
+id: atlas-lineage-001
+version: "1.0.0"
+created_at: "2026-11-08T11:20:00+01:00"
+title: Implement provenance: the graph of causes behind every version of a key
+description: >-
+  Atlas is a sharded, replicated, fenced key-value store. Its write, read,
+  recovery, and rebalance paths are complete and their suite is green. One
+  feature is declared and not implemented: provenance. The contract is
+  normative and complete, in SPEC.md section 9, with the reasoning in
+  docs/lineage.md. Implement it against that contract: a graph of edges
+  between key-and-generation nodes, five edge kinds, idempotent under replay,
+  and an observer that never reads storage.
+authors:
+  - "[codex_cli] Codex with agentic knowledge"
+task:
+  category: new_feature
+  difficulty: expert
+  repository:
+    source: datasets/_sources/atlas
+    ref: HEAD
+    notes: standard-library-only sharded store seed; lineage declared, not implemented
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - implement the complete SPEC.md section 9 contract without changing the public API
+    - the five cause kinds are closed; a sixth is a design error, not a feature
+    - the recorder is an observer: it reads no storage and must not change what the store writes, reads, repairs, or recovers
+    - do not modify the repository suite, the schema document, the incident corpus, or the stub's public surface
+    - do not add third-party dependencies, threads, or timers
+    - the cap stops recording and never evicts an edge already in the graph
+    - a replay of a log that already produced lineage must not double an edge

@@ -136,14 +136,13 @@ class Atlas:
     ) -> WriteResult:
         author = writer or str(self.config["node_id"])
         planned_epoch = self.placement.epoch()
+        offered = (
+            expected_generation if expected_generation is not None else self.current_generation(key)
+        )
         self.fence.check_write(
             key,
             writer=author,
-            offered_generation=(
-                expected_generation
-                if expected_generation is not None
-                else self.current_generation(key)
-            ),
+            offered_generation=offered,
             planned_epoch=planned_epoch,
         )
         record = self.replicator.write(
@@ -162,7 +161,17 @@ class Atlas:
             replicas=tuple(replicas),
             acknowledged=len(replicas),
         )
-        self._record_lineage(key, record, author=author, cause=None)
+        # A write that read a generation of the key is caused by that
+        # generation. A write that read nothing is a root and records no edge.
+        # The generation offered is the version the caller read, and it is
+        # passed to the recorder as the cause when it is a real read.
+        self._record_lineage(
+            key,
+            record,
+            author=author,
+            cause=None if expected_generation is None and offered == 0
+            else __import__("atlas.lineage", fromlist=["Node"]).Node(key=key, generation=offered),
+        )
         return result
 
     def delete(self, key: str, *, writer: str | None = None, expected_generation: int | None = None) -> WriteResult:
