@@ -22,7 +22,6 @@ from .errors import (
     TornFrameError,
     WALIntegrityError,
 )
-from .store import Atlas, AtlasBuilder
 from .values import Record
 
 __all__ = [
@@ -47,3 +46,12 @@ __all__ = [
 ]
 
 __version__ = "3.0.0"
+
+def __getattr__(name):
+    # The store pulls in the whole storage stack; resolving it lazily keeps the
+    # leaf modules importable on their own.
+    if name in ("Atlas", "AtlasBuilder"):
+        from . import store
+
+        return getattr(store, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
