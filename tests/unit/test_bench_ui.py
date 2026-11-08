@@ -837,8 +837,9 @@ def test_the_dashboard_charts_compare_models_not_metrics(database_url: str) -> N
     client = TestClient(create_app(database_url=database_url))
     body = client.get("/").text
 
-    # one bar per model, the same metric in both charts
-    assert "chartModelPerformance" in body and "chartModelCost" in body
+    # one bar per model across charts
+    assert "chartModelSuccessRate" in body and "chartModelMeanScore" in body
+    assert "chartModelDuration" in body and "chartModelTokens" in body
     assert "model-a" in body and "model-b" in body
     import json
     import re
@@ -1651,5 +1652,5 @@ def test_the_model_charts_wrap_the_configuration_label(database_url: str) -> Non
     assert "const labels = models.map(labelLines);" in script
     assert script.count("labels,") >= 2
     # and each panel is sized for the lines the wrap produces
-    assert body.count('class="model-chart-box"') == 2
+    assert body.count('class="model-chart-box"') == 4
     assert "extraLines" in script

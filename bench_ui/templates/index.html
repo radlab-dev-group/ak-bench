@@ -87,20 +87,34 @@
     </div>
   </div>
 
-  <!-- Interactive Charts Grid -->
-  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap:20px; margin-bottom:24px;">
+  <!-- Interactive Charts Grid (max 3 per row on desktop) -->
+  <div class="model-charts-grid">
     <!-- One metric, one bar per model: the question is how the models differ,
          not how the same model differs from itself across metrics. -->
     <div class="panel" style="margin-bottom:0;">
       <div class="panel-header">
         <div class="panel-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-          Models: Success Rate &amp; Mean Score
+          Models: Success Rate
         </div>
       </div>
       <div class="panel-body">
         <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
-          <canvas id="chartModelPerformance"></canvas>
+          <canvas id="chartModelSuccessRate"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-header">
+        <div class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          Models: Mean Tasks Score
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+          <canvas id="chartModelMeanScore"></canvas>
         </div>
       </div>
     </div>
@@ -109,12 +123,26 @@
       <div class="panel-header">
         <div class="panel-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Models: Cost (Duration &amp; Tokens)
+          Models: Mean Duration Time
         </div>
       </div>
       <div class="panel-body">
         <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
-          <canvas id="chartModelCost"></canvas>
+          <canvas id="chartModelDuration"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-header">
+        <div class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          Models: Mean Tokens
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+          <canvas id="chartModelTokens"></canvas>
         </div>
       </div>
     </div>
@@ -355,8 +383,23 @@ document.addEventListener('DOMContentLoaded', () => {
       tokensK: models.map(m => m.mean_total_tokens !== null ? Math.round(m.mean_total_tokens / 1000) : 0),
     };
 
+    const PALETTE = ['#00e59b', '#5aa9ff', '#ffb44a', '#c792ea', '#ff6b7a', '#4dd0e1', '#f0e68c', '#ff8a65', '#9ccc65', '#ba68c8', '#7986cb', '#e57373'];
+    const alpha = (hex, a) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+    };
+    const modelToColor = new Map();
+    models.forEach((m, i) => {
+      const name = String(m.model || i);
+      if (!modelToColor.has(name)) {
+        modelToColor.set(name, PALETTE[modelToColor.size % PALETTE.length]);
+      }
+    });
+    const barBorders = models.map((m, i) => modelToColor.get(String(m.model || i)));
+    const barBgs = barBorders.map(hex => alpha(hex, 0.7));
+
     const drawModelCharts = () => {
-    const ctx1 = document.getElementById('chartModelPerformance');
+    const ctx1 = document.getElementById('chartModelSuccessRate');
     if (ctx1) {
       new Chart(ctx1, {
         type: 'bar',
@@ -366,16 +409,8 @@ document.addEventListener('DOMContentLoaded', () => {
             {
               label: 'Success Rate (%)',
               data: perf.successRate,
-              backgroundColor: 'rgba(0, 229, 155, 0.7)',
-              borderColor: '#00e59b',
-              borderWidth: 1,
-              borderRadius: 4,
-            },
-            {
-              label: 'Mean Score (%)',
-              data: perf.meanScore,
-              backgroundColor: 'rgba(90, 169, 255, 0.7)',
-              borderColor: '#5aa9ff',
+              backgroundColor: barBgs,
+              borderColor: barBorders,
               borderWidth: 1,
               borderRadius: 4,
             }
@@ -385,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: ink().text, font: mono } } },
+          plugins: { legend: { display: false } },
           scales: {
             x: {
               min: 0, max: 100, ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
@@ -396,7 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    const ctx2 = document.getElementById('chartModelCost');
+    const ctx2 = document.getElementById('chartModelMeanScore');
     if (ctx2) {
       new Chart(ctx2, {
         type: 'bar',
@@ -404,30 +439,88 @@ document.addEventListener('DOMContentLoaded', () => {
           labels,
           datasets: [
             {
-              label: 'Mean Duration (min)',
-              data: cost.durationMin,
-              backgroundColor: 'rgba(255, 180, 74, 0.7)',
-              borderColor: '#ffb44a',
+              label: 'Mean Tasks Score (%)',
+              data: perf.meanScore,
+              backgroundColor: barBgs,
+              borderColor: barBorders,
               borderWidth: 1,
               borderRadius: 4,
-              yAxisID: 'y',
-            },
-            {
-              label: 'Mean Tokens (k)',
-              data: cost.tokensK,
-              backgroundColor: 'rgba(199, 146, 234, 0.7)',
-              borderColor: '#c792ea',
-              borderWidth: 1,
-              borderRadius: 4,
-              yAxisID: 'y1',
             }
           ]
         },
         options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              min: 0, max: 100, ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+            },
+            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
+          }
+        }
+      });
+    }
+
+    const ctx3 = document.getElementById('chartModelDuration');
+    if (ctx3) {
+      new Chart(ctx3, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Mean Duration (min)',
+              data: cost.durationMin,
+              backgroundColor: barBgs,
+              borderColor: barBorders,
+              borderWidth: 1,
+              borderRadius: 4,
+            }
+          ]
+        },
+        options: {
+          indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { labels: { color: ink().text, font: mono } },
+            legend: { display: false },
+          },
+          scales: {
+            x: {
+              type: 'linear', position: 'bottom',
+              ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+            },
+            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
+          }
+        }
+      });
+    }
+
+    const ctx4 = document.getElementById('chartModelTokens');
+    if (ctx4) {
+      new Chart(ctx4, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Mean Tokens (k)',
+              data: cost.tokensK,
+              backgroundColor: barBgs,
+              borderColor: barBorders,
+              borderWidth: 1,
+              borderRadius: 4,
+            }
+          ]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
             // the bill is an estimate from the price table, so it is named as
             // one in the tooltip rather than shown as a measured quantity
             tooltip: {
@@ -442,12 +535,11 @@ document.addEventListener('DOMContentLoaded', () => {
             },
           },
           scales: {
-            x: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } },
-            y: {
-              type: 'linear', position: 'left',
-              ticks: { color: '#ffb44a', font: mono }, grid: { color: ink().grid },
+            x: {
+              type: 'linear', position: 'bottom',
+              ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
             },
-            y1: { type: 'linear', position: 'right', ticks: { color: '#c792ea', font: mono }, grid: { drawOnChartArea: false } }
+            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
           }
         }
       });
