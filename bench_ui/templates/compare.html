@@ -135,7 +135,7 @@
               <tr><th>Duration</th><td class="num mono">{{ run_diff.run_a.duration_seconds|round|int }}s</td></tr>
               <tr><th>Tokens</th><td class="num mono">{{ "{:,}".format((run_diff.run_a.run.observations or {}).get("total_tokens") or 0) }}</td></tr>
               <tr><th>Agent</th><td><code>{{ run_diff.run_a.run.agent }}</code></td></tr>
-              <tr><th>Model</th><td><code>{{ run_diff.run_a.run.observed_model or run_diff.run_a.run.requested_model }}</code></td></tr>
+              <tr><th>Configuration</th><td><code>{{ run_diff.run_a.run.configuration_label or run_diff.run_a.run.observed_model or run_diff.run_a.run.requested_model }}</code></td></tr>
               <tr><th>Variant Config</th><td><pre style="margin:0; font-size:11px;">{{ run_diff.run_a.variant_values | tojson(indent=2) }}</pre></td></tr>
               <tr><th>Evaluation Details</th><td><pre style="margin:0; font-size:11px; max-height:160px;">{{ run_diff.run_a.evaluation_details | tojson(indent=2) }}</pre></td></tr>
             </table>
@@ -155,7 +155,7 @@
               <tr><th>Duration</th><td class="num mono">{{ run_diff.run_b.duration_seconds|round|int }}s</td></tr>
               <tr><th>Tokens</th><td class="num mono">{{ "{:,}".format((run_diff.run_b.run.observations or {}).get("total_tokens") or 0) }}</td></tr>
               <tr><th>Agent</th><td><code>{{ run_diff.run_b.run.agent }}</code></td></tr>
-              <tr><th>Model</th><td><code>{{ run_diff.run_b.run.observed_model or run_diff.run_b.run.requested_model }}</code></td></tr>
+              <tr><th>Configuration</th><td><code>{{ run_diff.run_b.run.configuration_label or run_diff.run_b.run.observed_model or run_diff.run_b.run.requested_model }}</code></td></tr>
               <tr><th>Variant Config</th><td><pre style="margin:0; font-size:11px;">{{ run_diff.run_b.variant_values | tojson(indent=2) }}</pre></td></tr>
               <tr><th>Evaluation Details</th><td><pre style="margin:0; font-size:11px; max-height:160px;">{{ run_diff.run_b.evaluation_details | tojson(indent=2) }}</pre></td></tr>
             </table>

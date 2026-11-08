@@ -1521,3 +1521,100 @@ def test_the_runs_page_exports_its_filtered_rows(database_url: str) -> None:
     # the export comes from the API, so the filter state is the live one
     assert "currentRunsForExport" in script
 
+
+
+_ALIAS_EVIDENCE = {
+    "available": True,
+    "log": "router.log",
+    "served_models": ["qwen/two-a", "qwen/two-b"],
+    "routing_decisions": ["qwen/two-a", "qwen/two-b"],
+    "received_models": ["auto_codex"],
+}
+
+
+def _alias_run(store, run_uid: str, *, plugins: list[tuple[str, bool]]) -> None:
+    """A run that asked for an alias, with the plugins it actually ran with."""
+    store.record_run(
+        {
+            "run_uid": run_uid,
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "requested_model": "auto_codex",
+            "model_evidence": _ALIAS_EVIDENCE,
+            "state": "completed",
+            "started_at": "2026-11-06T14:00:00+00:00",
+            "finished_at": "2026-11-06T14:01:00+00:00",
+            "evaluation": {"verdict": "passed", "score": 1.0, "passed": 4, "failed": 0, "total": 4},
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+    store.record_plugin_observations(
+        run_uid,
+        [
+            {"plugin_id": name, "enabled": enabled, "state": {}}
+            for name, enabled in plugins
+        ],
+    )
+
+
+def test_a_run_is_named_by_the_configuration_it_ran(database_url: str) -> None:
+    """Naming a run by its model is wrong when the model was an alias.
+
+    The run asked for ``auto_codex`` and routing served two models, so a list
+    of those two models says neither what was asked for nor that routing chose
+    between them, and it reads as a third model. The label carries all three
+    facts, and a plugin that was off is not one of them.
+    """
+    from bench_ui.service import configuration_label
+
+    assert configuration_label(
+        {"requested_model": "auto_codex", "observed_model": "qwen/two-a, qwen/two-b"},
+        [
+            {"plugin_id": "agentic_knowledge", "enabled": True},
+            {"plugin_id": "agentic_routing_codex", "enabled": False},
+        ],
+    ) == "auto_codex+agentic_knowledge[qwen/two-a, qwen/two-b]"
+    # a model asked for and served as named needs no brackets to explain itself
+    assert configuration_label(
+        {"requested_model": "qwen/plain", "observed_model": "qwen/plain"}, []
+    ) == "qwen/plain"
+    # nothing confirmed what served the run, so nothing goes in brackets
+    assert configuration_label(
+        {"requested_model": "auto_codex", "observed_model": None},
+        [{"plugin_id": "agentic_knowledge", "enabled": True}],
+    ) == "auto_codex+agentic_knowledge"
+
+
+def test_the_model_views_agree_on_the_configuration_label(database_url: str) -> None:
+    """One label, everywhere a configuration is read.
+
+    The table, the filter that narrows it and the chart that compares models
+    must name a configuration the same way, or a filter that looks applied has
+    not been, and a bar is not the row it is named after.
+    """
+    store = _seeded_store(database_url)
+    _alias_run(
+        store,
+        "run-alias",
+        plugins=[("agentic_knowledge", True), ("agentic_routing_codex", False)],
+    )
+    client = TestClient(create_app(database_url=database_url))
+    label = "auto_codex+agentic_knowledge[qwen/two-a, qwen/two-b]"
+
+    runs = client.get("/api/runs").json()["runs"]
+    row = next(item for item in runs if item["uid"] == "run-alias")
+    assert row["model"] == label
+
+    # the dropdown offers the label and choosing it leaves only that run
+    options = client.get("/api/runs").json()["filter_options"]["models"]
+    assert label in options
+    filtered = client.get("/api/runs", params={"model": label}).json()
+    assert [item["uid"] for item in filtered["runs"]] == ["run-alias"]
+
+    # the comparison charts carry it too: the dashboard renders the label it
+    # was given, so a bar is named after the configuration it measured
+    body = client.get("/").text
+    assert label in body

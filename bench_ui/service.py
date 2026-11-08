@@ -481,6 +481,75 @@ def _baseline_scores(history: HistoryData) -> dict[str, float | None]:
     }
 
 
+def configuration_label(
+    run: dict[str, Any], plugins: list[dict[str, Any]] | None = None
+) -> str | None:
+    """What a run was configured as: the model it asked for, the plugins that
+    were on, and — in brackets — the models that actually served it.
+
+    A model name alone cannot say which bar is which. ``auto_codex`` is an
+    alias, and the two models routing resolved it to are the interesting half
+    of the story; the same two models reached one by one are a different
+    experiment. The plugins are part of what was measured, not a footnote: a
+    run with the knowledge layer on is not comparable to the same model
+    without it. So the label names the request, then each plugin that was on,
+    then what the instance's log said served it in brackets — and drops the
+    brackets when the request *was* the model, because repeating it would
+    explain nothing.
+    """
+    requested = run.get("requested_model")
+    served = _model_names(run.get("observed_model"))
+    on = sorted(
+        {
+            str(row.get("plugin_id"))
+            for row in plugins or []
+            if row.get("enabled") and row.get("plugin_id")
+        }
+    )
+    base = str(requested) if requested else (", ".join(served) if served else None)
+    if base is None:
+        return None
+    label = base + "".join(f"+{name}" for name in on)
+    if requested and served and served != [base]:
+        label += f"[{', '.join(served)}]"
+    return label
+
+
+def _model_names(observed: Any) -> list[str]:
+    """The models a recorded ``observed_model`` names, one per routing target."""
+    if not observed:
+        return []
+    return [name.strip() for name in str(observed).split(",") if name.strip()]
+
+
+def configuration_of(run: dict[str, Any]) -> str | None:
+    """The label a run's configuration goes by, for a run read anywhere.
+
+    The label is written once per history refresh by ``_annotate_configurations``;
+    a run read on its own falls back to the raw pair, so no view is ever blank
+    because it did not go through the cached history.
+    """
+    return (
+        run.get("configuration_label")
+        or run.get("observed_model")
+        or run.get("requested_model")
+    )
+
+
+def _annotate_configurations(history: HistoryData) -> None:
+    """Write each run's configuration label while the whole history is in hand.
+
+    The plugins must come from the history's own rows: a run's row lists every
+    plugin the runtime reported, switched on or off, and counting a switched-off
+    plugin would describe a configuration that never ran.
+    """
+    by_run: dict[str, list[dict[str, Any]]] = {}
+    for row in history.plugins:
+        by_run.setdefault(str(row.get("run_uid")), []).append(row)
+    for run in history.runs:
+        run["configuration_label"] = configuration_label(run, by_run.get(str(run.get("uid"))))
+
+
 def _read_artifact_text(path: str | None) -> str | None:
     """The text of an artifact kept on disk, or ``None`` when it is not there."""
     if not path:
@@ -698,6 +767,7 @@ class BenchDataService:
         ):
             return cached
         history = collect_history(self.store)
+        _annotate_configurations(history)
         with self._lock:
             self._history_cache = history
             self._history_cached_at = time.monotonic()
@@ -724,7 +794,7 @@ class BenchDataService:
         history = self.get_history()
         by_model: dict[str, list[dict[str, Any]]] = {}
         for run in history.runs:
-            model = run.get("observed_model") or run.get("requested_model")
+            model = configuration_of(run)
             if model is None:
                 continue
             by_model.setdefault(str(model), []).append(run)
@@ -957,16 +1027,14 @@ class BenchDataService:
             if runtime and r.get("runtime_id") != runtime:
                 continue
             # Model filter
-            if model:
-                obs_model = r.get("observed_model") or r.get("requested_model")
-                if obs_model != model:
-                    continue
+            if model and configuration_of(r) != model:
+                continue
             # General text search
             if search:
                 query = search.lower().strip()
                 matchable = (
                     f"{r.get('uid')} {r.get('task_uid')} {r.get('experiment_uid')} "
-                    f"{r.get('variant_uid')} {r.get('agent')} {r.get('observed_model')} "
+                    f"{r.get('variant_uid')} {r.get('agent')} {configuration_of(r)} "
                     f"{r.get('status')} {verdict_of(r)}"
                 ).lower()
                 if query not in matchable:
@@ -1013,11 +1081,7 @@ class BenchDataService:
         all_verdicts = sorted({verdict_of(r) for r in runs if verdict_of(r)})
         all_statuses = sorted({str(r.get("status")) for r in runs if r.get("status")})
         all_models = sorted(
-            {
-                str(r.get("observed_model") or r.get("requested_model"))
-                for r in runs
-                if r.get("observed_model") or r.get("requested_model")
-            }
+            {str(label) for label in (configuration_of(r) for r in runs) if label}
         )
         all_agents = sorted({str(r.get("agent")) for r in runs if r.get("agent")})
         all_runtimes = sorted({str(r.get("runtime_id")) for r in runs if r.get("runtime_id")})
@@ -1072,6 +1136,7 @@ class BenchDataService:
         history = self.get_history()
         events = self.store.events(run_uid)
         plugins = self.store.plugin_observations(run_uid)
+        run["configuration_label"] = configuration_label(run, plugins)
 
         # Fetch evaluation details json from database
         eval_record_details = None
@@ -1819,7 +1884,7 @@ class BenchDataService:
             "repetition": r.get("repetition"),
             "agent": r.get("agent"),
             "runtime_id": r.get("runtime_id"),
-            "model": r.get("observed_model") or r.get("requested_model"),
+            "model": configuration_of(r),
             "status": r.get("status"),
             "verdict": verdict,
             "score": score,

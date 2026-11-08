@@ -32,6 +32,7 @@ The dashboard was written to be read on the machine that started it and is now d
 - **The analytics explorer spins while it loads.** Every chart shows a loader until its data has been drawn, so an empty chart is not mistaken for a broken one.
 
 ### Changed
+- **A run is named by the configuration it ran, not by whatever the router resolved to.** A run that asked for the alias `auto_codex` was listed under `qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next` — the two models routing chose between, read by anyone else as a third model nobody asked for. The table, its model filter and the comparison charts now share one label: the model asked for, each plugin that was on, then what actually served in brackets (`auto_codex+agentic_knowledge[qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next]`). A model asked for and served as named keeps its bare name, a run no log confirmed keeps the alias alone, a plugin that was off is not named at all, and cost estimation still reads the real model rather than the label.
 - **The dashboard's recent-runs and leaderboard tables repeat the run's repetition number** beside the other run columns, and every table that lists runs shows it.
 - **Code viewers offer a copy button beside close** in the task code viewer and the run modal, so the text shown can be taken without selecting it.
 - **YAML in the UI is coloured.** The recorded descriptors (task, experiment, agent, runtime) and the task's `description.md` get a light syntax highlight for keys, values and comments.

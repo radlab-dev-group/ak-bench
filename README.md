@@ -178,6 +178,24 @@ model recorded; a model the log never names is a `mismatch`. A model inventory
 from `GET /v1/models` says what an instance *can* serve, so it can never verify
 the pairing on its own.
 
+Every view that names what a run was configured as uses one label for it
+(`bench_ui/service.py:configuration_label`): the model the run asked for, then
+each plugin that was **on**, then the models that served it in brackets when
+those are not simply the name already there.
+
+```text
+qwen/Qwen3.8-27B                                            asked for, served
+auto_codex+agentic_knowledge[qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next]
+auto_codex+agentic_knowledge                                no log confirmed it
+```
+
+The brackets are what makes an alias readable: `auto_codex` is not a model, and
+listing only the two models routing chose between hides both the alias and the
+choice. A plugin that was off is not part of the label, because it described no
+run — the row's own plugin list names plugins whatever their state, so the label
+is built from the recorded `enabled` flag instead. Cost is still estimated from
+the real model name, never from this label.
+
 ### Checking a configuration before it costs a run
 
 ```bash

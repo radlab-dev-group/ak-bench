@@ -554,7 +554,7 @@ function renderRunModalContent(data, { bodyOverview, bodyEval, bodyEvents, bodyA
             <tr><th>Experiment</th><td><a href="/experiments/${encodeURIComponent(run.experiment_uid || '')}">${escapeHtml(run.experiment_uid || '—')}</a></td></tr>
             <tr><th>Variant Config</th><td><code>${escapeHtml(JSON.stringify(data.variant_values || {}))}</code></td></tr>
             <tr><th>Agent & Runtime</th><td><code>${escapeHtml(run.agent || '—')}</code> (runtime: <code>${escapeHtml(run.runtime_id || 'default')}</code>)</td></tr>
-            <tr><th>Observed Model</th><td><code>${escapeHtml(run.observed_model || run.requested_model || '—')}</code> (status: ${escapeHtml(run.model_verification || 'unverified')})</td></tr>
+            <tr><th>Configuration</th><td><code>${escapeHtml(run.configuration_label || run.observed_model || run.requested_model || '—')}</code> <span style="color:var(--fg-faint);">(observed: <code>${escapeHtml(run.observed_model || '—')}</code>, status: ${escapeHtml(run.model_verification || 'unverified')})</span></td></tr>
             <tr><th>Started / Finished</th><td>${formatDate(run.started_at)} → ${formatDate(run.finished_at)}</td></tr>
             ${run.error_message ? `<tr><th>Error Message</th><td style="color:var(--red); font-family:var(--mono);">${escapeHtml(run.error_message)}</td></tr>` : ''}
           </table>
