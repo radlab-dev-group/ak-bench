@@ -1,0 +1,51 @@
+schema_version: "1.0"
+id: atlas-drift-003
+version: "1.0.0"
+created_at: "2026-11-08T13:40:00+01:00"
+title: Restore the tie-break direction that a flipped comparison inverted
+description: >-
+  A production Atlas cluster reports divergent answers to concurrent writers
+  that used to converge: two versions that carry no causal order between
+  them now resolve to the smaller writer identifier, and the repair path
+  writes that answer forward to every peer it meets, making the divergence
+  permanent. The repository suite is green, so the defect is visible only in
+  the cross-module convergence scenarios. The cluster's incident corpus
+  contains notes about the rule this comparison implements and about the
+  direction it was once argued to the other way; the corpus is two hundred
+  notes long and the one or two that matter are written about the symptom,
+  not the module. Restore the documented invariant without changing the wire
+  format, the public API, or the crash contract.
+authors:
+  - "[codex_cli] Codex with agentic knowledge"
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/atlas
+    ref: HEAD
+    notes: >-
+      standard-library-only sharded store seed; one regression in the module
+      that owns the tie-break between concurrent versions. This task is one
+      of a family of single-defect variants of the same store: the defect
+      lives in a different module than in its siblings, so a fix learned
+      from a sibling transfers as a principle, not as a diff.
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      The comparison that decides the winner of two concurrent versions was
+      flipped: the smaller writer identifier now wins instead of the
+      greatest. The repair path is the amplifier, not the defect: it is
+      correct to write the chosen winner forward, which is exactly what makes
+      the wrong winner permanent.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the public API, the wire format, and the crash contract
+    - do not change the repository suite, the schema document, or the incident corpus
+    - do not add third-party dependencies, threads, or timers
+    - "keep the five SPEC invariants: durable COMMIT, CURRENT as publication, exclusive boundary, fencing equality, descending tie-break"
+    - the vendored v1 ring and the generated tables are not the write path and must not be "fixed"

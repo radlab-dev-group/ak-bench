@@ -1,0 +1,6 @@
+[
+  {
+    "patch": "parts/tie-break.patch",
+    "witness": "test_regression_04_concurrent_writes_resolve_to_the_greatest_writer"
+  }
+]
