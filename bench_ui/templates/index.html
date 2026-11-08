@@ -46,14 +46,22 @@
   <!-- KPI Cards -->
   <div class="grid-cards">
     <div class="card card-mint">
-      <div class="card-title">Success Rate & Mean Score</div>
-      <div class="card-value">
-        <span id="statSuccessRate">{% if summary.success_rate is not none %}{{ "%.1f"|format(summary.success_rate * 100) }}%{% else %}—{% endif %}</span>
-        <span style="font-size:15px; color:var(--fg-dim); font-weight:normal;">/</span>
-        <span id="statMeanScore" style="color:var(--mint); font-size:1.5rem;">{% if summary.mean_score is not none %}{{ "%.3f"|format(summary.mean_score) }}{% else %}—{% endif %}</span>
+      <div class="card-title">Success Rate</div>
+      <div class="card-value" id="statSuccessRate">
+        {% if summary.success_rate is not none %}{{ "%.1f"|format(summary.success_rate * 100) }}%{% else %}—{% endif %}
       </div>
       <div class="card-sub">
         <span>Passed: <strong>{{ summary.passed }}</strong> / {{ summary.evaluated }} eval</span>
+      </div>
+    </div>
+
+    <div class="card card-mint">
+      <div class="card-title">Mean Tasks Score</div>
+      <div class="card-value" id="statMeanScore">
+        {% if summary.mean_score is not none %}{{ "%.3f"|format(summary.mean_score) }}{% else %}—{% endif %}
+      </div>
+      <div class="card-sub">
+        <span>Across {{ summary.evaluated }} evaluated run(s)</span>
       </div>
     </div>
 
