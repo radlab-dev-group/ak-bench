@@ -51,6 +51,36 @@
 # Without one of the two, the replay arm is a fresh arm with extra
 # latency, and the experiment measures nothing.
 #
+# FOUR ARMS (the matrix below). The family is run under four configurations, so
+# the same tasks answer two different questions:
+#
+#   1. model=qwen/Qwen3.8-27B,      knowledge on  — the arm this file shipped
+#      with: one fixed model, the memory layer loaded, the learning and replay
+#      runs of the family differing in nothing but the knowledge they see;
+#   2. model=qwen/Qwen3.8-Flash-Next, knowledge on — the same experiment on the
+#      weaker fixed model, which is where a memory effect is easiest to see and
+#      where its absence is hardest to excuse;
+#   3. model=auto_codex,            knowledge off — the memoryless control under
+#      routing: the routing plugin loaded, the knowledge plugin not loaded at
+#      all, so nothing is written and nothing is retrieved;
+#   4. model=auto_codex,            knowledge on  — the routed arm with the
+#      memory layer, whose difference to arm 3 is the knowledge and nothing
+#      else (same alias, same routing plugin, same instance kind).
+#
+# Arms 1 and 2 are fixed-model references with the memory available: they say
+# what a known model does with the family, and they are the baseline for
+# whether routing is worth its cost. Arms 3 and 4 isolate the memory under one
+# routing decision. The two pairs answer different questions and are read
+# separately; the baseline for the report is arm 1.
+#
+# WHICH PLUGINS AN ARM LOADS IS PART OF THE ARM. The pipeline is read when the
+# process starts, so it is declared per combination under ``runtime_env``, and
+# ``agentic_routing_codex`` is in all four (``auto_codex`` only means something
+# with it loaded, and the knowledge plugin runs behind it). An arm with
+# ``knowledge_enabled: false`` does not merely set a flag: the knowledge plugin
+# is not in that process at all, which is the only way the off arm is honestly
+# without memory.
+#
 # Readiness: on the external shared router ``akbench knowledge readiness``
 # reports ``unsupported`` — the router refuses knowledge reads, so the
 # replay gate blocks. This experiment therefore runs against a *managed*
@@ -61,19 +91,21 @@
 schema_version: "1.0"
 id: knowledge-replay-atlas
 version: "1.0.0"
-title: Knowledge replay across the atlas drift family
+title: Knowledge replay across the atlas drift family, on four configurations
 description: >-
-  Whether what an agent learned while restoring five invariants of a sharded store carries to the single-defect twins of that store in fresh sessions, measured against an arm that never had the memory at all. The replay and fresh arms differ in knowledge access and in nothing else; the learning arm is the only source of the memory. The twins are different modules of the same store, so the knowledge must transfer as principles — the invariants, the dead-ends, the module placement — not as a patch.
+  Whether what an agent learned while restoring five invariants of a sharded store carries to the single-defect twins of that store in fresh sessions, measured against an arm that never had the memory at all, on four configurations of the same experiment: two fixed models with the knowledge layer loaded, and the Auto Codex alias with the knowledge plugin absent from the process and present in it. The replay and fresh arms differ in knowledge access and in nothing else; the learning arm is the only source of the memory. The twins are different modules of the same store, so the knowledge must transfer as principles — the invariants, the dead-ends, the module placement — not as a patch.
 
 experiment:
   type: knowledge_replay
 
+  # No model pinned here: the model is a factor of this experiment, and an arm
+  # that asked for a model in two places is an arm whose value nobody can read
+  # off the file.
   agent:
     id: codex
     version: "1.0.0"
     config:
       sandbox_mode: workspace-write
-      model: qwen/Qwen3.8-27B
 
   execution:
     mode: router
@@ -90,9 +122,35 @@ experiment:
       task_ids: [atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004]
 
   factors:
-    strategy: full_factorial
-    dimensions: []
-    baseline: {}
+    strategy: custom_matrix
+    dimensions:
+      - id: model
+        values: [ qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next, auto_codex ]
+      - id: knowledge_enabled
+    baseline:
+      model: qwen/Qwen3.8-27B
+      knowledge_enabled: true
+    combinations:
+      # 1. the arm this file shipped with, now stated explicitly.
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+      # 2. the weaker fixed model, same memory layer.
+      - model: qwen/Qwen3.8-Flash-Next
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+      # 3. routing without memory: the knowledge plugin is not loaded at all.
+      - model: auto_codex
+        knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+      # 4. routing with memory: differs from arm 3 by the knowledge plugin.
+      - model: auto_codex
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
 
   execution_policy:
     repetitions: 1
@@ -153,5 +211,8 @@ experiment:
     - total_tokens
 
   limits:
-    # learning 1 + (replay + fresh) x 4 scenarios = 9 runs.
-    max_runs: 16
+    # 4 tasks x 4 configurations x 1 repetition = 16 runs of the run plan; the
+    # memory plan of each configuration is 1 learning + 2 x 4 scenarios = 9
+    # arms, so the ceiling leaves room for the arms without letting an
+    # accidental dimension multiply the bill.
+    max_runs: 32

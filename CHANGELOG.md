@@ -30,7 +30,11 @@ release tagged as `v<version>`.
 - **A memory experiment for the family, and the scope pin it needs.**
   `configs/experiments/knowledge-replay-atlas.yaml` runs one learning arm on
   the five-module task and replay/fresh controls for the same task plus the
-  three twins. The knowledge plugin scopes collections by the checkout's
+  three twins, on four configurations: two fixed models with the memory
+  layer, and the routing alias with the knowledge plugin absent from the
+  process and present in it (the off arm is a process without the plugin,
+  not a flag the process was asked to ignore). The knowledge plugin scopes
+  collections by the checkout's
   directory basename, and AK-Bench named workspaces after the run, so a
   replay silently read a collection its learning run never wrote. The
   experiment runner now pins a memory run's checkout to

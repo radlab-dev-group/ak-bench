@@ -509,3 +509,38 @@ def test_a_combination_env_against_an_external_runtime_is_refused(
     report = planner.validate(experiment(payload))
 
     assert "runtime_environment_needs_managed" in codes(report)
+
+
+def test_the_shipped_atlas_memory_experiment_declares_its_four_arms(
+    planner: ExperimentPlanner,
+) -> None:
+    """Four configurations of one memory experiment, and no silent fifth.
+
+    Two fixed models with the memory layer, and the routing alias with the
+    knowledge plugin absent from the process and present in it. The pipelines
+    are the part that rots quietly: an arm that says `knowledge_enabled: false`
+    while loading the knowledge plugin is an off arm that reads, and an arm
+    that drops the routing plugin does not route at all.
+    """
+
+    from akbench.experiments import load_experiment_file
+
+    plan = planner.plan(
+        load_experiment_file(EXPERIMENTS / "knowledge-replay-atlas.yaml")
+    )
+    pipeline = "LLM_ROUTER_UTILS_PLUGINS_PIPELINE"
+    arms = {(v.values["model"], v.values["knowledge_enabled"]): v for v in plan.variants}
+    assert sorted(arms) == [
+        ("auto_codex", False),
+        ("auto_codex", True),
+        ("qwen/Qwen3.8-27B", True),
+        ("qwen/Qwen3.8-Flash-Next", True),
+    ]
+    for (_model, enabled), variant in arms.items():
+        declared = variant.runtime_env[pipeline]
+        assert declared.startswith("agentic_routing_codex"), declared
+        assert ("agentic_knowledge" in declared) is enabled, declared
+    baseline = next(variant for variant in plan.variants if variant.is_baseline)
+    assert baseline.values == {"model": "qwen/Qwen3.8-27B", "knowledge_enabled": True}
+    # 4 tasks of the family x 4 configurations, one repetition each.
+    assert plan.counts.runs == 16
