@@ -1,0 +1,49 @@
+schema_version: "1.0"
+id: atlas-drift-002
+version: "1.0.0"
+created_at: "2026-11-08T13:40:00+01:00"
+title: Restore the fencing equality that a one-line relaxation broke
+description: >-
+  A production Atlas cluster reports writes it should never have admitted:
+  callers that hold a generation the store does not hold are being accepted
+  instead of refused, and the divergence they seed survives into the data.
+  The repository suite is green, so the defect is visible only in the
+  cross-module fencing scenarios. The cluster's incident corpus contains
+  notes about this exact relaxation and about the modes that were tried and
+  reverted around it; the corpus is two hundred notes long and the one or
+  two that matter are written about the symptom, not the module. Restore the
+  documented invariant without changing the wire format, the public API, or
+  the crash contract.
+authors:
+  - "[codex_cli] Codex with agentic knowledge"
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/atlas
+    ref: HEAD
+    notes: >-
+      standard-library-only sharded store seed; one regression in the module
+      that owns the generation check. This task is one of a family of
+      single-defect variants of the same store: the defect lives in a
+      different module than in its siblings, so a fix learned from a sibling
+      transfers as a principle, not as a diff.
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      The generation check became one-sided: an offer below the held
+      generation is refused, an offer above it is accepted, and the
+      configuration mode no longer changes either direction. The documented
+      invariant is equality under the strict mode the configuration carries.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the public API, the wire format, and the crash contract
+    - do not change the repository suite, the schema document, or the incident corpus
+    - do not add third-party dependencies, threads, or timers
+    - "keep the five SPEC invariants: durable COMMIT, CURRENT as publication, exclusive boundary, fencing equality, descending tie-break"
+    - the vendored v1 ring and the generated tables are not the write path and must not be "fixed"
