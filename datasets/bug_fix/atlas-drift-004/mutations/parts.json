@@ -1,0 +1,6 @@
+[
+  {
+    "patch": "parts/inclusive-window.patch",
+    "witness": "test_regression_05b_the_boundary_is_exclusive_in_the_log_path"
+  }
+]

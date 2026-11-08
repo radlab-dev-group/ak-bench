@@ -1,0 +1,225 @@
+# Knowledge replay for the atlas drift family (plan section 17, atlas edition).
+#
+# The family is the point. atlas-drift-001 is a five-module regression; the
+# learning arm works it once with knowledge write on, and what it leaves in
+# the knowledge base is the evidence: the recipes of the five fixes, the
+# dead-ends of the wrong modules, the playbooks of the scenarios that went
+# green, and the session archive of the work itself. The replay arm then
+# works the *other* tasks of the family, in a new session with no session
+# history and read access to that knowledge base only:
+#
+#   exact_replay    atlas-drift-001  the same task, a new session, no history
+#   related_transfer atlas-drift-002 the fencing check, a different module
+#   related_transfer atlas-drift-003 the tie-break, a different module
+#   related_transfer atlas-drift-004 the replay window, a different module
+#
+# A recipe from the learning task transfers to a twin as a *principle* —
+# "fencing is an equality in both directions" — not as a diff: the twins'
+# defects live in different modules than the ones the learning task's patch
+# touched, and the twins' incident notes name the rule by the symptom, not
+# the module. A memoryless model on a twin has the same repository, the same
+# green suite, the same two-hundred-note corpus, and no record of which
+# module it should not look at.
+#
+# THE WORKSPACE BASENAME IS PART OF THE DESIGN. The knowledge plugin scopes
+# its collections by the repository's declared working directory — by
+# default the basename of the checkout (agentic_knowledge scope,
+# strategy ``repo_basename``). AK-Bench workspaces are per run, and the
+# default workspace id embeds a run-specific fragment, so a replay run whose
+# workspace basename differs from the learning run's reads a *different*
+# collection and silently sees nothing. Two ways to keep the pair
+# comparable, in order of preference:
+#
+# 1. what this experiment relies on, and what the harness does for it: the
+#    experiment runner names a memory run's checkout
+#    ``<run slug>/<repository name>``, so the basename every arm declares is
+#    the fixture's name — ``atlas`` — and the four tasks of the family land in
+#    one collection. The parent stays unique per run, so the workspaces never
+#    collide. The rule is asserted in
+#    ``tests/unit/test_knowledge_workspace_scope.py``;
+#    ``docs/KNOWLEDGE_REPLAY.md`` explains it.
+#
+# 2. the operator's own way, for a checkout the harness does not name: the
+#    plugin's scope override table, which maps a declared path to a scope key
+#    before the basename is consulted (policy key ``scope.overrides``, applied
+#    per run on a managed instance through the plugin's configuration).
+#
+# Without one of the two, the replay arm is a fresh arm with extra latency,
+# and the experiment measures nothing.
+#
+# SIX ARMS (the matrix below). The family is run under six configurations, the
+# product of three models and the knowledge plugin being in the process or not,
+# so the same tasks answer both questions at once:
+#
+#   1. model=qwen/Qwen3.8-27B,      knowledge off — THE BASELINE: the fixed
+#      model with no memory of any kind. Every other arm is read against it.
+#   2. model=qwen/Qwen3.8-Flash-Next, knowledge off — the same without memory on
+#      the cheaper model, which is where a memory effect is easiest to see and
+#      where its absence is hardest to excuse;
+#   3. model=qwen/Qwen3.8-27B,      knowledge on  — arm 1 plus the memory layer:
+#      the learning and replay runs of the family differ from it in nothing but
+#      the knowledge they see;
+#   4. model=qwen/Qwen3.8-Flash-Next, knowledge on — arm 2 plus the memory layer;
+#   5. model=auto_codex,            knowledge off — routing without memory: the
+#      routing plugin loaded, the knowledge plugin not loaded at all, so nothing
+#      is written and nothing is retrieved;
+#   6. model=auto_codex,            knowledge on  — arm 5 plus the memory layer.
+#
+# Pairs (1,3), (2,4) and (5,6) each isolate the memory under one fixed choice of
+# model, so a memory effect does not have to be argued model by model: it is
+# measured three times, once per routing decision. Pair (1,5) asks what routing
+# is worth without memory, and (3,6) asks the same with it. The report's
+# baseline is arm 1.
+#
+# WHICH PLUGINS AN ARM LOADS IS PART OF THE ARM. The pipeline is read when the
+# process starts, so it is declared per combination under ``runtime_env``, and
+# ``agentic_routing_codex`` is in all six (``auto_codex`` only means something
+# with it loaded, and the knowledge plugin runs behind it). An arm with
+# ``knowledge_enabled: false`` does not merely set a flag: the knowledge plugin
+# is not in that process at all, which is the only way an off arm is honestly
+# without memory — and it is also why an off arm writes nothing, so it cannot
+# contaminate the collections the on arms of the same configuration read.
+#
+# Readiness: on the external shared router ``akbench knowledge readiness``
+# reports ``unsupported`` — the router refuses knowledge reads, so the
+# replay gate blocks. This experiment therefore runs against a *managed*
+# router lifecycle (a per-run instance whose knowledge prefixes are the
+# run's own), with ``requires_readiness: true`` and ``allow_unverified``
+# left at its default of false: a replay that cannot confirm the knowledge
+# base is there is recorded as unverified, never as verified.
+schema_version: "1.0"
+id: knowledge-replay-atlas
+version: "1.0.0"
+title: Knowledge replay across the atlas drift family, on six configurations
+description: >-
+  Whether what an agent learned while restoring five invariants of a sharded store carries to the single-defect twins of that store in fresh sessions, measured against arms that never had the memory at all, on six configurations: three requested models — two fixed and the Auto Codex alias — each run once with the knowledge plugin absent from the process and once present in it. The replay and fresh arms differ in knowledge access and in nothing else; the learning arm is the only source of the memory. The twins are different modules of the same store, so the knowledge must transfer as principles — the invariants, the dead-ends, the module placement — not as a patch. The baseline is the fixed 27B model with no memory.
+
+experiment:
+  type: knowledge_replay
+
+  # No model pinned here: the model is a factor of this experiment, and an arm
+  # that asked for a model in two places is an arm whose value nobody can read
+  # off the file.
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router-ak-bench
+      # A memory experiment must own the knowledge namespace it reads and
+      # writes; a shared router does not let that be scoped, so the instance
+      # is managed per run and its knowledge prefixes are the run's own.
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories: [bug_fix]
+      task_ids: [atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004]
+
+  factors:
+    strategy: custom_matrix
+    dimensions:
+      - id: model
+        values: [ qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next, auto_codex ]
+      - id: knowledge_enabled
+    # The reference is a model with no memory: a task it cannot do and an arm
+    # with memory can do is the whole measurement.
+    baseline:
+      model: qwen/Qwen3.8-27B
+      knowledge_enabled: false
+    combinations:
+      # 1. the baseline: the fixed model, no knowledge plugin in the process.
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: false
+      # 2. the cheaper fixed model, likewise without memory.
+      - model: qwen/Qwen3.8-Flash-Next
+        knowledge_enabled: false
+      # 3. arm 1 plus the memory layer: the memory effect on the fixed model.
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
+      # 4. arm 2 plus the memory layer.
+      - model: qwen/Qwen3.8-Flash-Next
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
+      # 5. routing without memory: the knowledge plugin is not loaded at all.
+      - model: auto_codex
+        knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+      # 6. routing with memory: differs from arm 5 by the knowledge plugin.
+      - model: auto_codex
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+
+  execution_policy:
+    repetitions: 1
+    concurrency: 1
+    timeout_seconds: 10800
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  knowledge:
+    plugin: agentic_knowledge
+
+    learning:
+      # One learning task: the five-module task. Its session is long enough
+      # that the plugin's compaction archive and dead-end recording both
+      # fire, which is the memory the twins are asked to spend.
+      tasks:
+        - atlas-drift-001@1.0.0
+      write_enabled: true
+      read_enabled: true
+
+    replay:
+      requires_readiness: true
+      allow_unverified: false
+
+    fresh_control: true
+
+    scenarios:
+      - id: same-task
+        type: exact_replay
+        task: atlas-drift-001@1.0.0
+        note: the same task, a new session, no session history
+      - id: fencing-twin
+        type: related_transfer
+        task: atlas-drift-002@1.0.0
+        note: >-
+          the fencing module, one defect; the learning task's fence fix is a
+          recipe, not this task's patch
+      - id: tiebreak-twin
+        type: related_transfer
+        task: atlas-drift-003@1.0.0
+        note: >-
+          the repair module, one defect; the direction the tie-break points is
+          a principle the learning session wrote down, the comparison is this
+          task's line
+      - id: window-twin
+        type: related_transfer
+        task: atlas-drift-004@1.0.0
+        note: >-
+          the storage module, one defect; the exclusive boundary is the rule,
+          the window is this task's line
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    # 4 tasks x 6 configurations x 1 repetition = 24 runs of the run plan; the
+    # memory plan of each configuration is 1 learning + 2 x 4 scenarios = 9
+    # arms, so the ceiling leaves room for the arms without letting an
+    # accidental dimension multiply the bill.
+    max_runs: 24

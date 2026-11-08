@@ -70,7 +70,39 @@ can be scoped is a property of the deployment, not of the experiment:
 - on a **managed** instance the harness owns the environment, so the namespace
   can be set per experiment.
 
+## Scope: which checkout reads which collection
+
+A memory experiment is only honest when the replay arm can read what the
+learning arm wrote, and the plugin decides that with one fact about the
+request: the repository scope. With the default strategy (``repo_basename``)
+the scope key is the **basename of the working directory** the agent
+declares — for a checkout, the name of its directory. Two consequences for
+an experiment, and a fix for each:
+
+* a replay must work under the same scope as the learning run, or it reads a
+  collection that was never written. AK-Bench workspaces are named after the
+  run, so the experiment runner pins a memory run's checkout to
+  ``<run slug>/<repository name>``: the parent is unique per run, the
+  basename is the fixture's name, and every arm that works the same fixture
+  — the exact replay and every related-transfer twin of it — lands in the
+  one collection the family's knowledge lives in. A non-memory experiment
+  keeps the default run naming.
+* a related transfer needs the *neighbouring* task to share the fixture's
+  scope. It does, for the same reason: the pin is the fixture's name, not
+  the task's. A family of tasks over one fixture is therefore a family of
+  tasks over one knowledge base, which is the shape a transfer scenario
+  needs and the shape the default naming would have broken.
+
+The operator's own way is the plugin's scope override table, which maps a
+declared path to a scope key before the basename is consulted (policy key
+``scope.overrides``, applied per run on a managed instance through the
+plugin's configuration). The pin and the override table are the same idea at
+two levels; the harness applies the pin so an experiment author does not
+have to, and documents the override table for checkouts the harness does not
+name.
+
 ## Retrieval is not utilization
+
 
 The plan measures the two separately. That the plugin retrieved knowledge is
 not the same as the agent using it; a hit rate without a utilization signal is
@@ -83,6 +115,21 @@ events that would support them.
 |---|---|
 | `akbench knowledge plan [FILE] [--allow-unverified] [--json]` | build the memory plan: arms, shared fingerprints, readiness gate, isolation |
 | `akbench knowledge readiness [--session FILE] [--json]` | what this deployment can say about a knowledge base before a replay |
+
+## Shipped examples
+
+`configs/experiments/knowledge-replay.yaml` is the minimal one-task memory
+experiment. `configs/experiments/knowledge-replay-atlas.yaml` is the
+family-shaped one: a learning arm on a five-module regression, and replay
+and fresh controls for the same task plus three single-defect twins of the
+same store, one per module. The twins are where the measurement lives: their
+defects are in different modules than the learning task's, so the knowledge
+must move as principles — the invariants, the dead-ends, the placement —
+not as a patch. The same memory experiment also runs on six configurations —
+three requested models (two fixed and the routing alias), each once with the
+knowledge plugin absent from the process and once present in it — so the
+memory effect is measured once per routing decision rather than argued for
+one, and the report's baseline is the fixed 27B model with no memory.
 
 ## What is deliberately not here yet
 

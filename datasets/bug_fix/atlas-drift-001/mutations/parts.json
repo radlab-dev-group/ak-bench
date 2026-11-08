@@ -1,0 +1,22 @@
+[
+  {
+    "patch": "parts/01-planned-plan.patch",
+    "witness": "test_regression_01_rebalance_keeps_the_current_plan_for_moved_keys"
+  },
+  {
+    "patch": "parts/02-fencing-forward.patch",
+    "witness": "test_regression_02_fencing_refuses_a_generation_ahead_of_the_store"
+  },
+  {
+    "patch": "parts/03-torn-tail.patch",
+    "witness": "test_regression_03_torn_tail_does_not_erase_a_committed_transaction"
+  },
+  {
+    "patch": "parts/04-tie-break.patch",
+    "witness": "test_regression_04_concurrent_writes_resolve_to_the_greatest_writer"
+  },
+  {
+    "patch": "parts/05-inclusive-window.patch",
+    "witness": "test_regression_05b_the_boundary_is_exclusive_in_the_log_path"
+  }
+]

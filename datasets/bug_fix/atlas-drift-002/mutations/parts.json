@@ -1,0 +1,6 @@
+[
+  {
+    "patch": "parts/fencing-forward.patch",
+    "witness": "test_regression_02_fencing_refuses_a_generation_ahead_of_the_store"
+  }
+]

@@ -1,0 +1,16 @@
+[project]
+name = "atlas"
+version = "3.0.0"
+description = "Atlas: a sharded, fenced, durable key-value store (benchmark seed)"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+atlas = "atlas.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

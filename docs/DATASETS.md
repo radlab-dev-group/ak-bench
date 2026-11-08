@@ -111,6 +111,11 @@ pass.
 | `walqueue-recovery-001` | `bug_fix` | expert | `walqueue` | base passes; a multi-module recovery regression fails hidden tests while the seed suite stays green |
 | `typeweave-inference-001` | `new_feature` | expert | `typeweave` | missing typechecker fails; an isolated reference passes source, public and hidden tests |
 | `depweaver-backtracking-001` | `bug_fix` | expert | `depweaver` | base passes; eight independent regressions fail their own witnesses and the combined mutation preserves the seed suite |
+| `atlas-drift-001` | `bug_fix` | expert | `atlas` | base passes; five cooperating regressions in five modules fail their own witnesses and the combined mutation preserves the seed suite |
+| `atlas-drift-002` | `bug_fix` | expert | `atlas` | base passes; the one-sided fencing check fails its witnesses (both modes, both directions, the bypassed node) and the seed suite survives |
+| `atlas-drift-003` | `bug_fix` | expert | `atlas` | base passes; the flipped tie-break fails its witnesses (the grid, the three-way tie, repair, the digest walk) and the seed suite survives |
+| `atlas-drift-004` | `bug_fix` | expert | `atlas` | base passes; the inclusive replay window fails its witnesses (the report counts, the two-image arithmetic) and the seed suite survives |
+| `atlas-lineage-001` | `new_feature` | expert | `atlas` | fails on the base commit because the feature is a stub; passes once the agent implements the SPEC section 9 contract, as the isolated reference does |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
@@ -274,6 +279,64 @@ the earlier durable-state tasks and dataset CLI discovery/validation checks.
 
 ```bash
 python -m pytest tests/integration/test_senior_dataset_tasks.py
+```
+
+### The atlas sharded-store family
+
+Five tasks over one fixture: `datasets/_sources/atlas`, a standard-library-only
+sharded, replicated, fenced key-value store of roughly five thousand lines of
+production code, twenty-four modules, a 41-test suite, a normative
+`SPEC.md` and a corpus of 176 incident notes. The store is complete and its
+suite is green; the tasks are defects and one missing feature that the suite
+does not see.
+
+The family is shaped for the memory experiment, and that is why it exists in
+this shape:
+
+* `atlas-drift-001` is the **learning task**: five cooperating regressions,
+  one per module (placement, fencing, torn-tail repair, tie-break, replay
+  boundary). A session that works it is long enough that the knowledge
+  plugin's recipes, dead-end records, playbooks and the compaction archive
+  all fire; each of the five fixes is a principle — the invariant it
+  restores — and the wrong modules the session rules out are recorded as
+  dead-ends.
+* `atlas-drift-002`/`-003`/`-004` are the **twins**: one regression each, in
+  a different module than the learning task's patch touches, and written so
+  that a recipe from the learning task transfers as a principle, not as a
+  diff. Each twin's `description.md` points at the rule by the symptom
+  (the notes in `docs/incidents/` do the same), and each twin plants its own
+  two incident notes, one of which is the plausible-but-wrong argument —
+  the reverted one-sided check, the ascending tie-break that "sorts first",
+  the snapshot's own inclusive boundary — that makes a wrong fix pass
+  review.
+* `atlas-lineage-001` is the **new-feature task** of the family: a declared
+  stub (`src/atlas/lineage.py`, every method `NotImplementedError`)
+  implemented against the normative contract in `SPEC.md` section 9, with
+  the reasoning in `docs/lineage.md`. The reference implementation lives in
+  `tests/fixtures/atlas_lineage_solution` and never in the seed or the
+  prepared workspace.
+
+What makes the family hard for a model without memory is the split between
+the *rule* and the *line*. The rule is in the documentation and in the
+incidents, but the incidents are two hundred notes long and the ones that
+matter are written about the symptom, so they are not found by searching for
+the module name. The line is in one module, and the module is not where the
+symptom points: the tie-break lives in repair, the window in storage, the
+check in fencing, and a third note in each twin's corpus reads, at a glance,
+like it is about the defect and is about a different one. The repository
+suite is green on the base and green after the mutation, so the only red
+signal is the hidden scenario, and the hidden scenario is written the way
+the rule is written — as arithmetic and as reports, not as a diff of the
+defective line.
+
+The family's integrity checks live in
+`tests/integration/test_atlas_family_tasks.py`: each twin verifies
+(`verified`), the seed suite survives each mutation, the learning task's
+five parts each break their own witness, and the lineage stub fails while
+the isolated reference passes.
+
+```bash
+python -m pytest tests/integration/test_atlas_family_tasks.py
 ```
 
 ### Fixtures and their dependencies
