@@ -160,6 +160,20 @@
         </div>
       </div>
     </div>
+
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-header">
+        <div class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Models: Sample Size (Runs)
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+          <canvas id="chartModelSampleSize"></canvas>
+        </div>
+      </div>
+    </div>
     <div class="model-verification-summary" id="modelVerificationSummary"></div>
   </div>
 
@@ -396,6 +410,7 @@ document.addEventListener('DOMContentLoaded', () => {
       durationMin: models.map(m => m.mean_duration_seconds !== null ? (m.mean_duration_seconds / 60).toFixed(1) : 0),
       tokensK: models.map(m => m.mean_total_tokens !== null ? Math.round(m.mean_total_tokens / 1000) : 0),
       toolCalls: models.map(m => m.mean_tool_calls !== null ? Number(m.mean_tool_calls).toFixed(1) : 0),
+      sampleSize: models.map(m => m.runs || 0),
     };
 
     const PALETTE = ['#00e59b', '#5aa9ff', '#ffb44a', '#c792ea', '#ff6b7a', '#4dd0e1', '#f0e68c', '#ff8a65', '#9ccc65', '#ba68c8', '#7986cb', '#e57373'];
@@ -588,6 +603,41 @@ document.addEventListener('DOMContentLoaded', () => {
             x: {
               type: 'linear', position: 'bottom',
               ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+            },
+            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
+          }
+        }
+      });
+    }
+
+    const ctx6 = document.getElementById('chartModelSampleSize');
+    if (ctx6) {
+      new Chart(ctx6, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Sample Size (Runs)',
+              data: cost.sampleSize,
+              backgroundColor: barBgs,
+              borderColor: barBorders,
+              borderWidth: 1,
+              borderRadius: 4,
+            }
+          ]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+          },
+          scales: {
+            x: {
+              type: 'linear', position: 'bottom',
+              ticks: { color: ink().dim, font: mono, precision: 0 }, grid: { color: ink().grid },
             },
             y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
           }
