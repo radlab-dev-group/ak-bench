@@ -135,23 +135,19 @@ experiment:
       # 1. the baseline: the fixed model, no knowledge plugin in the process.
       - model: qwen/Qwen3.8-27B
         knowledge_enabled: false
-        runtime_env:
-          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
       # 2. the cheaper fixed model, likewise without memory.
       - model: qwen/Qwen3.8-Flash-Next
         knowledge_enabled: false
-        runtime_env:
-          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
       # 3. arm 1 plus the memory layer: the memory effect on the fixed model.
       - model: qwen/Qwen3.8-27B
         knowledge_enabled: true
         runtime_env:
-          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
       # 4. arm 2 plus the memory layer.
       - model: qwen/Qwen3.8-Flash-Next
         knowledge_enabled: true
         runtime_env:
-          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
       # 5. routing without memory: the knowledge plugin is not loaded at all.
       - model: auto_codex
         knowledge_enabled: false
