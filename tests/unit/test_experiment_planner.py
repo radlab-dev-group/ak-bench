@@ -511,16 +511,18 @@ def test_a_combination_env_against_an_external_runtime_is_refused(
     assert "runtime_environment_needs_managed" in codes(report)
 
 
-def test_the_shipped_atlas_memory_experiment_declares_its_four_arms(
+def test_the_shipped_atlas_memory_experiment_declares_its_six_arms(
     planner: ExperimentPlanner,
 ) -> None:
-    """Four configurations of one memory experiment, and no silent fifth.
+    """Three models × the knowledge plugin in or out of the process, and nothing else.
 
-    Two fixed models with the memory layer, and the routing alias with the
-    knowledge plugin absent from the process and present in it. The pipelines
-    are the part that rots quietly: an arm that says `knowledge_enabled: false`
-    while loading the knowledge plugin is an off arm that reads, and an arm
-    that drops the routing plugin does not route at all.
+    The memory effect is measured once per routing decision, so every model has
+    to appear twice: an experiment that only runs the fixed models with memory
+    has no fixed-model control, and one that only runs the alias without memory
+    has no control for routing. The pipelines are the part that rots quietly: an
+    arm that says `knowledge_enabled: false` while loading the knowledge plugin
+    is an off arm that reads, and an arm that drops the routing plugin does not
+    route at all.
     """
 
     from akbench.experiments import load_experiment_file
@@ -533,14 +535,17 @@ def test_the_shipped_atlas_memory_experiment_declares_its_four_arms(
     assert sorted(arms) == [
         ("auto_codex", False),
         ("auto_codex", True),
+        ("qwen/Qwen3.8-27B", False),
         ("qwen/Qwen3.8-27B", True),
+        ("qwen/Qwen3.8-Flash-Next", False),
         ("qwen/Qwen3.8-Flash-Next", True),
     ]
     for (_model, enabled), variant in arms.items():
         declared = variant.runtime_env[pipeline]
         assert declared.startswith("agentic_routing_codex"), declared
         assert ("agentic_knowledge" in declared) is enabled, declared
+    # The reference is a fixed model with no memory of any kind.
     baseline = next(variant for variant in plan.variants if variant.is_baseline)
-    assert baseline.values == {"model": "qwen/Qwen3.8-27B", "knowledge_enabled": True}
-    # 4 tasks of the family x 4 configurations, one repetition each.
-    assert plan.counts.runs == 16
+    assert baseline.values == {"model": "qwen/Qwen3.8-27B", "knowledge_enabled": False}
+    # 4 tasks of the family x 6 configurations, one repetition each.
+    assert plan.counts.runs == 24

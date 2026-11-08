@@ -125,11 +125,11 @@ and fresh controls for the same task plus three single-defect twins of the
 same store, one per module. The twins are where the measurement lives: their
 defects are in different modules than the learning task's, so the knowledge
 must move as principles — the invariants, the dead-ends, the placement —
-not as a patch. The same memory experiment also runs on four configurations
-(two fixed models with the memory layer, and the routing alias with the
-knowledge plugin absent from the process and present in it), so the family
-answers both "does the memory transfer" and "is routing plus memory worth
-its cost against the fixed models it was learned on".
+not as a patch. The same memory experiment also runs on six configurations —
+three requested models (two fixed and the routing alias), each once with the
+knowledge plugin absent from the process and once present in it — so the
+memory effect is measured once per routing decision rather than argued for
+one, and the report's baseline is the fixed 27B model with no memory.
 
 ## What is deliberately not here yet
 

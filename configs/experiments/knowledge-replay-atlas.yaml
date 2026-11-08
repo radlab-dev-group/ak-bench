@@ -30,56 +30,55 @@
 # collection and silently sees nothing. Two ways to keep the pair
 # comparable, in order of preference:
 #
-# 1. pin the workspace id to the repository name in both arms, so both
-#    checkouts declare the same working directory and land in the same
-#    scope: run the orchestrator with a fixed ``workspace_id`` (the
-#    ``akbench run`` path accepts ``--workspace-id``; the experiment path
-#    derives it from the task, which is why this file pins the model and
-#    documents the requirement instead of pretending it is enforced here);
+# 1. what this experiment relies on, and what the harness does for it: the
+#    experiment runner names a memory run's checkout
+#    ``<run slug>/<repository name>``, so the basename every arm declares is
+#    the fixture's name — ``atlas`` — and the four tasks of the family land in
+#    one collection. The parent stays unique per run, so the workspaces never
+#    collide. The rule is asserted in
+#    ``tests/unit/test_knowledge_workspace_scope.py``;
+#    ``docs/KNOWLEDGE_REPLAY.md`` explains it.
 #
-# 2. or set the plugin's scope override table so the learning and replay
-#    checkouts map onto one scope key regardless of their directory names:
+# 2. the operator's own way, for a checkout the harness does not name: the
+#    plugin's scope override table, which maps a declared path to a scope key
+#    before the basename is consulted (policy key ``scope.overrides``, applied
+#    per run on a managed instance through the plugin's configuration).
 #
-#       LLM_ROUTER_KNOWLEDGE_AGENTIC__SCOPE__OVERRIDES:
-#         {"<learning workspace path>": "atlas",
-#          "<replay workspace path>": "atlas"}
+# Without one of the two, the replay arm is a fresh arm with extra latency,
+# and the experiment measures nothing.
 #
-#    (the exact env spelling follows the plugin's config loader; the
-#    policy file equivalent is ``scope.overrides`` mapping declared path
-#    to scope key).
+# SIX ARMS (the matrix below). The family is run under six configurations, the
+# product of three models and the knowledge plugin being in the process or not,
+# so the same tasks answer both questions at once:
 #
-# Without one of the two, the replay arm is a fresh arm with extra
-# latency, and the experiment measures nothing.
-#
-# FOUR ARMS (the matrix below). The family is run under four configurations, so
-# the same tasks answer two different questions:
-#
-#   1. model=qwen/Qwen3.8-27B,      knowledge on  — the arm this file shipped
-#      with: one fixed model, the memory layer loaded, the learning and replay
-#      runs of the family differing in nothing but the knowledge they see;
-#   2. model=qwen/Qwen3.8-Flash-Next, knowledge on — the same experiment on the
-#      weaker fixed model, which is where a memory effect is easiest to see and
+#   1. model=qwen/Qwen3.8-27B,      knowledge off — THE BASELINE: the fixed
+#      model with no memory of any kind. Every other arm is read against it.
+#   2. model=qwen/Qwen3.8-Flash-Next, knowledge off — the same without memory on
+#      the cheaper model, which is where a memory effect is easiest to see and
 #      where its absence is hardest to excuse;
-#   3. model=auto_codex,            knowledge off — the memoryless control under
-#      routing: the routing plugin loaded, the knowledge plugin not loaded at
-#      all, so nothing is written and nothing is retrieved;
-#   4. model=auto_codex,            knowledge on  — the routed arm with the
-#      memory layer, whose difference to arm 3 is the knowledge and nothing
-#      else (same alias, same routing plugin, same instance kind).
+#   3. model=qwen/Qwen3.8-27B,      knowledge on  — arm 1 plus the memory layer:
+#      the learning and replay runs of the family differ from it in nothing but
+#      the knowledge they see;
+#   4. model=qwen/Qwen3.8-Flash-Next, knowledge on — arm 2 plus the memory layer;
+#   5. model=auto_codex,            knowledge off — routing without memory: the
+#      routing plugin loaded, the knowledge plugin not loaded at all, so nothing
+#      is written and nothing is retrieved;
+#   6. model=auto_codex,            knowledge on  — arm 5 plus the memory layer.
 #
-# Arms 1 and 2 are fixed-model references with the memory available: they say
-# what a known model does with the family, and they are the baseline for
-# whether routing is worth its cost. Arms 3 and 4 isolate the memory under one
-# routing decision. The two pairs answer different questions and are read
-# separately; the baseline for the report is arm 1.
+# Pairs (1,3), (2,4) and (5,6) each isolate the memory under one fixed choice of
+# model, so a memory effect does not have to be argued model by model: it is
+# measured three times, once per routing decision. Pair (1,5) asks what routing
+# is worth without memory, and (3,6) asks the same with it. The report's
+# baseline is arm 1.
 #
 # WHICH PLUGINS AN ARM LOADS IS PART OF THE ARM. The pipeline is read when the
 # process starts, so it is declared per combination under ``runtime_env``, and
-# ``agentic_routing_codex`` is in all four (``auto_codex`` only means something
+# ``agentic_routing_codex`` is in all six (``auto_codex`` only means something
 # with it loaded, and the knowledge plugin runs behind it). An arm with
 # ``knowledge_enabled: false`` does not merely set a flag: the knowledge plugin
-# is not in that process at all, which is the only way the off arm is honestly
-# without memory.
+# is not in that process at all, which is the only way an off arm is honestly
+# without memory — and it is also why an off arm writes nothing, so it cannot
+# contaminate the collections the on arms of the same configuration read.
 #
 # Readiness: on the external shared router ``akbench knowledge readiness``
 # reports ``unsupported`` — the router refuses knowledge reads, so the
@@ -91,9 +90,9 @@
 schema_version: "1.0"
 id: knowledge-replay-atlas
 version: "1.0.0"
-title: Knowledge replay across the atlas drift family, on four configurations
+title: Knowledge replay across the atlas drift family, on six configurations
 description: >-
-  Whether what an agent learned while restoring five invariants of a sharded store carries to the single-defect twins of that store in fresh sessions, measured against an arm that never had the memory at all, on four configurations of the same experiment: two fixed models with the knowledge layer loaded, and the Auto Codex alias with the knowledge plugin absent from the process and present in it. The replay and fresh arms differ in knowledge access and in nothing else; the learning arm is the only source of the memory. The twins are different modules of the same store, so the knowledge must transfer as principles — the invariants, the dead-ends, the module placement — not as a patch.
+  Whether what an agent learned while restoring five invariants of a sharded store carries to the single-defect twins of that store in fresh sessions, measured against arms that never had the memory at all, on six configurations: three requested models — two fixed and the Auto Codex alias — each run once with the knowledge plugin absent from the process and once present in it. The replay and fresh arms differ in knowledge access and in nothing else; the learning arm is the only source of the memory. The twins are different modules of the same store, so the knowledge must transfer as principles — the invariants, the dead-ends, the module placement — not as a patch. The baseline is the fixed 27B model with no memory.
 
 experiment:
   type: knowledge_replay
@@ -127,26 +126,38 @@ experiment:
       - id: model
         values: [ qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next, auto_codex ]
       - id: knowledge_enabled
+    # The reference is a model with no memory: a task it cannot do and an arm
+    # with memory can do is the whole measurement.
     baseline:
       model: qwen/Qwen3.8-27B
-      knowledge_enabled: true
+      knowledge_enabled: false
     combinations:
-      # 1. the arm this file shipped with, now stated explicitly.
+      # 1. the baseline: the fixed model, no knowledge plugin in the process.
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+      # 2. the cheaper fixed model, likewise without memory.
+      - model: qwen/Qwen3.8-Flash-Next
+        knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+      # 3. arm 1 plus the memory layer: the memory effect on the fixed model.
       - model: qwen/Qwen3.8-27B
         knowledge_enabled: true
         runtime_env:
           LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
-      # 2. the weaker fixed model, same memory layer.
+      # 4. arm 2 plus the memory layer.
       - model: qwen/Qwen3.8-Flash-Next
         knowledge_enabled: true
         runtime_env:
           LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
-      # 3. routing without memory: the knowledge plugin is not loaded at all.
+      # 5. routing without memory: the knowledge plugin is not loaded at all.
       - model: auto_codex
         knowledge_enabled: false
         runtime_env:
           LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
-      # 4. routing with memory: differs from arm 3 by the knowledge plugin.
+      # 6. routing with memory: differs from arm 5 by the knowledge plugin.
       - model: auto_codex
         knowledge_enabled: true
         runtime_env:
@@ -211,8 +222,8 @@ experiment:
     - total_tokens
 
   limits:
-    # 4 tasks x 4 configurations x 1 repetition = 16 runs of the run plan; the
+    # 4 tasks x 6 configurations x 1 repetition = 24 runs of the run plan; the
     # memory plan of each configuration is 1 learning + 2 x 4 scenarios = 9
     # arms, so the ceiling leaves room for the arms without letting an
     # accidental dimension multiply the bill.
-    max_runs: 32
+    max_runs: 48
