@@ -11,6 +11,44 @@ release tagged as `v<version>`.
 | 0.1.1 | **Security:** dashboard authentication and roles, protected task answers and artifacts, hardened PostgreSQL configuration, response headers and input validation. **Added:** model verification indicators, themes, keyboard navigation, run export, tool-call metrics, task downloads and score charts, recorded task files and descriptors, agent and runtime pages. **Changed:** configuration labels, sortable tables, code and YAML viewers, PostgreSQL as the default database, automatic `.env` loading and SQLite-to-PostgreSQL migration. |
 | 0.1.0 | **Added:** the first release: the whole of AK-Bench, from the initial commit to now. A `typer` CLI (`akbench init/doctor/config`, experiments, datasets, runs, reports and exports); YAML/ENV configuration with an environment allowlist where secrets stay opaque (presence only, `src/akbench/config/`); a descriptor system with eight kinds — agents, runtimes, plugins, dimensions, models, categories, evaluators, metrics — versioned, digest-pinned and registered (`src/akbench/descriptors/`, `docs/DESCRIPTOR_SYSTEM.md`); tasks, datasets, repeatable workspaces, mutation verification and hidden tests (`src/akbench/datasets/`, `docs/DATASETS.md`); an agent-adapter framework with a Codex CLI adapter and capability gating (`src/akbench/agents/`, `docs/AGENT_ADAPTERS.md`); a runtime manager with direct/runtime/router execution, managed self-starting LLM Router instances with per-run port ownership and the instance log kept as a run artifact, plus model verification from that log (`src/akbench/runtime/`, `docs/RUNTIME_MANAGER.md`); a pytest/command evaluator engine with verdicts and hidden-test isolation (`src/akbench/evaluators/`, `docs/EVALUATORS.md`); a run orchestrator with a lifecycle state machine, isolation, retries and run records (`src/akbench/orchestration/`, `docs/RUN_ORCHESTRATOR.md`); an experiment descriptor and planner with matrix strategies, validation that refuses unmeasurable plans, factor routing by dimension source and environment bound to a combination (`src/akbench/experiments/`, `docs/EXPERIMENTS.md`); plugin observability — a run reports only the plugins it configured, with verification statuses (`src/akbench/plugins/`, `docs/PLUGINS.md`); knowledge replay for memory experiments (`docs/KNOWLEDGE_REPLAY.md`); SQLite storage, artifacts, a reproducibility manifest with digests, aggregates and baseline deltas (`src/akbench/storage/`, `src/akbench/metrics/`); a static HTML report — dashboard with a configuration ranking pooled across experiments, experiment/task/agent/runtime/plugin/model pages, a "Not verified" table and an in-report `docs/` subpage (`src/akbench/reporting/`, `docs/REPORTING.md`); JSON/CSV/HTML export with secret screening (`src/akbench/export/`, `docs/EXPORT.md`); shipped descriptors and eight experiment configs under `descriptors/` and `configs/experiments/`. |
 
+## [Unreleased]
+
+### Added
+- **The atlas sharded-store family: five expert tasks over one fixture.**
+  `datasets/_sources/atlas` is a standard-library-only sharded, replicated,
+  fenced key-value store (roughly five thousand lines, twenty-four modules, a
+  green 41-test suite, a normative `SPEC.md`, a 176-note incident corpus).
+  `atlas-drift-001` breaks five of the store's invariants, one per module;
+  `atlas-drift-002`/`-003`/`-004` are its twins, one regression each, in
+  different modules, so a fix learned from the first transfers as a
+  principle rather than a diff; `atlas-lineage-001` implements a declared
+  feature (provenance, `SPEC.md` section 9) from a stub. The family is shaped
+  for the memory experiment: the repository suite is green on the base and
+  green after the mutation, the incidents name the rules by symptom, and each
+  twin plants a plausible-but-wrong incident note. Integrity:
+  `tests/integration/test_atlas_family_tasks.py`.
+- **A memory experiment for the family, and the scope pin it needs.**
+  `configs/experiments/knowledge-replay-atlas.yaml` runs one learning arm on
+  the five-module task and replay/fresh controls for the same task plus the
+  three twins. The knowledge plugin scopes collections by the checkout's
+  directory basename, and AK-Bench named workspaces after the run, so a
+  replay silently read a collection its learning run never wrote. The
+  experiment runner now pins a memory run's checkout to
+  `<run slug>/<repository name>`: unique per run, shared per fixture
+  (`src/akbench/cli/experiments.py`, `tests/unit/test_knowledge_workspace_scope.py`),
+  with the operator's alternative (`scope.overrides`) documented in
+  `docs/KNOWLEDGE_REPLAY.md`.
+- **Two corpus notes per twin family.** Six incident notes
+  (`INC-2907`..`INC-2912`), each written about the symptom rather than the
+  module, one of each pair recording the argument for the wrong fix — the
+  reverted one-sided check, the ascending tie-break, the snapshot's own
+  inclusive boundary.
+
+### Fixed
+- The atlas task descriptors' titles and constraints carried a bare `:` in a
+  plain YAML scalar; they are quoted, so `akbench dataset validate` reads all
+  twenty-two tasks.
+
 ## [0.1.1] - 2026-11-08
 
 ### Security
