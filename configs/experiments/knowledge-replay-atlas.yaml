@@ -226,4 +226,4 @@ experiment:
     # memory plan of each configuration is 1 learning + 2 x 4 scenarios = 9
     # arms, so the ceiling leaves room for the arms without letting an
     # accidental dimension multiply the bill.
-    max_runs: 48
+    max_runs: 24
