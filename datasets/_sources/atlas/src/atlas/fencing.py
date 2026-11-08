@@ -96,7 +96,16 @@ class FenceBook:
         return lease.generation if lease is not None else 0
 
     def advance_lease(self, key: str, holder: str, generation: int) -> Lease:
+        """Move the key's lease to ``holder`` at ``generation``.
+
+        A new holder takes over only forward in generation: a holder offering
+        a generation at or below the one on record has not seen the write that
+        the recorded holder made, and taking over from that position is the
+        stale-worker failure the lease exists to stop. The holder is recorded
+        for audit; the check that matters is the generation.
+        """
+
         previous = self.leases.get(key)
-        if previous is not None and previous.holder != holder:
+        if previous is not None and generation <= previous.generation:
             raise StaleGenerationError(key, previous.generation, generation)
         return self.grant(key, holder, generation)

@@ -70,6 +70,7 @@ class ShardStorage:
         *,
         config=None,
         crash: CrashPlan | None = None,
+        repair_on_open: bool | None = None,
     ) -> None:
         self.root = pathlib.Path(directory)
         self.root.mkdir(parents=True, exist_ok=True)
@@ -77,11 +78,13 @@ class ShardStorage:
         self.config = config
         self.crash = crash or NO_CRASH
         fsync = True if config is None else bool(config["fsync_on_commit"])
+        if repair_on_open is None:
+            repair_on_open = True if config is None else bool(config["torn_tail_repair"])
         self.log = WriteAheadLog(
             self.root / "wal",
             fsync=fsync,
             max_bytes=8 * 1024 * 1024 if config is None else int(config["max_wal_bytes"]),
-            repair_on_open=bool(True if config is None else config["torn_tail_repair"]),
+            repair_on_open=repair_on_open,
         )
         self.snapshots = SnapshotStore(self.root / "snapshots", fsync=fsync)
         self.state = Memtable(shard=self.shard)
@@ -204,9 +207,15 @@ class ShardStorage:
                 transaction.delete(record)
             else:
                 transaction.put(record)
+        # mid_frame: the payload is being torn. after_commit: it is all on
+        # disk, COMMIT included. There is deliberately no point named "after
+        # the records, before the COMMIT", because a crash in that gap is
+        # exactly the case the durability rule exists for: the COMMIT is what
+        # makes the records durable, and a crash before it discards them.
+        tearing = self.crash.tear_bytes if self.crash.active("mid_frame") else 0
+        self.log.append(transaction, tear_bytes=tearing)
         self.crash.hit("mid_frame")
-        self.log.append(transaction)
-        self.crash.hit("after_append")
+        self.crash.hit("after_commit")
         for record in records:
             self.state.apply(record, reconcile=reconcile)
         self.crash.hit("after_commit")

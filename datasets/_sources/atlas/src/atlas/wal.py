@@ -164,8 +164,14 @@ class WriteAheadLog:
             return path
         return last
 
-    def append(self, transaction: Transaction) -> int:
-        """Append one transaction atomically; return the bytes written."""
+    def append(self, transaction: Transaction, *, tear_bytes: int = 0) -> int:
+        """Append one transaction atomically; return the bytes written.
+
+        ``tear_bytes`` is for crash injection: the transaction is written in
+        full and the tail is then cut back, leaving exactly the partial frame a
+        process dying mid-write would leave. It is the only way to reproduce a
+        torn tail without a process that really dies.
+        """
 
         payload = encode(
             FrameKind.BEGIN, {"txn": transaction.txn_id, "lsn": transaction.lsn}
@@ -186,6 +192,8 @@ class WriteAheadLog:
             handle.flush()
             if self.fsync:
                 os.fsync(handle.fileno())
+        if tear_bytes:
+            self.truncate_after(path, max(0, path.stat().st_size - int(tear_bytes)))
         return len(payload)
 
     def truncate_after(self, path: pathlib.Path, size: int) -> int:
