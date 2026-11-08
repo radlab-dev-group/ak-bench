@@ -99,7 +99,7 @@
         </div>
       </div>
       <div class="panel-body">
-        <div style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
           <canvas id="chartModelPerformance"></canvas>
         </div>
       </div>
@@ -113,7 +113,7 @@
         </div>
       </div>
       <div class="panel-body">
-        <div style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
           <canvas id="chartModelCost"></canvas>
         </div>
       </div>
@@ -297,7 +297,55 @@ document.addEventListener('DOMContentLoaded', () => {
     // log confirmed it served, so the badge says how many of the model's runs
     // the log verified. Zero verified reads as "not verified", not as "bad".
     const vlabel = (m) => m.verified_runs > 0 ? `\u2713 ${m.verified_runs}/${m.runs}` : '\u25cb';
-    const labels = models.map(m => `${m.model}  ${vlabel(m)}`);
+    // A configuration label is long on purpose — the model asked for, the
+    // plugins on it and, for an alias, every model routing chose between. A
+    // canvas does not wrap a tick it cannot fit: on the horizontal chart the
+    // text would eat the bar, on the vertical one the ticks would overlap. A
+    // tick may be a list of lines instead, so the label is broken at the
+    // separators that already mean something in it — before a plugin, between
+    // two served models — and never in the middle of a name.
+    const TICK_WIDTH = 28;
+    const pack = (atoms, joiner) => {
+      const lines = [];
+      let line = '';
+      for (const atom of atoms) {
+        const joined = line ? `${line}${joiner}${atom}` : atom;
+        if (line && joined.length > TICK_WIDTH) { lines.push(line); line = atom; }
+        else { line = joined; }
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+    const labelLines = (m) => {
+      const text = String(m.model || '\u2014');
+      const open = text.indexOf('[');
+      const close = text.lastIndexOf(']');
+      const head = open === -1 ? text : text.slice(0, open);
+      // The plugin markers belong to the name they follow, so the split keeps
+      // the '+' with what it adds rather than starting a line with it.
+      const lines = pack(head.split('+').filter(Boolean).map((part, i) => i ? `+${part}` : part), '');
+      if (open !== -1 && close > open) {
+        const served = text.slice(open + 1, close).split(',').map(s => s.trim()).filter(Boolean);
+        const wrapped = pack(served, ', ');
+        if (wrapped.length) {
+          wrapped[0] = `[${wrapped[0]}`;
+          wrapped[wrapped.length - 1] = `${wrapped[wrapped.length - 1]}]`;
+          lines.push(...wrapped);
+        }
+      }
+      // The verification badge reads beside the last line of its own label.
+      lines[lines.length - 1] = `${lines[lines.length - 1]}  ${vlabel(m)}`;
+      return lines;
+    };
+    const labels = models.map(labelLines);
+    // Wrapped ticks need more room than the one line the panel was sized for,
+    // so both charts grow by the extra lines rather than clipping them.
+    const extraLines = Math.max(0, ...labels.map(l => (Array.isArray(l) ? l.length : 1) - 1));
+    if (extraLines > 0) {
+      document.querySelectorAll('.model-chart-box').forEach((box) => {
+        box.style.height = `${box.offsetHeight + extraLines * 15}px`;
+      });
+    }
     const perf = {
       successRate: models.map(m => m.success_rate !== null ? (m.success_rate * 100).toFixed(1) : 0),
       meanScore: models.map(m => m.mean_score !== null ? (m.mean_score * 100).toFixed(1) : 0),

@@ -1618,3 +1618,26 @@ def test_the_model_views_agree_on_the_configuration_label(database_url: str) -> 
     # was given, so a bar is named after the configuration it measured
     body = client.get("/").text
     assert label in body
+
+
+def test_the_model_charts_wrap_the_configuration_label(database_url: str) -> None:
+    """A configuration label is long on purpose, and a canvas will not wrap it.
+
+    Both model panels grew the label in the same step: a bar named after an
+    alias, its plugins and the models routing chose between is worth reading,
+    but the same text as one line eats the bar on the horizontal chart and
+    collides with its neighbours on the vertical one. So the ticks are built
+    from the wrapped label, and the panels make room for the extra lines.
+    """
+    store = _seeded_store(database_url)
+    _alias_run(store, "run-alias", plugins=[("agentic_knowledge", True)])
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/").text
+    script = body[body.index("const models =") :]
+    # both charts read their ticks from the wrapped label, not from the raw name
+    assert "const labels = models.map(labelLines);" in script
+    assert script.count("labels,") >= 2
+    # and each panel is sized for the lines the wrap produces
+    assert body.count('class="model-chart-box"') == 2
+    assert "extraLines" in script
