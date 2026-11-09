@@ -17,7 +17,7 @@
       } catch (err) { /* a blocked storage leaves the default, which is dark */ }
     })();
   </script>
-  <link rel="stylesheet" href="/static/css/style.css?v=2">
+  <link rel="stylesheet" href="/static/css/style.css?v=3">
   <!-- Chart.js is served from this origin, not from a CDN. A library this page
        hands its run data is not something a third party should be able to
        substitute, and on a plain-HTTP deployment a man in the middle could do
@@ -29,6 +29,15 @@
           integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4"></script>
 </head>
 <body>
+
+  <!-- Full-page spinner. It is in the markup from the first byte, so the first
+       paint of every page is the spinner rather than a half-built page; the
+       script lifts it once the page has loaded and puts it back the moment a
+       link or a form takes the reader to another page. -->
+  <div class="page-spinner" id="pageSpinner" role="status" aria-live="polite" aria-label="Loading">
+    <div class="page-spinner-ring" aria-hidden="true"></div>
+    <div class="page-spinner-text">Loading&hellip;</div>
+  </div>
 
   <!-- Page-load indicator: decorative by design, so it never blocks content -->
   <div class="page-loader" id="pageLoader" role="presentation" aria-hidden="true">

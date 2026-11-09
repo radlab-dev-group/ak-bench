@@ -1766,3 +1766,30 @@ def test_the_model_comparison_reports_the_pass_count_and_its_interval(database_u
     # the Success Rate panel draws the interval and the paired panel its delta table
     assert "ciBounds" in body and "pairedDeltaHeatmap" in body
     assert "paretoScaleSelector" in body and "paretoZoomSelector" in body
+
+
+def test_every_subpage_renders_the_loading_spinner(database_url: str) -> None:
+    """Every page is served with the spinner in its initial markup.
+
+    The spinner paints before scripts run so that a cold page load or a navigation
+    between subpages presents an immediate visual indicator rather than a blank canvas.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    routes = [
+        "/",
+        "/runs",
+        "/analytics",
+        "/compare",
+        "/experiments",
+        "/tasks",
+        "/agents",
+        "/runtimes",
+    ]
+    for route in routes:
+        resp = client.get(route)
+        assert resp.status_code == 200, f"Route {route} failed with status {resp.status_code}"
+        assert 'id="pageSpinner"' in resp.text, f"Route {route} missing pageSpinner"
+        assert 'class="page-spinner-ring"' in resp.text, f"Route {route} missing spinner ring"
+        assert 'id="pageLoader"' in resp.text, f"Route {route} missing pageLoader"
