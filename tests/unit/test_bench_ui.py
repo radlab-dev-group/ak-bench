@@ -1688,3 +1688,80 @@ def test_the_model_charts_wrap_the_configuration_label(database_url: str) -> Non
     # and each panel is sized for the lines the wrap produces
     assert body.count('class="model-chart-box"') == 6
     assert "extraLines" in script
+
+
+def test_the_dashboard_pairs_base_and_knowledge_arms_by_family(database_url: str) -> None:
+    """Base configurations and their +agentic_knowledge twins stay side by side.
+
+    When an alias lists served models in brackets, alphabetical sorting splits
+    ``auto_codex+agentic_knowledge[...]`` away from ``auto_codex[...]``. Grouping
+    by family keeps each baseline arm directly before its plugin-augmented twin
+    and surfaces the Pareto and Paired comparison views on the dashboard.
+    """
+    store = _seeded_store(database_url)
+    _alias_run(store, "run-alias-ak", plugins=[("agentic_knowledge", True)])
+    _alias_run(store, "run-alias-base", plugins=[("agentic_knowledge", False)])
+
+    rows = BenchDataService(database_url=database_url).get_model_comparison()
+    alias_rows = [row for row in rows if row["base_model"] == "auto_codex"]
+    assert [row["model"] for row in alias_rows] == [
+        "auto_codex[qwen/two-a, qwen/two-b]",
+        "auto_codex+agentic_knowledge[qwen/two-a, qwen/two-b]",
+    ]
+    assert alias_rows[0]["family"] == alias_rows[1]["family"]
+    assert alias_rows[0]["knowledge_enabled"] is False
+    assert alias_rows[1]["knowledge_enabled"] is True
+
+    body = TestClient(create_app(database_url=database_url)).get("/").text
+    assert "chartModelPareto" in body and "chartModelPaired" in body
+    assert "modelChartsToolbar" in body and "modelChartsLegend" in body
+
+
+def test_a_pass_rate_carries_the_interval_its_sample_size_earns() -> None:
+    """A bar alone cannot say that 1/1 and 27/35 are different kinds of evidence.
+
+    The Wilson interval does: it is wide for one run and narrow for many, it
+    stays inside [0, 1], and it does not collapse to a point at a rate of 0 or
+    1 the way the normal approximation would. Nothing evaluated has no rate
+    and so no interval.
+    """
+    from bench_ui.service import wilson_interval
+
+    assert wilson_interval(0, 0) is None
+
+    one_of_one = wilson_interval(1, 1)
+    assert one_of_one is not None
+    low, high = one_of_one
+    assert high == pytest.approx(1.0)
+    assert low < 0.25  # a single success says very little
+
+    many = wilson_interval(27, 35)
+    assert many is not None
+    low, high = many
+    assert 0.6 < low < 27 / 35 < high < 0.9
+    assert high - low < 0.3  # thirty-five runs narrow it well below one run's width
+
+    none_of_ten = wilson_interval(0, 10)
+    assert none_of_ten is not None
+    assert none_of_ten[0] == pytest.approx(0.0)
+    assert none_of_ten[1] > 0.2  # zero of ten is not proof of zero
+
+
+def test_the_model_comparison_reports_the_pass_count_and_its_interval(database_url: str) -> None:
+    """The chart draws the interval, so the row must carry it and its parts."""
+    store = _seeded_store(database_url)
+    _alias_run(store, "run-alias", plugins=[("agentic_knowledge", True)])
+
+    rows = BenchDataService(database_url=database_url).get_model_comparison()
+    for row in rows:
+        assert {"passed", "success_ci_low", "success_ci_high"} <= set(row)
+        if row["evaluated"] == 0:
+            assert row["success_ci_low"] is None and row["success_ci_high"] is None
+        else:
+            assert 0.0 <= row["success_ci_low"] <= row["success_rate"] <= row["success_ci_high"] <= 1.0
+            assert 0 <= row["passed"] <= row["evaluated"]
+
+    body = TestClient(create_app(database_url=database_url)).get("/").text
+    # the Success Rate panel draws the interval and the paired panel its delta table
+    assert "ciBounds" in body and "pairedDeltaHeatmap" in body
+    assert "paretoScaleSelector" in body and "paretoZoomSelector" in body

@@ -522,6 +522,57 @@ def _model_names(observed: Any) -> list[str]:
     return [name.strip() for name in str(observed).split(",") if name.strip()]
 
 
+def _split_configuration_label(label: str) -> dict[str, Any]:
+    """Break a configuration label into its base model, plugins, and served targets.
+
+    Grouping by ``(base_model, served_models)`` keeps each baseline arm beside
+    its plugin-augmented twin (such as ``+agentic_knowledge``), even when the
+    label also lists routed target models in brackets.
+    """
+    text = str(label or "").strip()
+    open_idx = text.find("[")
+    close_idx = text.rfind("]")
+    if open_idx != -1 and close_idx > open_idx:
+        head = text[:open_idx].strip()
+        served = tuple(
+            part.strip()
+            for part in text[open_idx + 1 : close_idx].split(",")
+            if part.strip()
+        )
+    else:
+        head = text
+        served = ()
+    parts = [part.strip() for part in head.split("+") if part.strip()]
+    base_model = parts[0] if parts else text
+    plugins = tuple(parts[1:]) if len(parts) > 1 else ()
+    family = f"{base_model}[{', '.join(served)}]" if served else base_model
+    return {
+        "base_model": base_model,
+        "plugins": plugins,
+        "served_models": served,
+        "family": family,
+        "knowledge_enabled": "agentic_knowledge" in plugins,
+    }
+
+
+def wilson_interval(passed: int, total: int, z: float = 1.96) -> tuple[float, float] | None:
+    """The Wilson score interval of a pass rate, as a pair of fractions.
+
+    A rate of 100% from one run and a rate of 77% from thirty-five are not
+    the same evidence, and a bar alone cannot say so. The Wilson interval
+    stays inside [0, 1] and does not collapse to a point at 0 or 1 the way the
+    normal approximation does, which is what makes it usable for the small
+    samples a benchmark arm usually has. ``None`` when nothing was evaluated.
+    """
+    if total <= 0:
+        return None
+    p = passed / total
+    denom = 1.0 + z * z / total
+    centre = (p + z * z / (2 * total)) / denom
+    half = z * ((p * (1.0 - p) / total + z * z / (4 * total * total)) ** 0.5) / denom
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
 def configuration_of(run: dict[str, Any]) -> str | None:
     """The label a run's configuration goes by, for a run read anywhere.
 
@@ -799,18 +850,28 @@ class BenchDataService:
                 continue
             by_model.setdefault(str(model), []).append(run)
         rows = []
-        for model, group in sorted(by_model.items()):
+        for model, group in by_model.items():
             summary = summarize_runs(group)
             verified = sum(
                 1 for run in group if run.get("model_verification") == "verified"
             )
+            parsed = _split_configuration_label(model)
+            interval = wilson_interval(summary["passed"], summary["evaluated"])
             rows.append(
                 {
                     "model": model,
+                    "family": parsed["family"],
+                    "base_model": parsed["base_model"],
+                    "plugins": list(parsed["plugins"]),
+                    "served_models": list(parsed["served_models"]),
+                    "knowledge_enabled": parsed["knowledge_enabled"],
                     "runs": summary["runs"],
                     "verified_runs": verified,
                     "evaluated": summary["evaluated"],
+                    "passed": summary["passed"],
                     "success_rate": summary["success_rate"],
+                    "success_ci_low": interval[0] if interval else None,
+                    "success_ci_high": interval[1] if interval else None,
                     "mean_score": summary["mean_score"],
                     "mean_duration_seconds": summary["mean_duration_seconds"],
                     "mean_total_tokens": mean_per_run(
@@ -828,6 +889,29 @@ class BenchDataService:
                     "estimated_cost": self.estimate_total_cost(group)["total"],
                 }
             )
+        bases_with_served = {
+            row["base_model"] for row in rows if row["served_models"]
+        }
+        rows.sort(
+            key=lambda row: (
+                (
+                    row["verified_runs"] == 0
+                    and (
+                        row["evaluated"] == 0
+                        or (
+                            not row["served_models"]
+                            and row["base_model"] in bases_with_served
+                        )
+                    )
+                ),
+                bool(row["served_models"]) or row["base_model"] in bases_with_served,
+                row["base_model"],
+                tuple(row["served_models"]),
+                len(row["plugins"]),
+                tuple(row["plugins"]),
+                row["model"],
+            )
+        )
         return rows
 
     def get_dashboard_stats(self) -> list[dict[str, str]]:

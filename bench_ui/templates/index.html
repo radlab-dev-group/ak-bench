@@ -95,8 +95,275 @@
     </div>
   </div>
 
+  <style>
+    .model-charts-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 10px 16px;
+      margin-bottom: 16px;
+      background: var(--panel, #0a0e14);
+      border: 1px solid var(--line, #1a232e);
+      border-radius: var(--r, 8px);
+      /* stays in view while the 3x2 grid scrolls, so the legend that explains
+         light vs. rich fills is never off-screen when the bars are */
+      position: sticky;
+      top: calc(var(--nav-h, 56px) + 8px);
+      z-index: 20;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    }
+    .model-legend-item.is-low-sample {
+      opacity: 0.85;
+    }
+    .model-legend-swatch.is-low {
+      border: 1.5px dashed var(--amber, #ffb44a);
+      background: repeating-linear-gradient(135deg, rgba(255, 180, 74, 0.35) 0 3px, transparent 3px 6px);
+    }
+    .model-legend-ci {
+      display: inline-block;
+      width: 14px;
+      height: 2px;
+      background: var(--fg-dim, #a5b3c2);
+      position: relative;
+    }
+    .model-legend-ci::before,
+    .model-legend-ci::after {
+      content: '';
+      position: absolute;
+      top: -3px;
+      width: 2px;
+      height: 8px;
+      background: var(--fg-dim, #a5b3c2);
+    }
+    .model-legend-ci::before { left: 0; }
+    .model-legend-ci::after { right: 0; }
+    .paired-delta-heatmap {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 3px 3px;
+      margin-top: 10px;
+      font-family: var(--mono, ui-monospace, monospace);
+      font-size: 11px;
+      table-layout: fixed;
+    }
+    .paired-delta-heatmap th {
+      color: var(--fg-dim, #a5b3c2);
+      font-weight: 500;
+      text-align: center;
+      padding: 2px 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .paired-delta-heatmap th:first-child {
+      text-align: left;
+      width: 34%;
+    }
+    .paired-delta-heatmap td {
+      text-align: center;
+      padding: 5px 4px;
+      border-radius: 4px;
+      color: var(--fg-strong, #e6edf3);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .paired-delta-heatmap td.is-row-label {
+      text-align: left;
+      font-weight: 500;
+      color: var(--fg, #c6d3df);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-left: 8px;
+      border-left: 3px solid var(--line, #1a232e);
+    }
+    .paired-delta-heatmap td.is-empty {
+      color: var(--fg-dim, #a5b3c2);
+      font-weight: 400;
+      background: var(--panel-2, #0d131a);
+    }
+    .paired-delta-caption {
+      margin-top: 6px;
+      font-family: var(--mono, ui-monospace, monospace);
+      font-size: 10.5px;
+      color: var(--fg-dim, #a5b3c2);
+    }
+    .model-charts-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+      font-family: var(--mono, ui-monospace, monospace);
+      font-size: 11.5px;
+      color: var(--fg-dim, #a5b3c2);
+    }
+    .model-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .model-legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .model-legend-swatch.is-base {
+      border: 1.5px dashed var(--fg-dim, #a5b3c2);
+      background: rgba(141, 157, 175, 0.22);
+    }
+    .model-legend-swatch.is-ak {
+      border: 1.5px solid var(--mint, #00e59b);
+      background: rgba(0, 229, 155, 0.72);
+    }
+    .model-charts-controls {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chart-pill-group {
+      display: inline-flex;
+      align-items: center;
+      background: var(--panel-2, #0d131a);
+      border: 1px solid var(--line, #1a232e);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .chart-pill {
+      appearance: none;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--fg-dim, #a5b3c2);
+      font-family: var(--mono, ui-monospace, monospace);
+      font-size: 11px;
+      line-height: 1.3;
+      padding: 4px 9px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .chart-pill:hover {
+      color: var(--fg-strong, #fff);
+      background: var(--hover, rgba(255, 255, 255, 0.05));
+    }
+    .chart-pill.active {
+      background: var(--mint-bg, rgba(0, 229, 155, 0.1));
+      border-color: var(--mint-border, rgba(0, 229, 155, 0.35));
+      color: var(--mint, #00e59b);
+      font-weight: 600;
+    }
+    .model-synthesis-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 1100px) {
+      .model-synthesis-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <!-- Semantic Legend & View Controls -->
+  <div class="model-charts-toolbar" id="modelChartsToolbar">
+    <div class="model-charts-legend" id="modelChartsLegend">
+      <span class="model-legend-item">
+        <span class="model-legend-swatch is-base"></span>
+        <span>Base (no memory)</span>
+      </span>
+      <span class="model-legend-item">
+        <span class="model-legend-swatch is-ak"></span>
+        <span>+agentic_knowledge (+AK)</span>
+      </span>
+      <span class="model-legend-item is-low-sample" id="lowSampleLegend" style="display:none;" title="Fewer than 3 evaluated runs: the bar is hatched and the label carries &#9888;, because a rate from one or two runs is not yet a measurement">
+        <span class="model-legend-swatch is-low"></span>
+        <span>&#9888; n &lt; 3 (low sample)</span>
+      </span>
+      <span class="model-legend-item" title="Wilson 95% confidence interval of the pass rate, drawn over the Success Rate bar">
+        <span class="model-legend-ci"></span>
+        <span>95% CI</span>
+      </span>
+    </div>
+    <div class="model-charts-controls">
+      <div class="chart-pill-group" role="group" aria-label="Y-Axis Label Mode">
+        <button type="button" class="chart-pill active" data-axis-mode="all" title="Show compact Y-axis labels on every chart">All Y-Axes</button>
+        <button type="button" class="chart-pill" data-axis-mode="shared" title="Show Y-axis labels once per row on desktop to maximize bar width">Shared Row Y-Axis</button>
+      </div>
+      <button type="button" class="chart-pill active" id="toggleUnverifiedStubsBtn" style="display:none; border:1px solid var(--line, #1a232e);" title="Configurations with no evaluated run and no verified run are hidden by default; click to show them">
+        Showing Evaluated Only
+      </button>
+    </div>
+  </div>
+
+  <!-- Synthesis Row: Pareto Frontier (Quality vs Cost/Time) & Paired Base vs +AK Comparison -->
+  <div class="model-synthesis-grid" id="modelSynthesisGrid">
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-header" style="flex-wrap:wrap; gap:8px;">
+        <div class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7.5" cy="14.5" r="3.5"/><circle cx="16.5" cy="7.5" r="4.5"/><path d="M10.5 12.5 13 10"/></svg>
+          Pareto Trade-off: Quality vs Cost / Effort
+        </div>
+        <div class="model-charts-controls">
+          <div class="chart-pill-group" id="paretoMetricSelector">
+            <button type="button" class="chart-pill active" data-pareto-x="tokens">Tokens</button>
+            <button type="button" class="chart-pill" data-pareto-x="duration">Duration</button>
+            <button type="button" class="chart-pill" data-pareto-x="tools">Tool Calls</button>
+          </div>
+          <div class="chart-pill-group" id="paretoScaleSelector" role="group" aria-label="X-axis scale">
+            <button type="button" class="chart-pill active" data-pareto-scale="log" title="Logarithmic X axis: one outlier no longer squeezes the rest into a corner">log X</button>
+            <button type="button" class="chart-pill" data-pareto-scale="linear" title="Linear X axis">linear X</button>
+          </div>
+          <div class="chart-pill-group" id="paretoZoomSelector" role="group" aria-label="Y-axis range">
+            <button type="button" class="chart-pill active" data-pareto-zoom="fit" title="Y axis fitted to the data, so differences of a few points are readable">fit Y</button>
+            <button type="button" class="chart-pill" data-pareto-zoom="full" title="Y axis on the full 0&ndash;100% range, so differences are seen at their true size">0&ndash;100</button>
+          </div>
+          <div class="chart-pill-group" id="paretoLabelSelector" role="group" aria-label="Point labels">
+            <button type="button" class="chart-pill active" data-pareto-labels="key" title="Label only the Pareto front and the +AK arms; the rest are in the tooltip">key labels</button>
+            <button type="button" class="chart-pill" data-pareto-labels="all" title="Label every point">all</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="height:290px; position:relative;">
+          <canvas id="chartModelPareto"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-header" style="flex-wrap:wrap; gap:8px;">
+        <div class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+          Paired Impact: Base vs +agentic_knowledge
+        </div>
+        <div class="chart-pill-group" id="pairedMetricSelector">
+          <button type="button" class="chart-pill active" data-paired-metric="score">Mean Score (%)</button>
+          <button type="button" class="chart-pill" data-paired-metric="duration">Duration (min)</button>
+          <button type="button" class="chart-pill" data-paired-metric="tokens">Tokens (k)</button>
+          <button type="button" class="chart-pill" data-paired-metric="tools">Tool Calls</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="height:290px; position:relative;">
+          <canvas id="chartModelPaired"></canvas>
+        </div>
+        <!-- One glance instead of four tabs: the sign and size of the +AK
+             effect per family and per metric. Red is worse, mint is better,
+             whichever direction "better" is for that metric. -->
+        <table class="paired-delta-heatmap" id="pairedDeltaHeatmap" aria-label="Relative change from Base to +agentic_knowledge per family and metric"></table>
+        <div class="paired-delta-caption" id="pairedDeltaCaption"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Interactive Charts Grid (max 3 per row on desktop) -->
   <div class="model-charts-grid">
+
     <!-- One metric, one bar per model: the question is how the models differ,
          not how the same model differs from itself across metrics. -->
     <div class="panel" style="margin-bottom:0;">
@@ -107,7 +374,7 @@
         </div>
       </div>
       <div class="panel-body">
-        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+        <div class="model-chart-box" style="height:{{ [250, model_comparison|length * 46 + 70]|max }}px; position:relative;">
           <canvas id="chartModelSuccessRate"></canvas>
         </div>
       </div>
@@ -121,7 +388,7 @@
         </div>
       </div>
       <div class="panel-body">
-        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+        <div class="model-chart-box" style="height:{{ [250, model_comparison|length * 46 + 70]|max }}px; position:relative;">
           <canvas id="chartModelMeanScore"></canvas>
         </div>
       </div>
@@ -135,7 +402,7 @@
         </div>
       </div>
       <div class="panel-body">
-        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+        <div class="model-chart-box" style="height:{{ [250, model_comparison|length * 46 + 70]|max }}px; position:relative;">
           <canvas id="chartModelDuration"></canvas>
         </div>
       </div>
@@ -145,11 +412,11 @@
       <div class="panel-header">
         <div class="panel-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-          Models: Mean Tokens
+          Models: Mean Tokens (In / Out &amp; Est. Cost)
         </div>
       </div>
       <div class="panel-body">
-        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+        <div class="model-chart-box" style="height:{{ [250, model_comparison|length * 46 + 70]|max }}px; position:relative;">
           <canvas id="chartModelTokens"></canvas>
         </div>
       </div>
@@ -163,7 +430,7 @@
         </div>
       </div>
       <div class="panel-body">
-        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+        <div class="model-chart-box" style="height:{{ [250, model_comparison|length * 46 + 70]|max }}px; position:relative;">
           <canvas id="chartModelToolCalls"></canvas>
         </div>
       </div>
@@ -173,11 +440,11 @@
       <div class="panel-header">
         <div class="panel-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          Models: Sample Size (Runs)
+          Models: Sample Size (Verified / Total Runs)
         </div>
       </div>
       <div class="panel-body">
-        <div class="model-chart-box" style="height:{{ [260, model_comparison|length * 64 + 90]|max }}px; position:relative;">
+        <div class="model-chart-box" style="height:{{ [250, model_comparison|length * 46 + 70]|max }}px; position:relative;">
           <canvas id="chartModelSampleSize"></canvas>
         </div>
       </div>
@@ -360,298 +627,1128 @@ document.addEventListener('DOMContentLoaded', () => {
     // A model a run only asked for is weaker evidence than one the instance's
     // log confirmed it served, so the badge says how many of the model's runs
     // the log verified. Zero verified reads as "not verified", not as "bad".
-    const vlabel = (m) => m.verified_runs > 0 ? `\u2713 ${m.verified_runs}/${m.runs}` : '\u25cb';
-    // A configuration label is long on purpose — the model asked for, the
-    // plugins on it and, for an alias, every model routing chose between. A
-    // canvas does not wrap a tick it cannot fit: on the horizontal chart the
-    // text would eat the bar, on the vertical one the ticks would overlap. A
-    // tick may be a list of lines instead, so the label is broken at the
-    // separators that already mean something in it — before a plugin, between
-    // two served models — and never in the middle of a name.
-    const TICK_WIDTH = 28;
-    const pack = (atoms, joiner) => {
-      const lines = [];
-      let line = '';
-      for (const atom of atoms) {
-        const joined = line ? `${line}${joiner}${atom}` : atom;
-        if (line && joined.length > TICK_WIDTH) { lines.push(line); line = atom; }
-        else { line = joined; }
-      }
-      if (line) lines.push(line);
-      return lines;
-    };
-    const labelLines = (m) => {
-      const text = String(m.model || '\u2014');
-      const open = text.indexOf('[');
-      const close = text.lastIndexOf(']');
-      const head = open === -1 ? text : text.slice(0, open);
-      // The plugin markers belong to the name they follow, so the split keeps
-      // the '+' with what it adds rather than starting a line with it.
-      const lines = pack(head.split('+').filter(Boolean).map((part, i) => i ? `+${part}` : part), '');
-      if (open !== -1 && close > open) {
-        const served = text.slice(open + 1, close).split(',').map(s => s.trim()).filter(Boolean);
-        const wrapped = pack(served, ', ');
-        if (wrapped.length) {
-          wrapped[0] = `[${wrapped[0]}`;
-          wrapped[wrapped.length - 1] = `${wrapped[wrapped.length - 1]}]`;
-          lines.push(...wrapped);
-        }
-      }
-      // The verification badge reads beside the last line of its own label.
-      lines[lines.length - 1] = `${lines[lines.length - 1]}  ${vlabel(m)}`;
-      return lines;
-    };
-    const labels = models.map(labelLines);
-    // Wrapped ticks need more room than the one line the panel was sized for,
-    // so both charts grow by the extra lines rather than clipping them.
-    const extraLines = Math.max(0, ...labels.map(l => (Array.isArray(l) ? l.length : 1) - 1));
-    if (extraLines > 0) {
-      document.querySelectorAll('.model-chart-box').forEach((box) => {
-        box.style.height = `${box.offsetHeight + extraLines * 15}px`;
-      });
-    }
-    const perf = {
-      successRate: models.map(m => m.success_rate !== null ? (m.success_rate * 100).toFixed(1) : 0),
-      meanScore: models.map(m => m.mean_score !== null ? (m.mean_score * 100).toFixed(1) : 0),
-    };
-    const cost = {
-      durationMin: models.map(m => m.mean_duration_seconds !== null ? (m.mean_duration_seconds / 60).toFixed(1) : 0),
-      tokensK: models.map(m => m.mean_total_tokens !== null ? Math.round(m.mean_total_tokens / 1000) : 0),
-      toolCalls: models.map(m => m.mean_tool_calls !== null ? Number(m.mean_tool_calls).toFixed(1) : 0),
-      sampleSize: models.map(m => m.runs || 0),
+    const vlabel = (m) => m.verified_runs > 0 ? `\u2713 ${m.verified_runs}/${m.runs}` : `\u25cb 0/${m.runs || 0}`;
+
+    // Shorten repeated provider prefixes inside brackets so Y-axis ticks stay
+    // compact (1-2 lines instead of 4), while tooltips keep the full label.
+    const shortModelName = (raw) => {
+      const s = String(raw || '').trim();
+      const slash = s.indexOf('/');
+      return (slash !== -1 ? s.slice(slash + 1) : s).replace(/^Qwen3\.8-/, 'Q3.8-');
     };
 
-    const PALETTE = ['#00e59b', '#5aa9ff', '#ffb44a', '#c792ea', '#ff6b7a', '#4dd0e1', '#f0e68c', '#ff8a65', '#9ccc65', '#ba68c8', '#7986cb', '#e57373'];
+    const familyKeyOf = (m) => {
+      if (m.family) return String(m.family);
+      const text = String(m.model || '');
+      const open = text.indexOf('[');
+      const head = (open === -1 ? text : text.slice(0, open)).split('+')[0];
+      const tail = open === -1 ? '' : text.slice(open);
+      return `${head}${tail}`;
+    };
+
+    const shortFamilyName = (m) => {
+      const base = shortModelName(m.base_model || String(m.model || '').split('+')[0].split('[')[0]);
+      const served = Array.isArray(m.served_models) && m.served_models.length
+        ? m.served_models.map(shortModelName)
+        : [];
+      return served.length ? `${base} [${served.join(', ')}]` : base;
+    };
+
+    const hasKnowledge = (m) => Boolean(
+      m.knowledge_enabled || String(m.model || '').includes('+agentic_knowledge')
+    );
+
+    // Fewer than three evaluated runs is a sample, not a measurement: the row
+    // is hatched and its label carries a warning sign, so a 100% from n=1 is
+    // not read beside a 79% from n=29 as if they weighed the same.
+    const LOW_SAMPLE_N = 3;
+    const isLowSample = (m) => (m.evaluated || 0) > 0 && (m.evaluated || 0) < LOW_SAMPLE_N;
+
+    // Tokens in thousands read badly past four digits; above 1000k the unit
+    // flips to millions.
+    const fmtTokensK = (k) => {
+      if (k === null || k === undefined || Number.isNaN(k)) return '\u2014';
+      if (Math.abs(k) >= 1000) return `${(k / 1000).toFixed(k >= 10000 ? 0 : 1)}M`;
+      return `${Math.round(k)}k`;
+    };
+
+    const labelLines = (m) => {
+      const base = shortModelName(m.base_model || String(m.model || '\u2014').split('+')[0].split('[')[0]);
+      const plugins = Array.isArray(m.plugins) && m.plugins.length
+        ? m.plugins.map(p => p === 'agentic_knowledge' ? '+AK' : `+${p}`).join('')
+        : (hasKnowledge(m) ? '+AK' : '');
+      const served = Array.isArray(m.served_models) && m.served_models.length
+        ? m.served_models.map(shortModelName)
+        : [];
+      // the marker repeats the legend in the label itself: a filled square is
+      // the +AK arm, a hollow one the memoryless base
+      const marker = hasKnowledge(m) ? '\u25a0 ' : '\u25a1 ';
+      const warn = isLowSample(m) ? ' \u26a0' : '';
+      const line1 = `${marker}${base}${plugins}${warn}`;
+      if (served.length) {
+        return [line1, `[${served.join(', ')}]  ${vlabel(m)}`];
+      }
+      return [`${line1}  ${vlabel(m)}`];
+    };
+    const labels = models.map(labelLines);
+    const extraLines = Math.max(0, ...labels.map(l => (Array.isArray(l) ? l.length : 1) - 1));
+
+    // Semantic palette: one consistent hue per model family; Base uses muted
+    // translucent fill with dashed outline while +agentic_knowledge uses rich
+    // fill and solid outline.
+    const FAMILY_PALETTE = ['#5aa9ff', '#ffb44a', '#c792ea', '#00e59b', '#4dd0e1', '#ff6b7a', '#9ccc65', '#ff8a65'];
     const alpha = (hex, a) => {
       const n = parseInt(hex.slice(1), 16);
       return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
     };
-    const modelToColor = new Map();
-    models.forEach((m, i) => {
-      const name = String(m.model || i);
-      if (!modelToColor.has(name)) {
-        modelToColor.set(name, PALETTE[modelToColor.size % PALETTE.length]);
+    const familyToColor = new Map();
+    const familyLabels = new Map();
+    models.forEach((m) => {
+      const fKey = familyKeyOf(m);
+      if (!familyToColor.has(fKey)) {
+        familyToColor.set(fKey, FAMILY_PALETTE[familyToColor.size % FAMILY_PALETTE.length]);
+        familyLabels.set(fKey, shortFamilyName(m));
       }
     });
-    const barBorders = models.map((m, i) => modelToColor.get(String(m.model || i)));
-    const barBgs = barBorders.map(hex => alpha(hex, 0.7));
+
+    // Populate family swatches in the toolbar legend
+    const legendEl = document.getElementById('modelChartsLegend');
+    if (legendEl) {
+      familyToColor.forEach((hex, fKey) => {
+        const span = document.createElement('span');
+        span.className = 'model-legend-item';
+        span.innerHTML = `<span class="model-legend-swatch" style="background:${alpha(hex, 0.78)}; border:1.5px solid ${hex};"></span><span>${familyLabels.get(fKey)}</span>`;
+        legendEl.appendChild(span);
+      });
+    }
+
+    // Detect unverified/unevaluated stubs (e.g. bare auto_codex 0/1)
+    const isUnverifiedStub = (m) => m.verified_runs === 0 && (
+      (m.evaluated || 0) === 0 || (
+        (!m.served_models || m.served_models.length === 0) &&
+        models.some(other => other !== m && other.base_model === m.base_model && other.served_models && other.served_models.length > 0)
+      )
+    );
+    const hasStubs = models.some(isUnverifiedStub) && models.some(m => !isUnverifiedStub(m));
+    // stubs are hidden by default: a row with nothing evaluated has nothing to
+    // show in five of the six panels, and it costs every panel a line
+    let hideStubs = hasStubs;
+    let axisMode = 'all';
+    let paretoXMetric = 'tokens';
+    let paretoScale = 'log';
+    let paretoZoom = 'fit';
+    let paretoLabels = 'key';
+    let pairedMetric = 'score';
+
+    const stubBtn = document.getElementById('toggleUnverifiedStubsBtn');
+    if (stubBtn && hasStubs) {
+      const stubCount = models.filter(isUnverifiedStub).length;
+      const renderStubBtn = () => {
+        stubBtn.classList.toggle('active', hideStubs);
+        stubBtn.textContent = hideStubs
+          ? `Showing Evaluated Only (${stubCount} hidden)`
+          : 'Hide Unevaluated Stubs';
+      };
+      stubBtn.style.display = 'inline-flex';
+      renderStubBtn();
+      stubBtn.addEventListener('click', () => {
+        hideStubs = !hideStubs;
+        renderStubBtn();
+        drawModelCharts();
+      });
+    }
+    const lowLegend = document.getElementById('lowSampleLegend');
+    if (lowLegend && models.some(isLowSample)) {
+      lowLegend.style.display = 'inline-flex';
+    }
+
+    const bindPillGroup = (attr, apply) => {
+      document.querySelectorAll(`[${attr}]`).forEach((btn) => {
+        btn.addEventListener('click', () => {
+          apply(btn.getAttribute(attr));
+          document.querySelectorAll(`[${attr}]`).forEach(b => b.classList.toggle('active', b === btn));
+          drawModelCharts();
+        });
+      });
+    };
+    bindPillGroup('data-pareto-scale', (v) => { paretoScale = v || 'log'; });
+    bindPillGroup('data-pareto-zoom', (v) => { paretoZoom = v || 'fit'; });
+    bindPillGroup('data-pareto-labels', (v) => { paretoLabels = v || 'key'; });
+
+    // A diagonal hatch for low-sample bars; patterns are cached per color so
+    // a redraw does not allocate a canvas per row.
+    const hatchCache = new Map();
+    const hatchPattern = (hex, a) => {
+      const key = `${hex}|${a}`;
+      if (hatchCache.has(key)) return hatchCache.get(key);
+      const size = 8;
+      const off = document.createElement('canvas');
+      off.width = size;
+      off.height = size;
+      const octx = off.getContext('2d');
+      octx.fillStyle = alpha(hex, a * 0.35);
+      octx.fillRect(0, 0, size, size);
+      octx.strokeStyle = alpha(hex, a);
+      octx.lineWidth = 2;
+      octx.beginPath();
+      octx.moveTo(-2, size + 2); octx.lineTo(size + 2, -2);
+      octx.moveTo(-2, 2); octx.lineTo(2, -2);
+      octx.moveTo(size - 2, size + 2); octx.lineTo(size + 2, size - 2);
+      octx.stroke();
+      const pattern = octx.createPattern(off, 'repeat');
+      hatchCache.set(key, pattern);
+      return pattern;
+    };
+
+    document.querySelectorAll('[data-axis-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        axisMode = btn.getAttribute('data-axis-mode') || 'all';
+        document.querySelectorAll('[data-axis-mode]').forEach(b => b.classList.toggle('active', b === btn));
+        drawModelCharts();
+      });
+    });
+
+    document.querySelectorAll('[data-pareto-x]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        paretoXMetric = btn.getAttribute('data-pareto-x') || 'tokens';
+        document.querySelectorAll('[data-pareto-x]').forEach(b => b.classList.toggle('active', b === btn));
+        drawModelCharts();
+      });
+    });
+
+    document.querySelectorAll('[data-paired-metric]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        pairedMetric = btn.getAttribute('data-paired-metric') || 'score';
+        document.querySelectorAll('[data-paired-metric]').forEach(b => b.classList.toggle('active', b === btn));
+        drawModelCharts();
+      });
+    });
+
+    // Concise label for Pareto point badges so clustered configurations stay legible
+    const paretoPointLabel = (m, isAk) => {
+      const base = shortModelName(m.base_model || String(m.model || '').split('+')[0].split('[')[0])
+        .replace(/^auto_codex$/, 'auto');
+      const served = Array.isArray(m.served_models) && m.served_models.length
+        ? m.served_models.map(s => shortModelName(s).replace(/^Q3\.8-/, '').replace(/Flash-Next/, 'Flash'))
+        : [];
+      const core = served.length ? `${base}[${served.join(',')}]` : base;
+      return `${core}${isAk ? '+AK' : ''}`;
+    };
+
+    // Plugin that prints exact numeric values at the end of horizontal bars
+    // and draws a left color stripe when shared Y-axis labels are hidden.
+    const barAnnotationPlugin = {
+      id: 'akbenchBarAnnotations',
+      afterDatasetsDraw(chart, _args, pluginOptions) {
+        if (!pluginOptions) return;
+        const { ctx, chartArea, scales } = chart;
+        const yScale = scales.y;
+        const xScale = scales.x;
+        if (!yScale || !xScale) return;
+
+        ctx.save();
+        ctx.font = '600 10.5px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.textBaseline = 'middle';
+
+        const rowCount = chart.data.labels ? chart.data.labels.length : 0;
+        for (let i = 0; i < rowCount; i++) {
+          const yPos = yScale.getPixelForValue(i);
+          // Optional confidence interval drawn as a whiskered bar over the row
+          if (Array.isArray(pluginOptions.ciBounds) && pluginOptions.ciBounds[i]) {
+            const [lo, hi] = pluginOptions.ciBounds[i];
+            const x1 = xScale.getPixelForValue(lo);
+            const x2 = xScale.getPixelForValue(hi);
+            ctx.strokeStyle = ink().text;
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(x1, yPos);
+            ctx.lineTo(x2, yPos);
+            ctx.moveTo(x1, yPos - 5);
+            ctx.lineTo(x1, yPos + 5);
+            ctx.moveTo(x2, yPos - 5);
+            ctx.lineTo(x2, yPos + 5);
+            ctx.stroke();
+          }
+          // Optional family color indicator strip along the left axis
+          if (pluginOptions.familyColors && pluginOptions.showFamilyStrip) {
+            const c = pluginOptions.familyColors[i];
+            if (c) {
+              ctx.fillStyle = c;
+              ctx.fillRect(chartArea.left - 5, yPos - 9, 3, 18);
+            }
+          }
+          if (typeof pluginOptions.formatRowValue === 'function') {
+            const text = pluginOptions.formatRowValue(i);
+            if (!text) continue;
+            // Find the rightmost bar edge for row i across datasets
+            let maxRight = chartArea.left;
+            chart.data.datasets.forEach((_ds, dsIdx) => {
+              const meta = chart.getDatasetMeta(dsIdx);
+              const el = meta && meta.data && meta.data[i];
+              if (el && typeof el.x === 'number' && !Number.isNaN(el.x)) {
+                maxRight = Math.max(maxRight, el.x);
+              }
+            });
+            if (Array.isArray(pluginOptions.ciBounds) && pluginOptions.ciBounds[i]) {
+              maxRight = Math.max(maxRight, xScale.getPixelForValue(pluginOptions.ciBounds[i][1]));
+            }
+            ctx.fillStyle = ink().text;
+            ctx.textAlign = 'left';
+            ctx.fillText(text, Math.min(maxRight + 6, chart.width - 4), yPos);
+          }
+        }
+        ctx.restore();
+      }
+    };
+
+    // Plugin for Pareto chart: draws Base -> +AK trajectory vectors and collision-free point labels
+    const paretoVectorPlugin = {
+      id: 'akbenchParetoVectors',
+      afterDatasetsDraw(chart, _args, pluginOptions) {
+        if (!pluginOptions || !pluginOptions.pairs) return;
+        const { ctx, chartArea, scales } = chart;
+        const xScale = scales.x;
+        const yScale = scales.y;
+        if (!xScale || !yScale || !chartArea) return;
+
+        ctx.save();
+        // Draw connecting vectors from Base -> +agentic_knowledge
+        pluginOptions.pairs.forEach((pair) => {
+          const x1 = xScale.getPixelForValue(pair.base.x);
+          const y1 = yScale.getPixelForValue(pair.base.y);
+          const x2 = xScale.getPixelForValue(pair.ak.x);
+          const y2 = yScale.getPixelForValue(pair.ak.y);
+          ctx.strokeStyle = pair.color;
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Small arrowhead pointing toward +AK
+          const angle = Math.atan2(y2 - y1, x2 - x1);
+          const dist = Math.hypot(x2 - x1, y2 - y1);
+          if (dist > 16) {
+            const tipX = x2 - Math.cos(angle) * (pair.ak.r + 2);
+            const tipY = y2 - Math.sin(angle) * (pair.ak.r + 2);
+            ctx.fillStyle = pair.color;
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(tipX - 7 * Math.cos(angle - Math.PI / 6), tipY - 7 * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(tipX - 7 * Math.cos(angle + Math.PI / 6), tipY - 7 * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+          }
+        });
+
+        // 2D collision-avoidance placement for bubble labels
+        ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.textBaseline = 'middle';
+        const pts = (pluginOptions.points || []).map((pt) => ({
+          ...pt,
+          px: xScale.getPixelForValue(pt.x),
+          py: yScale.getPixelForValue(pt.y),
+        }));
+        // Sort left-to-right, top-to-bottom so placement is deterministic;
+        // only the points the caller marked get a badge, the rest are in the tooltip
+        const sortedPts = [...pts]
+          .filter(pt => pt.labelled !== false)
+          .sort((a, b) => (a.px - b.px) || (a.py - b.py));
+        const placedBoxes = [];
+        const boxH = 15;
+
+        const rectOverlapArea = (a, b) => {
+          const xOverlap = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+          const yOverlap = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+          return xOverlap * yOverlap;
+        };
+
+        const circleRectOverlap = (cx, cy, cr, rect) => {
+          const nearestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+          const nearestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+          const d = Math.hypot(cx - nearestX, cy - nearestY);
+          return d < cr ? (cr - d) * 20 : 0;
+        };
+
+        const candidateOffsets = [
+          { dx: 1, dy: 0 },
+          { dx: 1, dy: 16 },
+          { dx: 1, dy: -16 },
+          { dx: 1, dy: 32 },
+          { dx: 1, dy: -32 },
+          { dx: -1, dy: 0 },
+          { dx: -1, dy: 16 },
+          { dx: -1, dy: -16 },
+          { dx: 0, dy: 22 },
+          { dx: 0, dy: -22 },
+          { dx: 1, dy: 48 },
+          { dx: 1, dy: -48 },
+          { dx: 1, dy: 64 },
+          { dx: -1, dy: 34 },
+          { dx: -1, dy: -34 },
+        ];
+
+        sortedPts.forEach((pt) => {
+          const text = pt.shortLabel;
+          const tw = Math.ceil(ctx.measureText(text).width) + 8;
+          let bestRect = null;
+          let bestCost = Infinity;
+
+          candidateOffsets.forEach((cand) => {
+            let rx;
+            if (cand.dx > 0) rx = pt.px + pt.r + 6;
+            else if (cand.dx < 0) rx = pt.px - pt.r - 6 - tw;
+            else rx = pt.px - tw / 2;
+            let ry = pt.py + cand.dy - boxH / 2;
+
+            // Clamp within canvas bounds
+            const minX = chartArea.left + 2;
+            const maxX = chart.width - tw - 4;
+            const minY = Math.max(2, chartArea.top - 18);
+            const maxY = chartArea.bottom - boxH - 2;
+            rx = Math.max(minX, Math.min(maxX, rx));
+            ry = Math.max(minY, Math.min(maxY, ry));
+
+            const rect = { x: rx, y: ry, w: tw, h: boxH };
+            let cost = Math.hypot((rx + tw / 2) - pt.px, (ry + boxH / 2) - pt.py) * 0.15;
+
+            // Penalize overlapping any bubble
+            pts.forEach((other) => {
+              cost += circleRectOverlap(other.px, other.py, other.r + 3, rect) * 15;
+            });
+            // Heavily penalize overlapping any placed label
+            placedBoxes.forEach((placed) => {
+              const padded = { x: placed.x - 3, y: placed.y - 2, w: placed.w + 6, h: placed.h + 4 };
+              cost += rectOverlapArea(rect, padded) * 50;
+            });
+
+            if (cost < bestCost) {
+              bestCost = cost;
+              bestRect = rect;
+            }
+          });
+
+          if (bestRect) {
+            placedBoxes.push(bestRect);
+            // Draw leader line if displaced from bubble edge
+            const labelAnchorX = bestRect.x > pt.px ? bestRect.x : (bestRect.x + bestRect.w < pt.px ? bestRect.x + bestRect.w : bestRect.x + bestRect.w / 2);
+            const labelAnchorY = bestRect.y + bestRect.h / 2;
+            const distToCenter = Math.hypot(labelAnchorX - pt.px, labelAnchorY - pt.py);
+            if (distToCenter > pt.r + 10) {
+              const ang = Math.atan2(labelAnchorY - pt.py, labelAnchorX - pt.px);
+              ctx.strokeStyle = alpha(pt.color, 0.55);
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(pt.px + Math.cos(ang) * (pt.r + 1), pt.py + Math.sin(ang) * (pt.r + 1));
+              ctx.lineTo(labelAnchorX, labelAnchorY);
+              ctx.stroke();
+            }
+
+            // Subtle pill backdrop so labels never clash with grid lines in dark or light mode
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            ctx.fillStyle = isLight ? 'rgba(255, 255, 255, 0.88)' : 'rgba(10, 14, 20, 0.82)';
+            ctx.fillRect(bestRect.x, bestRect.y, bestRect.w, bestRect.h);
+            ctx.strokeStyle = alpha(pt.isAk ? '#00e59b' : pt.color, 0.45);
+            ctx.lineWidth = 1;
+            ctx.strokeRect(bestRect.x, bestRect.y, bestRect.w, bestRect.h);
+
+            ctx.fillStyle = pt.isAk ? ink().text : ink().dim;
+            ctx.textAlign = 'left';
+            ctx.fillText(text, bestRect.x + 4, bestRect.y + bestRect.h / 2);
+          }
+        });
+        ctx.restore();
+      }
+    };
+
+    const activeCharts = [];
+    const destroyCharts = () => {
+      while (activeCharts.length > 0) {
+        const ch = activeCharts.pop();
+        if (ch && typeof ch.destroy === 'function') ch.destroy();
+      }
+    };
 
     const drawModelCharts = () => {
-    const ctx1 = document.getElementById('chartModelSuccessRate');
-    if (ctx1) {
-      new Chart(ctx1, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Success Rate (%)',
-              data: perf.successRate,
-              backgroundColor: barBgs,
-              borderColor: barBorders,
-              borderWidth: 1,
-              borderRadius: 4,
-            }
-          ]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: {
-              min: 0, max: 100, ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
-            },
-            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
-          }
-        }
-      });
-    }
+      destroyCharts();
+      const activeModels = hideStubs ? models.filter(m => !isUnverifiedStub(m)) : models;
+      const activeLabels = activeModels.map(labelLines);
+      const isDesktopThreeCol = window.innerWidth > 1100;
+      const shareYAxis = axisMode === 'shared' && isDesktopThreeCol;
 
-    const ctx2 = document.getElementById('chartModelMeanScore');
-    if (ctx2) {
-      new Chart(ctx2, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Mean Tasks Score (%)',
-              data: perf.meanScore,
-              backgroundColor: barBgs,
-              borderColor: barBorders,
-              borderWidth: 1,
-              borderRadius: 4,
-            }
-          ]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: {
-              min: 0, max: 100, ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
-            },
-            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
-          }
-        }
+      // Resize chart boxes cleanly to match the active row count and wrapped lines
+      const targetHeight = Math.max(240, activeModels.length * 46 + 70 + extraLines * 12);
+      document.querySelectorAll('.model-chart-box').forEach((box) => {
+        box.style.height = `${targetHeight}px`;
       });
-    }
 
-    const ctx3 = document.getElementById('chartModelDuration');
-    if (ctx3) {
-      new Chart(ctx3, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Mean Duration (min)',
-              data: cost.durationMin,
-              backgroundColor: barBgs,
-              borderColor: barBorders,
-              borderWidth: 1,
-              borderRadius: 4,
-            }
-          ]
+      const perf = {
+        successRate: activeModels.map(m => m.success_rate !== null ? Number((m.success_rate * 100).toFixed(1)) : 0),
+        meanScore: activeModels.map(m => m.mean_score !== null ? Number((m.mean_score * 100).toFixed(1)) : 0),
+      };
+      const cost = {
+        durationMin: activeModels.map(m => m.mean_duration_seconds !== null ? Number((m.mean_duration_seconds / 60).toFixed(1)) : 0),
+        tokensK: activeModels.map(m => m.mean_total_tokens !== null ? Math.round(m.mean_total_tokens / 1000) : 0),
+        inputTokensK: activeModels.map(m => m.mean_input_tokens !== null ? Number((m.mean_input_tokens / 1000).toFixed(1)) : 0),
+        outputTokensK: activeModels.map(m => m.mean_output_tokens !== null ? Number((m.mean_output_tokens / 1000).toFixed(1)) : 0),
+        toolCalls: activeModels.map(m => m.mean_tool_calls !== null ? Number(Number(m.mean_tool_calls).toFixed(1)) : 0),
+        sampleSize: activeModels.map(m => m.runs || 0),
+        verifiedSize: activeModels.map(m => m.verified_runs || 0),
+        unverifiedSize: activeModels.map(m => Math.max(0, (m.runs || 0) - (m.verified_runs || 0))),
+      };
+
+      const familyColors = activeModels.map(m => familyToColor.get(familyKeyOf(m)) || '#5aa9ff');
+      const barBorders = activeModels.map((m, i) => isLowSample(m) ? '#ffb44a' : (hasKnowledge(m) ? '#00e59b' : familyColors[i]));
+      const barBgs = activeModels.map((m, i) => {
+        const a = hasKnowledge(m) ? 0.84 : 0.36;
+        return isLowSample(m) ? hatchPattern(familyColors[i], a) : alpha(familyColors[i], a);
+      });
+      const barBorderWidths = activeModels.map(m => hasKnowledge(m) ? 2 : 1.2);
+      // Wilson 95% interval of the pass rate, in percent, for the Success Rate panel
+      const ciBounds = activeModels.map(m => (
+        m.success_ci_low !== null && m.success_ci_low !== undefined && m.success_ci_high !== null && m.success_ci_high !== undefined
+          ? [m.success_ci_low * 100, m.success_ci_high * 100]
+          : null
+      ));
+
+      const fullTooltipTitle = (items) => {
+        if (!items || !items.length) return '';
+        const m = activeModels[items[0].dataIndex];
+        if (!m) return '';
+        const n = m.evaluated || 0;
+        const low = isLowSample(m) ? ' \u00b7 \u26a0 low sample' : '';
+        return `${m.model} (${vlabel(m)} \u00b7 n=${n}${low})`;
+      };
+
+      const makeYScale = (isRowFirst) => ({
+        ticks: {
+          display: !shareYAxis || isRowFirst,
+          color: ink().text,
+          autoSkip: false,
+          font: mono,
+          padding: 4,
         },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
+        grid: { color: ink().grid },
+      });
+
+      const baseLayout = (rightPad = 56) => ({
+        padding: { top: 12, right: rightPad, bottom: 6, left: 6 }
+      });
+
+      // --- 0A. Pareto Trade-off Chart (Score vs Cost/Duration/Tools) ---
+      const ctxPareto = document.getElementById('chartModelPareto');
+      if (ctxPareto) {
+        const getXVal = (m) => {
+          if (paretoXMetric === 'duration') return m.mean_duration_seconds !== null ? Number((m.mean_duration_seconds / 60).toFixed(1)) : 0;
+          if (paretoXMetric === 'tools') return m.mean_tool_calls !== null ? Number(Number(m.mean_tool_calls).toFixed(1)) : 0;
+          return m.mean_total_tokens !== null ? Number((m.mean_total_tokens / 1000).toFixed(1)) : 0;
+        };
+        const scaleTag = paretoScale === 'log' ? ' \u00b7 log scale' : '';
+        const xAxisLabel = paretoXMetric === 'duration'
+          ? `Mean Duration (min) \u2190 lower is faster${scaleTag}`
+          : (paretoXMetric === 'tools' ? `Mean Tool Calls \u2190 lower is fewer steps${scaleTag}` : `Mean Total Tokens \u2190 lower is cheaper${scaleTag}`);
+        const fmtX = (v) => (paretoXMetric === 'tokens' ? fmtTokensK(v) : (paretoXMetric === 'duration' ? `${v}m` : `${v}`));
+
+        const validModels = activeModels.filter(m => (m.evaluated || 0) > 0 && m.mean_score !== null);
+        const plotModels = validModels.length > 0 ? validModels : activeModels;
+        const maxRuns = Math.max(1, ...plotModels.map(m => m.runs || 1));
+
+        // A log axis has no zero: a row without the X measurement is pinned to
+        // the smallest positive value seen, and the tooltip says it is unmeasured.
+        const rawXs = plotModels.map(getXVal);
+        const positiveXs = rawXs.filter(v => v > 0);
+        const xFloor = positiveXs.length ? Math.min(...positiveXs) : 1;
+        const useLog = paretoScale === 'log' && positiveXs.length > 0;
+
+        const points = plotModels.map((m, idx) => {
+          const fKey = familyKeyOf(m);
+          const color = familyToColor.get(fKey) || '#5aa9ff';
+          const isAk = hasKnowledge(m);
+          const r = Math.max(5, Math.min(12, Math.round(5 + 6 * Math.sqrt((m.runs || 1) / maxRuns))));
+          const rawX = rawXs[idx];
+          return {
+            x: useLog && rawX <= 0 ? xFloor : rawX,
+            rawX,
+            y: m.mean_score !== null ? Number((m.mean_score * 100).toFixed(2)) : 0,
+            r,
+            model: m,
+            familyKey: fKey,
+            color,
+            isAk,
+            lowSample: isLowSample(m),
+            shortLabel: paretoPointLabel(m, isAk) + (isLowSample(m) ? ' \u26a0' : ''),
+          };
+        });
+
+        // The Pareto front: a point no other point beats on both axes at once.
+        // Those and the +AK arms are the ones worth a badge; the rest are in
+        // the tooltip unless every label is asked for.
+        points.forEach((pt) => {
+          pt.onFront = !points.some(o => o !== pt && o.x <= pt.x && o.y >= pt.y && (o.x < pt.x || o.y > pt.y));
+          pt.labelled = paretoLabels === 'all' || pt.onFront || pt.isAk;
+        });
+
+        // Pair Base -> +AK within the same family for trajectory arrows
+        const byFamily = new Map();
+        points.forEach((pt) => {
+          if (!byFamily.has(pt.familyKey)) byFamily.set(pt.familyKey, {});
+          const entry = byFamily.get(pt.familyKey);
+          if (pt.isAk) entry.ak = pt;
+          else entry.base = pt;
+        });
+        const pairs = [];
+        byFamily.forEach((entry) => {
+          if (entry.base && entry.ak) {
+            pairs.push({ base: entry.base, ak: entry.ak, color: entry.base.color });
+          }
+        });
+
+        const scores = points.map(p => p.y);
+        const minScore = scores.length ? Math.min(...scores) : 0;
+        // 'fit' leaves a little air under the lowest point and rounds to a
+        // whole tick; 'full' is the honest 0-100 so the eye is not fooled by
+        // the zoom. The high end always keeps a point of headroom so a 100%
+        // bubble is not sliced by the frame.
+        const yMin = paretoZoom === 'full' ? 0 : Math.max(0, Math.floor((minScore - 2) / 5) * 5);
+        const yMax = 100;
+        const xTicks = useLog
+          ? { color: ink().dim, font: mono, callback: (v) => fmtX(v), maxTicksLimit: 8, autoSkip: true }
+          : { color: ink().dim, font: mono, callback: (v) => fmtX(v) };
+
+        activeCharts.push(new Chart(ctxPareto, {
+          type: 'bubble',
+          plugins: [paretoVectorPlugin],
+          data: {
+            datasets: [
+              {
+                label: 'Configurations',
+                data: points,
+                clip: false,
+                backgroundColor: points.map(p => alpha(p.color, p.isAk ? 0.88 : 0.32)),
+                borderColor: points.map(p => p.isAk ? '#00e59b' : p.color),
+                borderWidth: points.map(p => p.isAk ? 2.2 : 1.5),
+              }
+            ]
           },
-          scales: {
-            x: {
-              type: 'linear', position: 'bottom',
-              ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 24, right: 88, bottom: 6, left: 6 } },
+            plugins: {
+              legend: { display: false },
+              akbenchParetoVectors: { pairs, points },
+              tooltip: {
+                callbacks: {
+                  title: (items) => (items.length ? `${items[0].raw.model.model} (${vlabel(items[0].raw.model)})` : ''),
+                  label: (ctx) => {
+                    const pt = ctx.raw;
+                    const m = pt.model;
+                    const xStr = pt.rawX > 0 ? fmtX(pt.rawX) : 'not recorded';
+                    const lines = [
+                      `score ${pt.y.toFixed(1)}% \u00b7 pass ${m.passed ?? '?'}/${m.evaluated || 0}`,
+                      `${paretoXMetric}: ${xStr} \u00b7 runs ${m.runs}`,
+                    ];
+                    if (m.estimated_cost !== null && m.estimated_cost !== undefined) lines.push(`cost: estimated \u2248 $${m.estimated_cost.toFixed(2)}`);
+                    if (pt.onFront) lines.push('on the Pareto front');
+                    if (pt.lowSample) lines.push('\u26a0 low sample (n < 3)');
+                    return lines;
+                  }
+                }
+              }
             },
-            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
+            scales: {
+              x: {
+                type: useLog ? 'logarithmic' : 'linear',
+                position: 'bottom',
+                title: { display: true, text: xAxisLabel, color: ink().dim, font: mono },
+                ticks: xTicks,
+                grid: { color: ink().grid },
+              },
+              y: {
+                min: yMin,
+                max: yMax,
+                title: { display: true, text: `Mean Score (%) \u2192 higher is better${paretoZoom === 'full' ? '' : ' \u00b7 fitted'}`, color: ink().dim, font: mono },
+                ticks: { color: ink().text, font: mono, stepSize: paretoZoom === 'full' ? 20 : undefined, callback: (v) => `${v}%` },
+                grid: { color: ink().grid },
+              }
+            }
+          }
+        }));
+      }
+
+      // --- 0B. Paired Base vs +agentic_knowledge Grouped Comparison ---
+      const ctxPaired = document.getElementById('chartModelPaired');
+      if (ctxPaired) {
+        const familyOrder = [];
+        const familyMap = new Map();
+        activeModels.forEach((m) => {
+          const fKey = familyKeyOf(m);
+          if (!familyMap.has(fKey)) {
+            familyOrder.push(fKey);
+            familyMap.set(fKey, { label: shortFamilyName(m), color: familyToColor.get(fKey) || '#5aa9ff', base: null, ak: null });
+          }
+          const group = familyMap.get(fKey);
+          if (hasKnowledge(m)) group.ak = m;
+          else group.base = m;
+        });
+
+        const extractMetric = (m) => {
+          if (!m) return null;
+          if (pairedMetric === 'duration') return m.mean_duration_seconds !== null ? Number((m.mean_duration_seconds / 60).toFixed(1)) : null;
+          if (pairedMetric === 'tokens') return m.mean_total_tokens !== null ? Number((m.mean_total_tokens / 1000).toFixed(1)) : null;
+          if (pairedMetric === 'tools') return m.mean_tool_calls !== null ? Number(Number(m.mean_tool_calls).toFixed(1)) : null;
+          return m.mean_score !== null ? Number((m.mean_score * 100).toFixed(1)) : null;
+        };
+        const unitSuffix = pairedMetric === 'score' ? '%' : (pairedMetric === 'duration' ? 'm' : (pairedMetric === 'tokens' ? 'k' : ''));
+
+        const allGroups = familyOrder.map(k => familyMap.get(k));
+        const evaluatedGroups = allGroups.filter(g => extractMetric(g.base) !== null || extractMetric(g.ak) !== null);
+        const fGroups = evaluatedGroups.length > 0 ? evaluatedGroups : allGroups;
+        const pairedLabels = fGroups.map(g => g.label);
+        const baseVals = fGroups.map(g => extractMetric(g.base));
+        const akVals = fGroups.map(g => extractMetric(g.ak));
+        const fmtPaired = (v) => (v === null ? '' : (pairedMetric === 'tokens' ? fmtTokensK(v) : `${v}${unitSuffix}`));
+
+        // --- 0C. Delta heatmap: every family x every metric at once ---
+        const heatmap = document.getElementById('pairedDeltaHeatmap');
+        const heatCaption = document.getElementById('pairedDeltaCaption');
+        if (heatmap) {
+          const metricDefs = [
+            { key: 'score', label: 'Score', higherIsBetter: true, read: (m) => (m && m.mean_score !== null ? m.mean_score * 100 : null) },
+            { key: 'duration', label: 'Duration', higherIsBetter: false, read: (m) => (m && m.mean_duration_seconds !== null ? m.mean_duration_seconds : null) },
+            { key: 'tokens', label: 'Tokens', higherIsBetter: false, read: (m) => (m && m.mean_total_tokens !== null ? m.mean_total_tokens : null) },
+            { key: 'tools', label: 'Tool Calls', higherIsBetter: false, read: (m) => (m && m.mean_tool_calls !== null ? Number(m.mean_tool_calls) : null) },
+          ];
+          const pairedGroups = allGroups.filter(g => g.base && g.ak && (g.base.evaluated || 0) > 0 && (g.ak.evaluated || 0) > 0);
+          // Color by how much better or worse the change is, saturating at 50%
+          const cellStyle = (deltaPct, higherIsBetter) => {
+            if (deltaPct === null) return '';
+            const good = higherIsBetter ? deltaPct >= 0 : deltaPct <= 0;
+            const strength = Math.min(1, Math.abs(deltaPct) / 50);
+            const a = 0.12 + strength * 0.55;
+            return good ? `background: rgba(0, 229, 155, ${a.toFixed(2)});` : `background: rgba(255, 107, 122, ${a.toFixed(2)});`;
+          };
+          const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+          if (pairedGroups.length === 0) {
+            heatmap.innerHTML = '';
+            if (heatCaption) heatCaption.textContent = '';
+          } else {
+            const head = `<thead><tr><th>\u0394 Base \u2192 +AK</th>${metricDefs.map(d => `<th${d.key === pairedMetric ? ' style="color: var(--mint, #00e59b);"' : ''}>${d.label}</th>`).join('')}</tr></thead>`;
+            const rows = pairedGroups.map((g) => {
+              const warn = isLowSample(g.base) || isLowSample(g.ak) ? ' \u26a0' : '';
+              const cells = metricDefs.map((d) => {
+                const b = d.read(g.base);
+                const a = d.read(g.ak);
+                if (b === null || a === null || b === 0) {
+                  return '<td class="is-empty" title="not recorded on one of the arms">\u2014</td>';
+                }
+                const deltaPct = ((a - b) / b) * 100;
+                const sign = deltaPct > 0 ? '+' : '';
+                const arrow = Math.abs(deltaPct) < 0.5 ? '\u2192' : (deltaPct > 0 ? '\u2191' : '\u2193');
+                const better = d.higherIsBetter ? deltaPct >= 0 : deltaPct <= 0;
+                const title = `${d.label}: ${Math.abs(deltaPct) < 0.5 ? 'unchanged' : (better ? 'better' : 'worse')} with +AK (${sign}${deltaPct.toFixed(1)}%)`;
+                return `<td style="${cellStyle(deltaPct, d.higherIsBetter)}" title="${esc(title)}">${arrow} ${sign}${deltaPct.toFixed(0)}%</td>`;
+              }).join('');
+              return `<tr><td class="is-row-label" style="border-left-color: ${g.color};" title="${esc(g.base.model)} \u2192 ${esc(g.ak.model)}">${esc(g.label)}${warn}</td>${cells}</tr>`;
+            }).join('');
+            heatmap.innerHTML = `${head}<tbody>${rows}</tbody>`;
+            if (heatCaption) {
+              heatCaption.textContent = 'Relative change from the Base arm to its +AK twin. Mint is better for that metric (higher score; lower duration, tokens, tool calls), red is worse; \u26a0 marks a pair with a low-sample arm.';
+            }
           }
         }
-      });
-    }
 
-    const ctx4 = document.getElementById('chartModelTokens');
-    if (ctx4) {
-      new Chart(ctx4, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Mean Tokens (k)',
-              data: cost.tokensK,
-              backgroundColor: barBgs,
-              borderColor: barBorders,
-              borderWidth: 1,
-              borderRadius: 4,
+        activeCharts.push(new Chart(ctxPaired, {
+          type: 'bar',
+          plugins: [barAnnotationPlugin],
+          data: {
+            labels: pairedLabels,
+            datasets: [
+              {
+                label: 'Base (no memory)',
+                data: baseVals,
+                backgroundColor: 'rgba(90, 169, 255, 0.35)',
+                borderColor: '#5aa9ff',
+                borderWidth: 1.2,
+                borderRadius: 4,
+              },
+              {
+                label: '+agentic_knowledge (+AK)',
+                data: akVals,
+                backgroundColor: 'rgba(0, 229, 155, 0.80)',
+                borderColor: '#00e59b',
+                borderWidth: 1.8,
+                borderRadius: 4,
+              }
+            ]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: baseLayout(118),
+            plugins: {
+              legend: {
+                display: true,
+                position: 'top',
+                labels: { color: ink().dim, font: mono, boxWidth: 12, padding: 10 }
+              },
+              akbenchBarAnnotations: {
+                familyColors: fGroups.map(g => g.color),
+                showFamilyStrip: true,
+                formatRowValue: (i) => {
+                  const b = baseVals[i];
+                  const a = akVals[i];
+                  if (b !== null && a !== null && b > 0) {
+                    const diffPct = ((a - b) / b) * 100;
+                    const sign = diffPct > 0 ? '+' : '';
+                    return `${fmtPaired(b)} \u2192 ${fmtPaired(a)} (${sign}${diffPct.toFixed(0)}%)`;
+                  }
+                  const val = a !== null ? a : b;
+                  return val !== null ? fmtPaired(val) : '';
+                }
+              }
+            },
+            scales: {
+              x: {
+                min: 0,
+                max: pairedMetric === 'score' ? 100 : undefined,
+                ticks: { color: ink().dim, font: mono, callback: (v) => (pairedMetric === 'tokens' ? fmtTokensK(v) : v) },
+                grid: { color: ink().grid },
+              },
+              y: {
+                ticks: { color: ink().text, autoSkip: false, font: mono, padding: 6 },
+                grid: { color: ink().grid },
+              }
             }
-          ]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            // the bill is an estimate from the price table, so it is named as
-            // one in the tooltip rather than shown as a measured quantity
-            tooltip: {
-              callbacks: {
-                afterBody: (items) => {
-                  const model = models[items[0].dataIndex];
-                  return model.estimated_cost === null || model.estimated_cost === undefined
-                    ? 'cost: not recorded'
-                    : `cost: estimated \u2248 $${model.estimated_cost.toFixed(2)}`;
+          }
+        }));
+      }
+
+      // --- 1. Success Rate ---
+      const labels = activeLabels;
+      const ctx1 = document.getElementById('chartModelSuccessRate');
+      if (ctx1) {
+        activeCharts.push(new Chart(ctx1, {
+          type: 'bar',
+          plugins: [barAnnotationPlugin],
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Success Rate (%)',
+                data: perf.successRate,
+                backgroundColor: barBgs,
+                borderColor: barBorders,
+                borderWidth: barBorderWidths,
+                borderRadius: 4,
+              }
+            ]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: baseLayout(52),
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  title: fullTooltipTitle,
+                  afterBody: (items) => {
+                    const i = items[0].dataIndex;
+                    const m = activeModels[i];
+                    const ci = ciBounds[i];
+                    const lines = [`pass ${m.passed ?? '?'}/${m.evaluated || 0}`];
+                    if (ci) lines.push(`95% CI (Wilson): ${ci[0].toFixed(1)}% \u2013 ${ci[1].toFixed(1)}%`);
+                    return lines;
+                  },
                 },
               },
+              akbenchBarAnnotations: {
+                familyColors,
+                showFamilyStrip: false,
+                ciBounds,
+                formatRowValue: (i) => activeModels[i].success_rate !== null ? `${perf.successRate[i].toFixed(1)}%` : '\u2014'
+              }
             },
-          },
-          scales: {
-            x: {
-              type: 'linear', position: 'bottom',
-              ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
-            },
-            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
-          }
-        }
-      });
-    }
-
-    const ctx5 = document.getElementById('chartModelToolCalls');
-    if (ctx5) {
-      new Chart(ctx5, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Mean Tool Calls',
-              data: cost.toolCalls,
-              backgroundColor: barBgs,
-              borderColor: barBorders,
-              borderWidth: 1,
-              borderRadius: 4,
+            scales: {
+              x: {
+                min: 0, max: 100, ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+              },
+              y: makeYScale(true)
             }
-          ]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-          },
-          scales: {
-            x: {
-              type: 'linear', position: 'bottom',
-              ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
-            },
-            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
           }
-        }
-      });
-    }
+        }));
+      }
 
-    const ctx6 = document.getElementById('chartModelSampleSize');
-    if (ctx6) {
-      new Chart(ctx6, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Sample Size (Runs)',
-              data: cost.sampleSize,
-              backgroundColor: barBgs,
-              borderColor: barBorders,
-              borderWidth: 1,
-              borderRadius: 4,
-            }
-          ]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
+      // --- 2. Mean Tasks Score ---
+      const ctx2 = document.getElementById('chartModelMeanScore');
+      if (ctx2) {
+        activeCharts.push(new Chart(ctx2, {
+          type: 'bar',
+          plugins: [barAnnotationPlugin],
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Mean Tasks Score (%)',
+                data: perf.meanScore,
+                backgroundColor: barBgs,
+                borderColor: barBorders,
+                borderWidth: barBorderWidths,
+                borderRadius: 4,
+              }
+            ]
           },
-          scales: {
-            x: {
-              type: 'linear', position: 'bottom',
-              ticks: { color: ink().dim, font: mono, precision: 0 }, grid: { color: ink().grid },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: baseLayout(52),
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { title: fullTooltipTitle } },
+              akbenchBarAnnotations: {
+                familyColors,
+                showFamilyStrip: shareYAxis,
+                formatRowValue: (i) => activeModels[i].mean_score !== null ? `${perf.meanScore[i].toFixed(1)}%` : '\u2014'
+              }
             },
-            y: { ticks: { color: ink().text, autoSkip: false, font: mono }, grid: { color: ink().grid } }
+            scales: {
+              x: {
+                min: 0, max: 100, ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+              },
+              y: makeYScale(false)
+            }
           }
-        }
-      });
-    }
+        }));
+      }
+
+      // --- 3. Mean Duration ---
+      const ctx3 = document.getElementById('chartModelDuration');
+      if (ctx3) {
+        activeCharts.push(new Chart(ctx3, {
+          type: 'bar',
+          plugins: [barAnnotationPlugin],
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Mean Duration (min)',
+                data: cost.durationMin,
+                backgroundColor: barBgs,
+                borderColor: barBorders,
+                borderWidth: barBorderWidths,
+                borderRadius: 4,
+              }
+            ]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: baseLayout(54),
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { title: fullTooltipTitle } },
+              akbenchBarAnnotations: {
+                familyColors,
+                showFamilyStrip: shareYAxis,
+                formatRowValue: (i) => activeModels[i].mean_duration_seconds !== null ? `${cost.durationMin[i].toFixed(1)}m` : '\u2014'
+              }
+            },
+            scales: {
+              x: {
+                type: 'linear', position: 'bottom',
+                ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+              },
+              y: makeYScale(false)
+            }
+          }
+        }));
+      }
+
+      // --- 4. Mean Tokens (Input + Output & Estimated Cost) ---
+      const ctx4 = document.getElementById('chartModelTokens');
+      if (ctx4) {
+        activeCharts.push(new Chart(ctx4, {
+          type: 'bar',
+          plugins: [barAnnotationPlugin],
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Mean Tokens (k)',
+                data: cost.tokensK,
+                backgroundColor: barBgs,
+                borderColor: barBorders,
+                borderWidth: barBorderWidths,
+                borderRadius: 4,
+              }
+            ]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: baseLayout(84),
+            plugins: {
+              legend: { display: false },
+              // the bill is an estimate from the price table, so it is named as
+              // one in the tooltip rather than shown as a measured quantity
+              tooltip: {
+                callbacks: {
+                  title: fullTooltipTitle,
+                  afterBody: (items) => {
+                    const model = activeModels[items[0].dataIndex];
+                    const inOut = `in: ${fmtTokensK(cost.inputTokensK[items[0].dataIndex])} \u00b7 out: ${fmtTokensK(cost.outputTokensK[items[0].dataIndex])}`;
+                    const bill = model.estimated_cost === null || model.estimated_cost === undefined
+                      ? 'cost: not recorded'
+                      : `cost: estimated \u2248 $${model.estimated_cost.toFixed(2)}`;
+                    return [inOut, bill];
+                  },
+                },
+              },
+              akbenchBarAnnotations: {
+                familyColors,
+                showFamilyStrip: false,
+                formatRowValue: (i) => {
+                  const m = activeModels[i];
+                  if (m.mean_total_tokens === null) return '\u2014';
+                  const costTag = m.estimated_cost !== null && m.estimated_cost !== undefined
+                    ? ` \u00b7 $${m.estimated_cost.toFixed(2)}`
+                    : '';
+                  return `${fmtTokensK(cost.tokensK[i])}${costTag}`;
+                }
+              }
+            },
+            scales: {
+              x: {
+                type: 'linear', position: 'bottom',
+                ticks: { color: ink().dim, font: mono, callback: (v) => fmtTokensK(v) }, grid: { color: ink().grid },
+              },
+              y: makeYScale(true)
+            }
+          }
+        }));
+      }
+
+      // --- 5. Mean Tool Calls ---
+      const ctx5 = document.getElementById('chartModelToolCalls');
+      if (ctx5) {
+        activeCharts.push(new Chart(ctx5, {
+          type: 'bar',
+          plugins: [barAnnotationPlugin],
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Mean Tool Calls',
+                data: cost.toolCalls,
+                backgroundColor: barBgs,
+                borderColor: barBorders,
+                borderWidth: barBorderWidths,
+                borderRadius: 4,
+              }
+            ]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: baseLayout(48),
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { title: fullTooltipTitle } },
+              akbenchBarAnnotations: {
+                familyColors,
+                showFamilyStrip: shareYAxis,
+                formatRowValue: (i) => activeModels[i].mean_tool_calls !== null ? `${cost.toolCalls[i].toFixed(1)}` : '\u2014'
+              }
+            },
+            scales: {
+              x: {
+                type: 'linear', position: 'bottom',
+                ticks: { color: ink().dim, font: mono }, grid: { color: ink().grid },
+              },
+              y: makeYScale(false)
+            }
+          }
+        }));
+      }
+
+      // --- 6. Sample Size (Verified vs Unverified Runs) ---
+      const ctx6 = document.getElementById('chartModelSampleSize');
+      if (ctx6) {
+        const hasUnverified = activeModels.some(m => (m.runs || 0) > (m.verified_runs || 0));
+        const sampleDatasets = hasUnverified
+          ? [
+              {
+                label: 'Verified Runs (\u2713)',
+                data: cost.verifiedSize,
+                backgroundColor: barBgs,
+                borderColor: barBorders,
+                borderWidth: barBorderWidths,
+                borderRadius: 2,
+              },
+              {
+                label: 'Unverified Runs (\u25cb)',
+                data: cost.unverifiedSize,
+                backgroundColor: 'rgba(141, 157, 175, 0.22)',
+                borderColor: 'rgba(141, 157, 175, 0.55)',
+                borderWidth: 1,
+                borderRadius: 4,
+              }
+            ]
+          : [
+              {
+                label: 'Sample Size (Runs)',
+                data: cost.sampleSize,
+                backgroundColor: barBgs,
+                borderColor: barBorders,
+                borderWidth: barBorderWidths,
+                borderRadius: 4,
+              }
+            ];
+
+        activeCharts.push(new Chart(ctx6, {
+          type: 'bar',
+          plugins: [barAnnotationPlugin],
+          data: {
+            labels,
+            datasets: sampleDatasets
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: baseLayout(56),
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { title: fullTooltipTitle } },
+              akbenchBarAnnotations: {
+                familyColors,
+                showFamilyStrip: shareYAxis,
+                formatRowValue: (i) => `${activeModels[i].verified_runs}/${activeModels[i].runs}`
+              }
+            },
+            scales: {
+              x: {
+                stacked: hasUnverified,
+                type: 'linear', position: 'bottom',
+                ticks: { color: ink().dim, font: mono, precision: 0 }, grid: { color: ink().grid },
+              },
+              y: {
+                ...makeYScale(false),
+                stacked: hasUnverified,
+              }
+            }
+          }
+        }));
+      }
     };
 
     // One sentence under the charts, because a bar whose model was never
