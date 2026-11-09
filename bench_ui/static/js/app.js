@@ -14,6 +14,44 @@ const pageLoader = (function initPageLoader() {
   const loader = document.getElementById('pageLoader');
   const bar = document.getElementById('pageLoaderBar');
 
+  // ---- Full-page spinner: the curtain over a page that is not yet there.
+  // It is in the markup visible from the start, so a first paint is the
+  // spinner; the script only decides when it leaves and when it comes back.
+  // It covers whole-page transitions only -- a fetch that repaints a table is
+  // the thin bar's business, the spinner would hide what is already drawn.
+  const spinner = document.getElementById('pageSpinner');
+  const SPINNER_MIN_VISIBLE_MS = 200;
+  const SPINNER_SAFETY_MS = 12000;
+  const spinState = { shownAt: Date.now(), hideTimer: null, safetyTimer: null };
+
+  const spinnerShow = () => {
+    if (!spinner) return;
+    window.clearTimeout(spinState.hideTimer);
+    window.clearTimeout(spinState.safetyTimer);
+    if (spinner.classList.contains('is-hidden')) {
+      spinner.classList.remove('is-hidden');
+      spinState.shownAt = Date.now();
+    }
+    // a navigation the browser cancelled (a download, a blocked page, a
+    // Back pressed mid-flight) never fires load(); the spinner must not
+    // outlive it
+    spinState.safetyTimer = window.setTimeout(spinnerHide, SPINNER_SAFETY_MS);
+  };
+
+  const spinnerHide = () => {
+    if (!spinner) return;
+    window.clearTimeout(spinState.hideTimer);
+    window.clearTimeout(spinState.safetyTimer);
+    const held = Date.now() - spinState.shownAt;
+    spinState.hideTimer = window.setTimeout(() => {
+      spinner.classList.add('is-hidden');
+    }, Math.max(0, SPINNER_MIN_VISIBLE_MS - held));
+  };
+
+  // The page was served with the spinner up; if the script got this far the
+  // page exists, and only if load() never fires does the safety timer act.
+  spinState.safetyTimer = window.setTimeout(spinnerHide, SPINNER_SAFETY_MS);
+
   // A bar that is gone in 120 ms reads as a glitch, not as loading; one that
   // outlives the request reads as a lie. These are the two ends held together.
   const MIN_VISIBLE_MS = 550;
@@ -76,6 +114,12 @@ const pageLoader = (function initPageLoader() {
     return true;
   };
 
+  // Leaving for another page: bar and spinner together.
+  const navigate = () => {
+    begin();
+    spinnerShow();
+  };
+
   // Every request in flight is a reason to keep the bar up. Short local answers
   // never show it at all, so the dashboard does not blink every refresh.
   const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
@@ -104,30 +148,39 @@ const pageLoader = (function initPageLoader() {
       const skips = external || anchor.target === '_blank' || anchor.hasAttribute('download')
         || /^(javascript:|#|mailto:|tel:)/i.test(href) || event.metaKey || event.ctrlKey
         || event.shiftKey || event.altKey || event.button !== 0;
-      if (!skips) begin();
+      if (!skips) navigate();
     }
+    // a button in a form shows the bar only: whether the form leaves the page
+    // is known at submit time, and a filter form that repaints in place
+    // must not be hidden behind the spinner
     const trigger = event.target.closest && event.target.closest('button, [type="submit"]');
     if (trigger && trigger.closest('form')) begin();
   });
 
-  document.addEventListener('submit', begin);
+  document.addEventListener('submit', (event) => {
+    if (event.defaultPrevented) return;
+    navigate();
+  });
 
   // The catch-all: a script that navigates by assigning location covers every
   // path a delegated click could miss, and the browser may never fire load().
-  window.addEventListener('beforeunload', begin);
+  window.addEventListener('beforeunload', navigate);
 
   // Restored from the back/forward cache: the page is already drawn, so the
-  // bar only says "you are back" before getting out of the way.
+  // bar only says "you are back" before getting out of the way, and the
+  // spinner left up by beforeunload comes down at once.
   window.addEventListener('pageshow', (event) => {
     if (!event.persisted) return;
+    spinnerHide();
     begin();
     window.setTimeout(hide, 260);
   });
 
-  return { begin, hide };
+  return { begin, hide, navigate, spinnerShow, spinnerHide };
 })();
 
 window.addEventListener('load', () => {
+  pageLoader.spinnerHide();
   pageLoader.begin();
   window.setTimeout(() => pageLoader.hide(), 250);
 });
