@@ -143,9 +143,9 @@
       width: 100%;
       border-collapse: separate;
       border-spacing: 3px 3px;
-      margin-top: 10px;
+      margin-top: 0;
       font-family: var(--mono, ui-monospace, monospace);
-      font-size: 11px;
+      font-size: 11.5px;
       table-layout: fixed;
     }
     .paired-delta-heatmap th {
@@ -159,7 +159,7 @@
     }
     .paired-delta-heatmap th:first-child {
       text-align: left;
-      width: 34%;
+      width: 28%;
     }
     .paired-delta-heatmap td {
       text-align: center;
@@ -262,27 +262,107 @@
       gap: 20px;
       margin-bottom: 20px;
     }
+    /* the two chart panels fill their row: the canvas box grows with the
+       panel, so a header that wraps to two lines in one panel does not leave
+       a strip of nothing under the other */
+    .model-synthesis-grid > .panel {
+      display: flex;
+      flex-direction: column;
+    }
+    .model-synthesis-grid > .panel > .panel-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .model-synthesis-grid .synthesis-chart-box {
+      flex: 1;
+      min-height: 290px;
+      position: relative;
+    }
+    .model-synthesis-grid > .panel.is-full-row {
+      grid-column: 1 / -1;
+    }
     @media (max-width: 1100px) {
       .model-synthesis-grid {
         grid-template-columns: 1fr;
       }
     }
+    /* a single "view" menu in place of a row of toggles */
+    .chart-view-menu {
+      position: relative;
+    }
+    .chart-view-menu > summary {
+      list-style: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line, #1a232e);
+      user-select: none;
+    }
+    .chart-view-menu > summary::-webkit-details-marker {
+      display: none;
+    }
+    .chart-view-menu[open] > summary {
+      color: var(--fg-strong, #fff);
+      background: var(--hover, rgba(255, 255, 255, 0.05));
+    }
+    .chart-view-menu-body {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      min-width: 260px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: var(--panel, #0a0e14);
+      border: 1px solid var(--line, #1a232e);
+      border-radius: var(--r, 8px);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+      z-index: 30;
+    }
+    .chart-view-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-family: var(--mono, ui-monospace, monospace);
+      font-size: 10.5px;
+      color: var(--fg-dim, #a5b3c2);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .chart-view-row .chart-pill-group,
+    .chart-view-row > .chart-pill {
+      align-self: flex-start;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .model-legend-glyph {
+      font-family: var(--mono, ui-monospace, monospace);
+      font-size: 13px;
+      line-height: 1;
+      color: var(--fg, #c6d3df);
+    }
   </style>
 
-  <!-- Semantic Legend & View Controls -->
+  <!-- Semantic Legend & View Controls. The legend explains only what the
+       marks mean; which family a bar belongs to is said by its colour and its
+       label, so the family swatches are not repeated here. -->
   <div class="model-charts-toolbar" id="modelChartsToolbar">
     <div class="model-charts-legend" id="modelChartsLegend">
-      <span class="model-legend-item">
+      <span class="model-legend-item" title="The memoryless arm: muted fill, hollow square in the label">
+        <span class="model-legend-glyph">&#9633;</span>
         <span class="model-legend-swatch is-base"></span>
-        <span>Base (no memory)</span>
+        <span>Base</span>
       </span>
-      <span class="model-legend-item">
+      <span class="model-legend-item" title="The arm with the knowledge plugin in the process: rich fill, filled square in the label">
+        <span class="model-legend-glyph">&#9632;</span>
         <span class="model-legend-swatch is-ak"></span>
-        <span>+agentic_knowledge (+AK)</span>
+        <span>+AK</span>
       </span>
       <span class="model-legend-item is-low-sample" id="lowSampleLegend" style="display:none;" title="Fewer than 3 evaluated runs: the bar is hatched and the label carries &#9888;, because a rate from one or two runs is not yet a measurement">
         <span class="model-legend-swatch is-low"></span>
-        <span>&#9888; n &lt; 3 (low sample)</span>
+        <span>&#9888; low n</span>
       </span>
       <span class="model-legend-item" title="Wilson 95% confidence interval of the pass rate, drawn over the Success Rate bar">
         <span class="model-legend-ci"></span>
@@ -290,13 +370,24 @@
       </span>
     </div>
     <div class="model-charts-controls">
-      <div class="chart-pill-group" role="group" aria-label="Y-Axis Label Mode">
-        <button type="button" class="chart-pill active" data-axis-mode="all" title="Show compact Y-axis labels on every chart">All Y-Axes</button>
-        <button type="button" class="chart-pill" data-axis-mode="shared" title="Show Y-axis labels once per row on desktop to maximize bar width">Shared Row Y-Axis</button>
-      </div>
-      <button type="button" class="chart-pill active" id="toggleUnverifiedStubsBtn" style="display:none; border:1px solid var(--line, #1a232e);" title="Configurations with no evaluated run and no verified run are hidden by default; click to show them">
-        Showing Evaluated Only
-      </button>
+      <details class="chart-view-menu" id="chartViewMenu">
+        <summary class="chart-pill" title="View options for the model panels">&#9881; view</summary>
+        <div class="chart-view-menu-body">
+          <div class="chart-view-row">
+            <span>Y-axis labels</span>
+            <div class="chart-pill-group" role="group" aria-label="Y-Axis Label Mode">
+              <button type="button" class="chart-pill active" data-axis-mode="all" title="Show compact Y-axis labels on every chart">every panel</button>
+              <button type="button" class="chart-pill" data-axis-mode="shared" title="Show Y-axis labels once per row on desktop to maximize bar width">once per row</button>
+            </div>
+          </div>
+          <div class="chart-view-row" id="stubToggleRow" style="display:none;">
+            <span>Unevaluated configurations</span>
+            <button type="button" class="chart-pill active" id="toggleUnverifiedStubsBtn" style="border:1px solid var(--line, #1a232e);" title="Configurations with no evaluated run and no verified run are hidden by default; click to show them">
+              Showing Evaluated Only
+            </button>
+          </div>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -329,7 +420,7 @@
         </div>
       </div>
       <div class="panel-body">
-        <div style="height:290px; position:relative;">
+        <div class="synthesis-chart-box">
           <canvas id="chartModelPareto"></canvas>
         </div>
       </div>
@@ -349,12 +440,24 @@
         </div>
       </div>
       <div class="panel-body">
-        <div style="height:290px; position:relative;">
+        <div class="synthesis-chart-box">
           <canvas id="chartModelPaired"></canvas>
         </div>
-        <!-- One glance instead of four tabs: the sign and size of the +AK
-             effect per family and per metric. Red is worse, mint is better,
-             whichever direction "better" is for that metric. -->
+      </div>
+    </div>
+
+    <!-- One glance instead of four tabs: the sign and size of the +AK effect
+         per family and per metric. Red is worse, mint is better, whichever
+         direction "better" is for that metric. On its own row so the two
+         charts above stay the same height and the cells have room. -->
+    <div class="panel is-full-row" id="pairedDeltaPanel" style="margin-bottom:0; display:none;">
+      <div class="panel-header">
+        <div class="panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          &Delta; Base &rarr; +AK per family and metric
+        </div>
+      </div>
+      <div class="panel-body" style="padding-top:12px;">
         <table class="paired-delta-heatmap" id="pairedDeltaHeatmap" aria-label="Relative change from Base to +agentic_knowledge per family and metric"></table>
         <div class="paired-delta-caption" id="pairedDeltaCaption"></div>
       </div>
@@ -671,27 +774,39 @@ document.addEventListener('DOMContentLoaded', () => {
       if (Math.abs(k) >= 1000) return `${(k / 1000).toFixed(k >= 10000 ? 0 : 1)}M`;
       return `${Math.round(k)}k`;
     };
+    // A whole percentage is written without its '.0'; one decimal otherwise.
+    const fmtPct = (v) => {
+      if (v === null || v === undefined || Number.isNaN(v)) return '\u2014';
+      const r = Math.round(v * 10) / 10;
+      return `${Number.isInteger(r) ? r : r.toFixed(1)}%`;
+    };
+    // Minutes read as a unit, not a suffix letter; under ten the decimal matters.
+    const fmtMin = (v) => {
+      if (v === null || v === undefined || Number.isNaN(v)) return '\u2014';
+      return v >= 10 ? `${Math.round(v)} min` : `${(Math.round(v * 10) / 10)} min`;
+    };
 
-    const labelLines = (m) => {
-      const base = shortModelName(m.base_model || String(m.model || '\u2014').split('+')[0].split('[')[0]);
-      const plugins = Array.isArray(m.plugins) && m.plugins.length
-        ? m.plugins.map(p => p === 'agentic_knowledge' ? '+AK' : `+${p}`).join('')
-        : (hasKnowledge(m) ? '+AK' : '');
+    // Concise alias for a configuration, shared by the Pareto badges and the
+    // Y axes of the six panels so one name means one row everywhere.
+    const paretoPointLabel = (m, isAk) => {
+      const base = shortModelName(m.base_model || String(m.model || '').split('+')[0].split('[')[0])
+        .replace(/^auto_codex$/, 'auto');
       const served = Array.isArray(m.served_models) && m.served_models.length
-        ? m.served_models.map(shortModelName)
+        ? m.served_models.map(s => shortModelName(s).replace(/^Q3\.8-/, '').replace(/Flash-Next/, 'Flash'))
         : [];
-      // the marker repeats the legend in the label itself: a filled square is
-      // the +AK arm, a hollow one the memoryless base
+      const core = served.length ? `${base}[${served.join(',')}]` : base;
+      return `${core}${isAk ? '+AK' : ''}`;
+    };
+
+    // One line per row: the marker repeats the legend in the label itself (a
+    // filled square is the +AK arm, a hollow one the memoryless base), the
+    // alias is the Pareto one, and the warning sign is the only other mark.
+    // How many runs were verified is in the tooltip and the Sample Size panel.
+    const labelLines = (m) => {
       const marker = hasKnowledge(m) ? '\u25a0 ' : '\u25a1 ';
       const warn = isLowSample(m) ? ' \u26a0' : '';
-      const line1 = `${marker}${base}${plugins}${warn}`;
-      if (served.length) {
-        return [line1, `[${served.join(', ')}]  ${vlabel(m)}`];
-      }
-      return [`${line1}  ${vlabel(m)}`];
+      return `${marker}${paretoPointLabel(m, hasKnowledge(m))}${warn}`;
     };
-    const labels = models.map(labelLines);
-    const extraLines = Math.max(0, ...labels.map(l => (Array.isArray(l) ? l.length : 1) - 1));
 
     // Semantic palette: one consistent hue per model family; Base uses muted
     // translucent fill with dashed outline while +agentic_knowledge uses rich
@@ -702,25 +817,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
     };
     const familyToColor = new Map();
-    const familyLabels = new Map();
     models.forEach((m) => {
       const fKey = familyKeyOf(m);
       if (!familyToColor.has(fKey)) {
         familyToColor.set(fKey, FAMILY_PALETTE[familyToColor.size % FAMILY_PALETTE.length]);
-        familyLabels.set(fKey, shortFamilyName(m));
       }
     });
-
-    // Populate family swatches in the toolbar legend
-    const legendEl = document.getElementById('modelChartsLegend');
-    if (legendEl) {
-      familyToColor.forEach((hex, fKey) => {
-        const span = document.createElement('span');
-        span.className = 'model-legend-item';
-        span.innerHTML = `<span class="model-legend-swatch" style="background:${alpha(hex, 0.78)}; border:1.5px solid ${hex};"></span><span>${familyLabels.get(fKey)}</span>`;
-        legendEl.appendChild(span);
-      });
-    }
 
     // Detect unverified/unevaluated stubs (e.g. bare auto_codex 0/1)
     const isUnverifiedStub = (m) => m.verified_runs === 0 && (
@@ -746,10 +848,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const renderStubBtn = () => {
         stubBtn.classList.toggle('active', hideStubs);
         stubBtn.textContent = hideStubs
-          ? `Showing Evaluated Only (${stubCount} hidden)`
-          : 'Hide Unevaluated Stubs';
+          ? `${stubCount} hidden \u00b7 show`
+          : 'shown \u00b7 hide';
       };
-      stubBtn.style.display = 'inline-flex';
+      const stubRow = document.getElementById('stubToggleRow');
+      if (stubRow) stubRow.style.display = 'flex';
       renderStubBtn();
       stubBtn.addEventListener('click', () => {
         hideStubs = !hideStubs;
@@ -760,6 +863,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const lowLegend = document.getElementById('lowSampleLegend');
     if (lowLegend && models.some(isLowSample)) {
       lowLegend.style.display = 'inline-flex';
+    }
+    // The view menu closes on a click outside it or on Escape, like a menu does.
+    const viewMenu = document.getElementById('chartViewMenu');
+    if (viewMenu) {
+      document.addEventListener('click', (ev) => {
+        if (viewMenu.open && !viewMenu.contains(ev.target)) viewMenu.open = false;
+      });
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && viewMenu.open) viewMenu.open = false;
+      });
     }
 
     const bindPillGroup = (attr, apply) => {
@@ -824,17 +937,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // Concise label for Pareto point badges so clustered configurations stay legible
-    const paretoPointLabel = (m, isAk) => {
-      const base = shortModelName(m.base_model || String(m.model || '').split('+')[0].split('[')[0])
-        .replace(/^auto_codex$/, 'auto');
-      const served = Array.isArray(m.served_models) && m.served_models.length
-        ? m.served_models.map(s => shortModelName(s).replace(/^Q3\.8-/, '').replace(/Flash-Next/, 'Flash'))
-        : [];
-      const core = served.length ? `${base}[${served.join(',')}]` : base;
-      return `${core}${isAk ? '+AK' : ''}`;
-    };
-
     // Plugin that prints exact numeric values at the end of horizontal bars
     // and draws a left color stripe when shared Y-axis labels are hidden.
     const barAnnotationPlugin = {
@@ -892,9 +994,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (Array.isArray(pluginOptions.ciBounds) && pluginOptions.ciBounds[i]) {
               maxRight = Math.max(maxRight, xScale.getPixelForValue(pluginOptions.ciBounds[i][1]));
             }
+            // the text never runs off the canvas: when the bar leaves no room
+            // to its right, the label is pulled back to end at the frame
+            const tw = ctx.measureText(text).width;
+            const x = Math.min(maxRight + 6, chart.width - 4 - tw);
             ctx.fillStyle = ink().text;
             ctx.textAlign = 'left';
-            ctx.fillText(text, Math.min(maxRight + 6, chart.width - 4), yPos);
+            ctx.fillText(text, Math.max(chartArea.left + 2, x), yPos);
           }
         }
         ctx.restore();
@@ -943,7 +1049,10 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         });
 
-        // 2D collision-avoidance placement for bubble labels
+        // Badges sit against their bubble, no leader lines: a label the eye
+        // has to follow a line to is a label it has to work for. Bubbles that
+        // touch share one badge ("A / B") instead of two fighting for the
+        // same corner.
         ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
         ctx.textBaseline = 'middle';
         const pts = (pluginOptions.points || []).map((pt) => ({
@@ -951,11 +1060,26 @@ document.addEventListener('DOMContentLoaded', () => {
           px: xScale.getPixelForValue(pt.x),
           py: yScale.getPixelForValue(pt.y),
         }));
-        // Sort left-to-right, top-to-bottom so placement is deterministic;
-        // only the points the caller marked get a badge, the rest are in the tooltip
-        const sortedPts = [...pts]
-          .filter(pt => pt.labelled !== false)
-          .sort((a, b) => (a.px - b.px) || (a.py - b.py));
+        // Only the points the caller marked get a badge, the rest are in the tooltip
+        const labelledPts = pts.filter(pt => pt.labelled !== false);
+
+        // Greedy clustering of touching bubbles, left-to-right so it is deterministic
+        const clusters = [];
+        [...labelledPts].sort((a, b) => (a.px - b.px) || (a.py - b.py)).forEach((pt) => {
+          const home = clusters.find(c => c.members.some(o => Math.hypot(o.px - pt.px, o.py - pt.py) <= o.r + pt.r + 4));
+          if (home) home.members.push(pt);
+          else clusters.push({ members: [pt] });
+        });
+        clusters.forEach((c) => {
+          const n = c.members.length;
+          c.px = c.members.reduce((s, p) => s + p.px, 0) / n;
+          c.py = c.members.reduce((s, p) => s + p.py, 0) / n;
+          c.r = Math.max(...c.members.map(p => Math.hypot(p.px - c.px, p.py - c.py) + p.r));
+          c.text = c.members.map(p => p.shortLabel).join(' / ');
+          c.isAk = c.members.some(p => p.isAk);
+          c.color = c.members[0].color;
+        });
+
         const placedBoxes = [];
         const boxH = 15;
 
@@ -972,50 +1096,50 @@ document.addEventListener('DOMContentLoaded', () => {
           return d < cr ? (cr - d) * 20 : 0;
         };
 
+        // Every candidate touches the bubble: up-right first, then down-right,
+        // then the mirror positions on the left, then straight above or below.
         const candidateOffsets = [
+          { dx: 1, dy: -9 },
+          { dx: 1, dy: 9 },
           { dx: 1, dy: 0 },
-          { dx: 1, dy: 16 },
-          { dx: 1, dy: -16 },
-          { dx: 1, dy: 32 },
-          { dx: 1, dy: -32 },
+          { dx: -1, dy: -9 },
+          { dx: -1, dy: 9 },
           { dx: -1, dy: 0 },
-          { dx: -1, dy: 16 },
-          { dx: -1, dy: -16 },
-          { dx: 0, dy: 22 },
-          { dx: 0, dy: -22 },
-          { dx: 1, dy: 48 },
-          { dx: 1, dy: -48 },
-          { dx: 1, dy: 64 },
-          { dx: -1, dy: 34 },
-          { dx: -1, dy: -34 },
+          { dx: 0, dy: -1 },
+          { dx: 0, dy: 1 },
         ];
 
-        sortedPts.forEach((pt) => {
-          const text = pt.shortLabel;
+        clusters.sort((a, b) => (a.px - b.px) || (a.py - b.py)).forEach((c) => {
+          const text = c.text;
           const tw = Math.ceil(ctx.measureText(text).width) + 8;
           let bestRect = null;
           let bestCost = Infinity;
 
-          candidateOffsets.forEach((cand) => {
+          candidateOffsets.forEach((cand, order) => {
             let rx;
-            if (cand.dx > 0) rx = pt.px + pt.r + 6;
-            else if (cand.dx < 0) rx = pt.px - pt.r - 6 - tw;
-            else rx = pt.px - tw / 2;
-            let ry = pt.py + cand.dy - boxH / 2;
+            let ry;
+            if (cand.dx > 0) rx = c.px + c.r + 4;
+            else if (cand.dx < 0) rx = c.px - c.r - 4 - tw;
+            else rx = c.px - tw / 2;
+            if (cand.dx === 0) ry = cand.dy < 0 ? c.py - c.r - 3 - boxH : c.py + c.r + 3;
+            else ry = c.py + cand.dy - boxH / 2;
 
             // Clamp within canvas bounds
             const minX = chartArea.left + 2;
             const maxX = chart.width - tw - 4;
             const minY = Math.max(2, chartArea.top - 18);
             const maxY = chartArea.bottom - boxH - 2;
-            rx = Math.max(minX, Math.min(maxX, rx));
-            ry = Math.max(minY, Math.min(maxY, ry));
+            const cx = Math.max(minX, Math.min(maxX, rx));
+            const cy = Math.max(minY, Math.min(maxY, ry));
 
-            const rect = { x: rx, y: ry, w: tw, h: boxH };
-            let cost = Math.hypot((rx + tw / 2) - pt.px, (ry + boxH / 2) - pt.py) * 0.15;
+            const rect = { x: cx, y: cy, w: tw, h: boxH };
+            // a slight preference for the earlier candidates, and for not
+            // having been pushed by the frame
+            let cost = order * 0.5 + (Math.abs(cx - rx) + Math.abs(cy - ry)) * 0.4;
 
-            // Penalize overlapping any bubble
+            // Penalize covering any bubble other than the cluster's own
             pts.forEach((other) => {
+              if (c.members.includes(other)) return;
               cost += circleRectOverlap(other.px, other.py, other.r + 3, rect) * 15;
             });
             // Heavily penalize overlapping any placed label
@@ -1032,29 +1156,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
           if (bestRect) {
             placedBoxes.push(bestRect);
-            // Draw leader line if displaced from bubble edge
-            const labelAnchorX = bestRect.x > pt.px ? bestRect.x : (bestRect.x + bestRect.w < pt.px ? bestRect.x + bestRect.w : bestRect.x + bestRect.w / 2);
-            const labelAnchorY = bestRect.y + bestRect.h / 2;
-            const distToCenter = Math.hypot(labelAnchorX - pt.px, labelAnchorY - pt.py);
-            if (distToCenter > pt.r + 10) {
-              const ang = Math.atan2(labelAnchorY - pt.py, labelAnchorX - pt.px);
-              ctx.strokeStyle = alpha(pt.color, 0.55);
-              ctx.lineWidth = 1;
-              ctx.beginPath();
-              ctx.moveTo(pt.px + Math.cos(ang) * (pt.r + 1), pt.py + Math.sin(ang) * (pt.r + 1));
-              ctx.lineTo(labelAnchorX, labelAnchorY);
-              ctx.stroke();
-            }
 
             // Subtle pill backdrop so labels never clash with grid lines in dark or light mode
             const isLight = document.documentElement.getAttribute('data-theme') === 'light';
             ctx.fillStyle = isLight ? 'rgba(255, 255, 255, 0.88)' : 'rgba(10, 14, 20, 0.82)';
             ctx.fillRect(bestRect.x, bestRect.y, bestRect.w, bestRect.h);
-            ctx.strokeStyle = alpha(pt.isAk ? '#00e59b' : pt.color, 0.45);
+            ctx.strokeStyle = alpha(c.isAk ? '#00e59b' : c.color, 0.45);
             ctx.lineWidth = 1;
             ctx.strokeRect(bestRect.x, bestRect.y, bestRect.w, bestRect.h);
 
-            ctx.fillStyle = pt.isAk ? ink().text : ink().dim;
+            ctx.fillStyle = c.isAk ? ink().text : ink().dim;
             ctx.textAlign = 'left';
             ctx.fillText(text, bestRect.x + 4, bestRect.y + bestRect.h / 2);
           }
@@ -1078,8 +1189,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const isDesktopThreeCol = window.innerWidth > 1100;
       const shareYAxis = axisMode === 'shared' && isDesktopThreeCol;
 
-      // Resize chart boxes cleanly to match the active row count and wrapped lines
-      const targetHeight = Math.max(240, activeModels.length * 46 + 70 + extraLines * 12);
+      // Resize chart boxes cleanly to match the active row count
+      const targetHeight = Math.max(240, activeModels.length * 46 + 70);
       document.querySelectorAll('.model-chart-box').forEach((box) => {
         box.style.height = `${targetHeight}px`;
       });
@@ -1213,6 +1324,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // bubble is not sliced by the frame.
         const yMin = paretoZoom === 'full' ? 0 : Math.max(0, Math.floor((minScore - 2) / 5) * 5);
         const yMax = 100;
+        // at most six Y ticks, on whole percentages: a fitted 95-100 reads as
+        // 95, 96, ... 100 and not as a ladder of half-points
+        const yTicks = paretoZoom === 'full'
+          ? { color: ink().text, font: mono, stepSize: 20, callback: (v) => `${v}%` }
+          : { color: ink().text, font: mono, maxTicksLimit: 6, precision: 0, callback: (v) => `${v}%` };
         const xTicks = useLog
           ? { color: ink().dim, font: mono, callback: (v) => fmtX(v), maxTicksLimit: 8, autoSkip: true }
           : { color: ink().dim, font: mono, callback: (v) => fmtX(v) };
@@ -1247,7 +1363,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const m = pt.model;
                     const xStr = pt.rawX > 0 ? fmtX(pt.rawX) : 'not recorded';
                     const lines = [
-                      `score ${pt.y.toFixed(1)}% \u00b7 pass ${m.passed ?? '?'}/${m.evaluated || 0}`,
+                      `score ${fmtPct(pt.y)} \u00b7 pass ${m.passed ?? '?'}/${m.evaluated || 0}`,
                       `${paretoXMetric}: ${xStr} \u00b7 runs ${m.runs}`,
                     ];
                     if (m.estimated_cost !== null && m.estimated_cost !== undefined) lines.push(`cost: estimated \u2248 $${m.estimated_cost.toFixed(2)}`);
@@ -1270,7 +1386,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 min: yMin,
                 max: yMax,
                 title: { display: true, text: `Mean Score (%) \u2192 higher is better${paretoZoom === 'full' ? '' : ' \u00b7 fitted'}`, color: ink().dim, font: mono },
-                ticks: { color: ink().text, font: mono, stepSize: paretoZoom === 'full' ? 20 : undefined, callback: (v) => `${v}%` },
+                ticks: yTicks,
                 grid: { color: ink().grid },
               }
             }
@@ -1309,17 +1425,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const pairedLabels = fGroups.map(g => g.label);
         const baseVals = fGroups.map(g => extractMetric(g.base));
         const akVals = fGroups.map(g => extractMetric(g.ak));
-        const fmtPaired = (v) => (v === null ? '' : (pairedMetric === 'tokens' ? fmtTokensK(v) : `${v}${unitSuffix}`));
+        const fmtPaired = (v) => {
+          if (v === null) return '';
+          if (pairedMetric === 'tokens') return fmtTokensK(v);
+          if (pairedMetric === 'score') return fmtPct(v);
+          if (pairedMetric === 'duration') return fmtMin(v);
+          return `${v}${unitSuffix}`;
+        };
 
         // --- 0C. Delta heatmap: every family x every metric at once ---
         const heatmap = document.getElementById('pairedDeltaHeatmap');
         const heatCaption = document.getElementById('pairedDeltaCaption');
+        const heatPanel = document.getElementById('pairedDeltaPanel');
         if (heatmap) {
           const metricDefs = [
-            { key: 'score', label: 'Score', higherIsBetter: true, read: (m) => (m && m.mean_score !== null ? m.mean_score * 100 : null) },
-            { key: 'duration', label: 'Duration', higherIsBetter: false, read: (m) => (m && m.mean_duration_seconds !== null ? m.mean_duration_seconds : null) },
-            { key: 'tokens', label: 'Tokens', higherIsBetter: false, read: (m) => (m && m.mean_total_tokens !== null ? m.mean_total_tokens : null) },
-            { key: 'tools', label: 'Tool Calls', higherIsBetter: false, read: (m) => (m && m.mean_tool_calls !== null ? Number(m.mean_tool_calls) : null) },
+            { key: 'score', label: 'Score', higherIsBetter: true, read: (m) => (m && m.mean_score !== null ? m.mean_score * 100 : null), show: fmtPct },
+            { key: 'duration', label: 'Duration', higherIsBetter: false, read: (m) => (m && m.mean_duration_seconds !== null ? m.mean_duration_seconds : null), show: (s) => fmtMin(s / 60) },
+            { key: 'tokens', label: 'Tokens', higherIsBetter: false, read: (m) => (m && m.mean_total_tokens !== null ? m.mean_total_tokens : null), show: (t) => fmtTokensK(t / 1000) },
+            { key: 'tools', label: 'Tool Calls', higherIsBetter: false, read: (m) => (m && m.mean_tool_calls !== null ? Number(m.mean_tool_calls) : null), show: (v) => `${Math.round(v * 10) / 10}` },
           ];
           const pairedGroups = allGroups.filter(g => g.base && g.ak && (g.base.evaluated || 0) > 0 && (g.ak.evaluated || 0) > 0);
           // Color by how much better or worse the change is, saturating at 50%
@@ -1331,6 +1454,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return good ? `background: rgba(0, 229, 155, ${a.toFixed(2)});` : `background: rgba(255, 107, 122, ${a.toFixed(2)});`;
           };
           const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+          if (heatPanel) heatPanel.style.display = pairedGroups.length === 0 ? 'none' : '';
           if (pairedGroups.length === 0) {
             heatmap.innerHTML = '';
             if (heatCaption) heatCaption.textContent = '';
@@ -1345,17 +1469,19 @@ document.addEventListener('DOMContentLoaded', () => {
                   return '<td class="is-empty" title="not recorded on one of the arms">\u2014</td>';
                 }
                 const deltaPct = ((a - b) / b) * 100;
-                const sign = deltaPct > 0 ? '+' : '';
-                const arrow = Math.abs(deltaPct) < 0.5 ? '\u2192' : (deltaPct > 0 ? '\u2191' : '\u2193');
                 const better = d.higherIsBetter ? deltaPct >= 0 : deltaPct <= 0;
-                const title = `${d.label}: ${Math.abs(deltaPct) < 0.5 ? 'unchanged' : (better ? 'better' : 'worse')} with +AK (${sign}${deltaPct.toFixed(1)}%)`;
-                return `<td style="${cellStyle(deltaPct, d.higherIsBetter)}" title="${esc(title)}">${arrow} ${sign}${deltaPct.toFixed(0)}%</td>`;
+                const unchanged = Math.abs(deltaPct) < 0.5;
+                // the sign and the colour say it all; an arrow pointing up on
+                // a duration that got worse would say the opposite
+                const shown = unchanged ? '\u00b10%' : `${deltaPct > 0 ? '+' : '\u2212'}${Math.abs(deltaPct).toFixed(0)}%`;
+                const title = `${d.label}: ${unchanged ? 'unchanged' : (better ? 'better' : 'worse')} with +AK (${deltaPct > 0 ? '+' : ''}${deltaPct.toFixed(1)}%) \u00b7 Base ${d.show(b)} \u2192 +AK ${d.show(a)}`;
+                return `<td style="${cellStyle(deltaPct, d.higherIsBetter)}" title="${esc(title)}">${shown}</td>`;
               }).join('');
               return `<tr><td class="is-row-label" style="border-left-color: ${g.color};" title="${esc(g.base.model)} \u2192 ${esc(g.ak.model)}">${esc(g.label)}${warn}</td>${cells}</tr>`;
             }).join('');
             heatmap.innerHTML = `${head}<tbody>${rows}</tbody>`;
             if (heatCaption) {
-              heatCaption.textContent = 'Relative change from the Base arm to its +AK twin. Mint is better for that metric (higher score; lower duration, tokens, tool calls), red is worse; \u26a0 marks a pair with a low-sample arm.';
+              heatCaption.textContent = 'Relative change from the Base arm to its +AK twin. Mint is better for that metric (higher score; lower duration, tokens, tool calls), red is worse; \u26a0 marks a pair with a low-sample arm. Hover a cell for the two values.';
             }
           }
         }
@@ -1451,7 +1577,7 @@ document.addEventListener('DOMContentLoaded', () => {
             indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
-            layout: baseLayout(52),
+            layout: baseLayout(84),
             plugins: {
               legend: { display: false },
               tooltip: {
@@ -1471,7 +1597,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 familyColors,
                 showFamilyStrip: false,
                 ciBounds,
-                formatRowValue: (i) => activeModels[i].success_rate !== null ? `${perf.successRate[i].toFixed(1)}%` : '\u2014'
+                // the rate and the count it is made of, so a 100% says whether
+                // it is 1/1 or 29/29 without a hover
+                formatRowValue: (i) => {
+                  const m = activeModels[i];
+                  if (m.success_rate === null) return '\u2014';
+                  return `${fmtPct(perf.successRate[i])} \u00b7 ${m.passed ?? '?'}/${m.evaluated || 0}`;
+                }
               }
             },
             scales: {
@@ -1514,7 +1646,7 @@ document.addEventListener('DOMContentLoaded', () => {
               akbenchBarAnnotations: {
                 familyColors,
                 showFamilyStrip: shareYAxis,
-                formatRowValue: (i) => activeModels[i].mean_score !== null ? `${perf.meanScore[i].toFixed(1)}%` : '\u2014'
+                formatRowValue: (i) => activeModels[i].mean_score !== null ? fmtPct(perf.meanScore[i]) : '\u2014'
               }
             },
             scales: {
@@ -1557,7 +1689,7 @@ document.addEventListener('DOMContentLoaded', () => {
               akbenchBarAnnotations: {
                 familyColors,
                 showFamilyStrip: shareYAxis,
-                formatRowValue: (i) => activeModels[i].mean_duration_seconds !== null ? `${cost.durationMin[i].toFixed(1)}m` : '\u2014'
+                formatRowValue: (i) => activeModels[i].mean_duration_seconds !== null ? fmtMin(cost.durationMin[i]) : '\u2014'
               }
             },
             scales: {
@@ -1666,7 +1798,7 @@ document.addEventListener('DOMContentLoaded', () => {
               akbenchBarAnnotations: {
                 familyColors,
                 showFamilyStrip: shareYAxis,
-                formatRowValue: (i) => activeModels[i].mean_tool_calls !== null ? `${cost.toolCalls[i].toFixed(1)}` : '\u2014'
+                formatRowValue: (i) => activeModels[i].mean_tool_calls !== null ? `${Math.round(cost.toolCalls[i] * 10) / 10}` : '\u2014'
               }
             },
             scales: {
@@ -1732,7 +1864,8 @@ document.addEventListener('DOMContentLoaded', () => {
               akbenchBarAnnotations: {
                 familyColors,
                 showFamilyStrip: shareYAxis,
-                formatRowValue: (i) => `${activeModels[i].verified_runs}/${activeModels[i].runs}`
+                // verified over total: the badge the Y label used to carry
+                formatRowValue: (i) => `${activeModels[i].verified_runs > 0 ? '\u2713 ' : '\u25cb '}${activeModels[i].verified_runs}/${activeModels[i].runs}`
               }
             },
             scales: {

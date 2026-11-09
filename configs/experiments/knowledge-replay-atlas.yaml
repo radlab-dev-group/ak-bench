@@ -117,8 +117,8 @@ experiment:
 
   dataset:
     filters:
-      categories: [bug_fix]
-      task_ids: [atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004]
+      categories: [new_feature]
+      task_ids: [atlas-lineage-001]
 
   factors:
     strategy: custom_matrix
