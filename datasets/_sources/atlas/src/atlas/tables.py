@@ -1,7 +1,7 @@
 """GENERATED FILE -- DO NOT EDIT.
 
 Source: ``schema/tables.json`` (schema version 3).
-Generator: ``python -m atlas.tables --write``
+Generator: ``python tools/gen_tables.py --lock``
 
 Every line of this module is derived. A hand edit here is not a fix: it is
 overwritten the next time the tables are generated, and the diff that
@@ -127,11 +127,12 @@ def render() -> str:  # pragma: no cover - regenerated, kept for parity checks
 
 
 def main(argv=None) -> int:  # pragma: no cover - generator entry point
-    """Regenerate this module from ``schema/tables.json``.
+    """Report whether this module is stale against ``schema/tables.json``.
 
-    Run it after editing the JSON. It prints what changed and rewrites this
-    file only when asked, so a stray invocation cannot silently touch the
-    tree.
+    This entry point only reads. Regenerating is the job of
+    ``tools/gen_tables.py --lock``, which also rewrites ``schema/MANIFEST``;
+    a module that is regenerated without the lock is stale in a way this
+    check cannot see.
     """
 
     import argparse
@@ -139,7 +140,7 @@ def main(argv=None) -> int:  # pragma: no cover - generator entry point
     from . import schema as schema_module
 
     parser = argparse.ArgumentParser(prog="atlas.tables")
-    parser.add_argument("--write", action="store_true", help="rewrite this module")
+    parser.add_argument("--write", action="store_true", help="(no-op) use tools/gen_tables.py --lock")
     parser.add_argument("--schema", default=None, help="schema document to read")
     arguments = parser.parse_args(argv)
     loaded = schema_module.load(arguments.schema) if arguments.schema else schema_module.discover()
@@ -163,7 +164,7 @@ def main(argv=None) -> int:  # pragma: no cover - generator entry point
             f"generated module is stale: schema v{loaded.version} vs v{SCHEMA_VERSION}"
             + (f", drifting columns: {drift}" if drift else "")
         )
-        print("regenerate with: python -m atlas.tables --write")
+        print("regenerate with: python tools/gen_tables.py --lock")
         return 1
     print(f"tables v{SCHEMA_VERSION} match schema/tables.json")
     return 0

@@ -1,0 +1,14 @@
+[
+  {"key": "account:0001", "value": {"balance": 1250, "currency": "EUR", "flags": ["verified"]}, "gen": 1, "vec": {"n1": 1}, "deleted": false, "lsn": 1, "at": 1700000000000, "writer": "n1", "attrs": [["region", "eu-west"]]},
+  {"key": "account:0002", "value": {"balance": 0.1, "currency": "USD", "ratio": 2.5}, "gen": 3, "vec": {"n1": 2, "n2": 1}, "deleted": false, "lsn": 2, "at": 1700000001000, "writer": "n2", "attrs": []},
+  {"key": "account:0003", "value": null, "gen": 2, "vec": {"n3": 2}, "deleted": true, "lsn": 3, "at": 1700000002000, "writer": "n3", "attrs": []},
+  {"key": "clé:été", "value": "naïve café — ☕", "gen": 1, "vec": {"n1": 1}, "deleted": false, "lsn": 4, "at": 1700000003000, "writer": "n1", "attrs": [["lang", "fr"], ["tier", "gold"]]},
+  {"key": "ключ:один", "value": {"z": 1, "a": [3, 2, 1], "m": {"y": true, "x": null}}, "gen": 5, "vec": {"n2": 5}, "deleted": false, "lsn": 5, "at": 1700000004000, "writer": "n2", "attrs": []},
+  {"key": "counter:hits", "value": 9007199254740991, "gen": 7, "vec": {"n1": 3, "n2": 2, "n3": 2}, "deleted": false, "lsn": 6, "at": 1700000005000, "writer": "n3", "attrs": [["kind", "counter"]]},
+  {"key": "counter:ratio", "value": 1e-07, "gen": 1, "vec": {"n2": 1}, "deleted": false, "lsn": 7, "at": 1700000006000, "writer": "n2", "attrs": []},
+  {"key": "doc:empty", "value": {}, "gen": 1, "vec": {"n1": 1}, "deleted": false, "lsn": 8, "at": 1700000007000, "writer": "n1", "attrs": []},
+  {"key": "doc:list", "value": [1, "two", 3.0, false, null, {"four": 4}], "gen": 2, "vec": {"n3": 1, "n1": 1}, "deleted": false, "lsn": 9, "at": 1700000008000, "writer": "n1", "attrs": [["shape", "list"]]},
+  {"key": "doc:quoted", "value": "line one\nline \"two\" \\ tab\t end", "gen": 1, "vec": {"n3": 1}, "deleted": false, "lsn": 10, "at": 1700000009000, "writer": "n3", "attrs": []},
+  {"key": "session:old", "value": null, "gen": 4, "vec": {"n1": 4}, "deleted": true, "lsn": 11, "at": 1700000010000, "writer": "n1", "attrs": [["reason", "expired"]]},
+  {"key": "zeta:last", "value": {"nested": {"deep": {"deeper": [0.5, -1, "end"]}}}, "gen": 1, "vec": {"n2": 1}, "deleted": false, "lsn": 12, "at": 1700000011000, "writer": "n2", "attrs": []}
+]

@@ -206,3 +206,125 @@ writes, reads, repairs or recovers.
 9.10 **Cap.** At `max_edges` the recorder stops recording and says so by
 returning `None`; it never evicts an edge already in the graph, because an
 edge that disappears silently is worse than a graph that stops growing.
+
+## 10. Schema evolution — declared, not implemented
+
+This is the specification of a feature whose code raises
+`NotImplementedError` (`atlas.evolution`). Implement it against this text.
+The reasoning is in `docs/adr/ADR-0010` to `ADR-0013`; the procedure a
+change to the schema must follow is in `docs/schema-evolution.md`.
+
+10.1 **What a layout is.** A stored row has a **layout**: the set of payload
+fields its frame carries. The writer emits the layout whose number is the
+schema document's `version` (today `3`). Two older layouts exist on disk and
+a reader must accept them (the document's `compatibility.reader_must_accept`). Exactly
+three layouts exist and no fourth may be invented without a new schema
+version:
+
+| layout | fields | notes |
+| --- | --- | --- |
+| `v1` | `key`, `value`, `gen`, `lsn` | the legacy flat layout: `value` is JSON **text**; a `null` value is a tombstone |
+| `v2` | `v1` + `at`, `writer` | `value` is JSON; `at` is milliseconds |
+| `v3` | `v2` + `vec`, `deleted`, `attrs` | the current layout; what the write-ahead log and the snapshot write today |
+
+10.2 **Declared, then generated.** The layouts are declared in
+`schema/tables.json` under `layouts`, each as its ordered list of fields, and
+reach the code **only** through the generated `atlas.tables.LAYOUTS`, a
+mapping of version number to field tuple. `atlas.evolution.layouts()` returns
+that mapping and raises `UnknownLayoutError` when the generated module
+declares none. The seed declares none: declaring them is part of the feature,
+and a declaration that is not generated is not a declaration.
+
+10.3 **Detection is total.** `detect_version(payload)` returns the highest
+declared layout whose fields are all present in the payload; an explicit `v`
+field, when present, is honoured first. A payload that fits no layout raises
+`UnknownLayoutError`. Detection never guesses: every payload has exactly one
+layout or an error.
+
+10.4 **Upgrade on read.** A row written under an older layout is upgraded
+when it is read and **never rewritten on disk** (ADR-0010). The steps are
+fixed and run one at a time:
+
+* `v1 -> v2`: parse the value text into JSON (a `null` stays `null`);
+  `at := 0`; `writer := "legacy"`;
+* `v2 -> v3`: `vec := {writer: gen}`; `deleted := (value is null)`;
+  `attrs := []`; an empty `writer` is read as `"legacy"`.
+
+`decode_row(payload)` returns a current `Record`; `read_log(directory)` and
+`read_snapshot(path)` apply it to every row of a legacy log (committed
+transactions only, stopping at damage, a `DELETE` frame yielding a tombstone)
+or snapshot, in order. The bytes of the files are identical before and after.
+
+10.5 **Dual-write.** During a migration a `MigrationWindow(storage, pinned=n)`
+persists every write made through it twice: the current frame, written by the
+storage exactly as before, and one `CONTROL` **shadow frame** in its own
+committed transaction, carrying the row downgraded to layout `n`:
+`{"shadow": "records", "v": n, "lsn": <lsn>, "row": <payload at n>}`. A
+window pins an older layout only. Recovery ignores control frames, so the
+current reader observes nothing: same records, same replay count, same
+recovery after a reopen. `close()` returns the number of shadow frames
+written; a closed window refuses further writes with `EvolutionError`.
+
+10.6 **Downgrade.** A reader pinned to layout `n` (`PinnedReader(n)`) is
+served current rows **downgraded** to `n`, one step at a time:
+
+* `v3 -> v2`: drop `vec`, `deleted`, `attrs`; a tombstone becomes a `null`
+  value;
+* `v2 -> v1`: drop `at`, `writer`; the value becomes its **canonical** JSON
+  text (`atlas.codec.canonical`), `null` staying `null`.
+
+A downgraded row must be exactly what a writer of that layout would have
+written: the same fields and no others. Downgrade is lossy by design
+(ADR-0013): a vector, attributes and a writer do not survive it, and the
+contract does not pretend they do. `PinnedReader.visible_rows(log)` returns,
+per key, the latest payload the reader can decode: frames at or below its
+layout and shadow frames written for it; frames of a newer layout are
+invisible, which is the gap §10.5 closes.
+
+10.7 **Round trip.** A frame written under an older layout that is upgraded
+to the current layout and downgraded back must be **byte for byte** the frame
+it was. `verify_round_trip(frame)` performs the trip, re-encodes with
+`atlas.codec.encode`, and raises `CodecMismatchError` when the digests
+differ. The error's message is stable and is the only diagnostic:
+
+```
+CodecMismatch(records-v<n>, expected=<sha256>, actual=<sha256>)
+```
+
+The same message is produced by an unfinished downgrade and by a change to
+the canonical form of the codec; the codec is frozen (ADR-0011), so only one
+of the two is a bug an implementer may fix.
+
+10.8 **Registration.** Every step is registered in the strategy registry
+(`StrategySet.evolution`) under `records:v<a>->v<b>`, and every declared
+index projection under `index:<name>`. `install_upgraders` and
+`install_indexes` register what is missing and nothing else: a second
+installation into the same set registers nothing and raises nothing. With a
+`strategies` set given, `upgrade` and `downgrade` use a step registered there
+in place of the built-in one.
+
+10.9 **The procedure.** A change to `schema/tables.json` is not done until
+the generated module, its lock (`schema/MANIFEST`) and the goldens under
+`schema/goldens/` agree, each produced or verified by the repository's own
+tools and never by hand. The commands and their order are stated once, in
+`docs/schema-evolution.md`. The goldens are digests of frames the code must
+reproduce from `schema/goldens/rows.json`; the rows are fixed and are not
+edited to make a golden match.
+
+10.10 **Indexes are declared.** A secondary index exists when, and only
+when, `schema/tables.json` declares it under `indexes` with a name, its
+columns, `unique`, and an optional `where` predicate. It reaches the code
+through the generated `atlas.tables.INDEXES`, in document order, and nowhere
+else.
+
+10.11 **Projection.** `project_index(name, records)` returns the entries of
+a declared index over a set of rows. An entry is the index columns followed
+by the primary key when the key is not already a column. Entries are ordered
+column by column, naturally within a type and by type rank across types
+(null, bool, number, text, other). A `where` predicate filters the rows the
+index covers (`deleted = false` is the only predicate the schema uses). A
+unique index whose columns repeat raises `DuplicateKeyError` naming the index
+and the repeated columns; an undeclared name raises `EvolutionError`.
+`index_frame(name, records)` is one `CONTROL` frame,
+`{"index": name, "entries": [...]}`, produced by `atlas.codec.encode`; it is
+the golden form of an index.

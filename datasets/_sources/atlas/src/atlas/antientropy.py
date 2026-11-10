@@ -13,6 +13,13 @@ The walk is deterministic: keys sorted, ranges halved, digests compared from
 the top down. A divergence is reported as the smallest key range whose digest
 differs, never as a count, because a count tells an operator nothing about
 where to look.
+
+:meth:`AntiEntropy.converge` is the pass an operator runs before a rebalance:
+it walks every pair of replicas that hold the shard, writes the winner of each
+differing key forward with the read repairer, and then checks the result
+against the plan. The check is against the plan on purpose: the rebalance
+that follows streams from whichever replica the plan names, so a replica the
+plan names and the pass skipped is a stale copy about to be copied.
 """
 
 from __future__ import annotations
@@ -20,7 +27,9 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 
+from .errors import ConvergenceError
 from .registry import STRATEGIES
+from .replication import holders
 
 RANGE_DEPTH = 8
 
@@ -122,6 +131,52 @@ class AntiEntropy:
             )
         return report
 
+    def participants(self) -> list[str]:
+        """The replicas a convergence pass compares and repairs: everyone who holds the shard."""
+
+        return holders(self.nodes, self.placement.current.replicas)
+
+    def converge(self, shard: int, *, epoch: int, repairer) -> AntiEntropyReport:
+        """Walk, repair, verify. Raise :class:`ConvergenceError` if the plan still sees two versions."""
+
+        names = self.participants()
+        report = AntiEntropyReport()
+        differing: set[str] = set()
+        for left_name, right_name in zip(names, names[1:]):
+            walked = self.walk(self.nodes[left_name], self.nodes[right_name], shard)
+            report.compared += walked.compared
+            report.matches += walked.matches
+            report.divergences.extend(walked.divergences)
+            for divergence in walked.divergences:
+                differing.update(divergence.keys)
+        for key in sorted(differing):
+            candidates = [
+                record
+                for record in (self.nodes[name].store(shard).resolve(key) for name in names)
+                if record is not None
+            ]
+            winner, _losers, _by_tie_break = repairer.choose(candidates)
+            repairer.repair(key, winner, replicas=names, placement=self.placement)
+            report.repaired.append(key)
+        # The verification reads the plan, not the participant list, and every
+        # key, not only the ones the walk flagged: the rebalance that follows
+        # will stream from whichever replica the plan names.
+        named = [name for name in self.placement.current.replicas if name in self.nodes]
+        every_key: set[str] = set()
+        for name in named:
+            every_key.update(self.nodes[name].store(shard).state.keys())
+        stale = []
+        for key in sorted(every_key):
+            versions = set()
+            for name in named:
+                record = self.nodes[name].store(shard).resolve(key)
+                versions.add(None if record is None else (record.generation, record.vector))
+            if len(versions) > 1:
+                stale.append(key)
+        if stale:
+            raise ConvergenceError(shard, epoch, stale)
+        return report
+
     def _ranges(self):
         step = 0x100000000 // self.width
         for index in range(self.width):
@@ -130,8 +185,8 @@ class AntiEntropy:
             yield low, high
 
     def _keys_between(self, left, right, low: str, high: str) -> tuple[str, ...]:
-        left_map = {record.key: record for record in left.all_records() if low <= record.key < high}
-        right_map = {record.key: record for record in right.all_records() if low <= record.key < high}
+        left_map = {record.key: record for record in left.state.all_records() if low <= record.key < high}
+        right_map = {record.key: record for record in right.state.all_records() if low <= record.key < high}
         differing = []
         for key in sorted(set(left_map) | set(right_map)):
             a = left_map.get(key)
