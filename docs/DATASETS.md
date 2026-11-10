@@ -116,6 +116,19 @@ pass.
 | `atlas-drift-003` | `bug_fix` | expert | `atlas` | base passes; the flipped tie-break fails its witnesses (the grid, the three-way tie, repair, the digest walk) and the seed suite survives |
 | `atlas-drift-004` | `bug_fix` | expert | `atlas` | base passes; the inclusive replay window fails its witnesses (the report counts, the two-image arithmetic) and the seed suite survives |
 | `atlas-lineage-001` | `new_feature` | expert | `atlas` | fails on the base commit because the feature is a stub; passes once the agent implements the SPEC section 9 contract, as the isolated reference does |
+| `atlas-quorum-001` | `bug_fix` | expert | `atlas` | base passes; four regressions in two antagonistic pairs fail their own witnesses, the seed suite survives |
+| `atlas-quorum-002` | `bug_fix` | expert | `atlas` | base passes; the read branch of the same quorum rule fails the hidden scenario, the suite stays green |
+| `atlas-quorum-003` | `bug_fix` | expert | `atlas` | base passes; the same invariant broken in `rebalance`, a module the learning patch never touches |
+| `atlas-quorum-004` | `bug_fix` | expert | `atlas` | base passes; a learning-task failure message reproduced from another cause, so the remembered recipe is a trap |
+| `atlas-schema-001` | `new_feature` | expert | `atlas` | the row half of SPEC section 10 is a stub and its goldens unverified; the isolated reference and the documented generate/lock/verify procedure complete both |
+| `atlas-schema-002` | `new_feature` | expert | `atlas` | index projection is declared and missing; another surface of the schema, the same procedure and the same tools |
+| `depweaver-lockfile-001` | `new_feature` | expert | `depweaver` | canonical form, lock digest and proofs of solution are declared stubs; the isolated reference reproduces the documented digests offline |
+| `tidewater-election-001` | `bug_fix` | expert | `tidewater` | base passes; five election regressions in two antagonistic pairs and a single, all ending in one `election_safety` line, fail their own witnesses and the combined mutation preserves the seed suite |
+| `tidewater-election-002` | `bug_fix` | expert | `tidewater` | base passes; the same majority decision broken in `membership`, the module the learning patch never opens |
+| `tidewater-election-003` | `bug_fix` | expert | `tidewater` | base passes; the learning task's two-leaders line from legal ballots counted against the wrong machine, so the remembered rule is a trap |
+| `tidewater-snapshot-001` | `new_feature` | expert | `tidewater` | the node half of SPEC section 6 is declared; the isolated reference takes the record, keeps the boundary term, restarts from it, and lands the corpus entry through the documented tools |
+| `tidewater-snapshot-002` | `new_feature` | expert | `tidewater` | the transfer half of SPEC section 6 is declared; the reference streams and installs the snapshot, survives a crash mid-transfer, and lands its own corpus entry the same way |
+| `walqueue-compaction-002` | `bug_fix` | expert | `walqueue` | base passes; four cooperating compaction regressions fail their own witnesses and the combined mutation preserves the seed suite |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
@@ -338,6 +351,110 @@ the isolated reference passes.
 ```bash
 python -m pytest tests/integration/test_atlas_family_tasks.py
 ```
+
+### The memory suite
+
+Thirteen tasks over four seeds (`atlas`, `tidewater`, `depweaver`, `walqueue`),
+written for one question: does a model that remembers — recipes, dead ends,
+playbooks and a documentation map carried over from a previous session by the
+`agentic_knowledge` plugin — do something a model that does not cannot? The
+design rules are in `.plans/memory-suite-plan.md`; the experiment that measures
+them is `configs/experiments/knowledge-replay-memory-suite.yaml`
+(`docs/KNOWLEDGE_REPLAY.md`). Every task in the suite obeys the same five rules,
+and each rule exists to make one plugin mechanism matter:
+
+* **antagonistic defect pairs** — the obvious fix of one regression re-raises
+  another with the *same* exception type and message, and the reverse; a
+  memoryless agent oscillates, the plugin records the recurrence as a dead end
+  and counts the loop, and the rule that resolves both halves is written down
+  once. Only the documentation settles a pair.
+* **the truth is in the documentation, and there is a lot of it** — ADRs,
+  incident notes and runbooks, with the decisive rule stated by *symptom* in
+  exactly one record, incident notes that name the wrong module on purpose, and
+  a README that is deliberately a little stale where the rule lives;
+  `CONTRIBUTING.md` gives the hierarchy of truth. This is what the
+  documentation map and its `doc_type`-filtered hits have to find.
+* **procedural debt** — the new features are only finished once a repository
+  tool has been run with the right flags (regenerate, lock, verify the goldens
+  or the trace digests) and its artefacts are left in the tree; skipping the
+  step fails with a stable error the public tests never show. A session that
+  did it once leaves a playbook its twin can spend.
+* **noise that forces compaction** — the simulations print long traces, and a
+  hash, epoch, offset or segment name found mid-session is asserted at the end,
+  which is what the session archive survives for.
+* **twins that share one failure signature** — a twin whose recipe fits as it
+  is, a twin where only the principle transfers, and a twin where the same
+  signature has a different cause and the remembered recipe is the trap.
+
+`atlas-quorum-001` is the second learning task of the atlas seed: four
+regressions in two pairs. Pair A counts the acknowledgment of a retiring
+replica towards the write quorum and leaves that same replica out of the
+convergence pass, so tightening one loosens the other with the same
+`ConvergenceError`; pair B writes a repaired value one generation ahead of
+itself and lets the lease book follow a non-forward generation. The fix of
+either half, applied naively, reproduces the other half's message, and the
+rule that settles each pair is `ADR-0002` (a retiring replica holds but does
+not vote) and `ADR-0003` (a version is minted once), one ADR per pair.
+`atlas-quorum-002` is the exact-signature twin — the read branch of the very
+same quorum rule, where the recipe fits as it stands. `atlas-quorum-003` is the
+related twin: the invariant broken in `rebalance.py`, which the learning patch
+never opens, so what has to transfer is the rule and not the diff.
+`atlas-quorum-004` is the negative twin: the learning task's
+`ConvergenceError: shard N did not converge for epoch N` again, from a
+different cause in the vector clock, with nothing being retired; the incident
+note that explains the old cause is evidence, not a rule, and the recipe that
+applies it makes the hidden tests worse.
+
+`atlas-schema-001` and `atlas-schema-002` are the procedure pair. The first
+implements the row half of `SPEC.md` section 10 — upgrade on read, dual-write
+for a pinned reader, downgrade, registration — and must run the repository's
+schema procedure, `tools/gen_tables.py --lock` and `tools/verify_goldens.py`
+against `schema/MANIFEST`, leaving the generated tables and the goldens in the
+tree. The second implements index projection and declares a fourth index, and
+has to run the same procedure for a different surface. The guide that states
+the procedure, `docs/schema-evolution.md`, is not mentioned by the README, and
+the goldens fail with a `GoldenMismatch` that names the record, not the
+missing step.
+
+`depweaver-lockfile-001` is a learning task replayed on itself: the canonical
+serialisation of a resolution, its digest, proofs of solution that verify
+without the solver, and proof-driven invalidation of cached resolutions. One
+`ProofInvalid` sits behind three different causes, so two of the three obvious
+fixes are dead ends the plugin records by name; `tools/relock.py --canonical
+--prove` and `tools/verify_lock.py` have to reproduce the documented digests.
+
+`tidewater-election-001` is the learning task of the new `tidewater` seed, a
+deterministic Raft-lite simulator: five regressions in two antagonistic pairs
+and a single — a candidate that answers a rival in its own term, a candidate
+that counts an answer from a closed term, a granted vote that replies before it
+is durable, a `sync` that no longer makes the recorded vote durable, and an
+election that inherits the tally of the one that failed. All five end in the
+same `election_safety` line — `term N has two leaders: A and B` — which is what
+makes a pair a pair: the obvious fix of one half re-raises the other. The
+resolving rule is `ADR-0013` (one ballot per term) and the incident note that
+names the wrong module. `tidewater-election-002` is the related twin: the same
+decision — a majority of the configuration — broken in `membership.py`, which
+the learning patch never opens. `tidewater-election-003` is the negative twin:
+the two-leaders line from *legal* ballots counted against the machine an answer
+arrived through rather than the machine it names; the learning recipe applies
+there and makes the hidden tests worse.
+
+`tidewater-snapshot-001` and `tidewater-snapshot-002` are the new-feature pair
+of the seed: the node half of `SPEC.md` section 6 (take the record at
+`last_applied`, keep the boundary term, restart from the snapshot, make a
+snapshot event committed-visible) and then its other half — the stream and the
+install (6.4, 6.5, the crash mid-transfer), which is the related transfer of the
+*procedure*, not of the code: each task lands its own corpus entry through
+`tools/gen_schedules.py --lock` and `tools/reference_traces.py`, and the
+reference of the earlier task does not finish the later one.
+
+`walqueue-compaction-002` is the walqueue member of the suite: four cooperating
+regressions in the compaction path of the durable queue — a segment name
+reissued after it was deleted, a write after a compaction landing in the
+compacted segment, a torn tail accepted from a non-newest segment, and an
+interrupted compaction pruning work it had not published — two of them two
+halves of one rule whose obvious fixes undo each other, resolved by the
+documented rule stated by symptom.
 
 ### Fixtures and their dependencies
 

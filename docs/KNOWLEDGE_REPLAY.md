@@ -131,6 +131,46 @@ knowledge plugin absent from the process and once present in it — so the
 memory effect is measured once per routing decision rather than argued for
 one, and the report's baseline is the fixed 27B model with no memory.
 
+`configs/experiments/knowledge-replay-memory-suite.yaml` is the suite-shaped
+one: four seeds (`atlas`, `tidewater`, `depweaver`, `walqueue`), six learning
+tasks and seven twins, written so that the way to solve them is the way the
+plugins work. The tasks share a design (`.plans/memory-suite-plan.md`,
+`docs/DATASETS.md`, *The memory suite*):
+
+- **antagonistic defect pairs** — the naive fix of one regression re-raises
+  the same exception and message as the other, so a memoryless model
+  oscillates while the plugin records a dead end, counts the loop and, once
+  `loop_threshold` is reached, escalates the routed model;
+- **the rule lives in one decision record** under `docs/adr`, written by
+  symptom, in a corpus of incident notes that name the wrong module on
+  purpose; `CONTRIBUTING.md` states the hierarchy of truth and the README is
+  deliberately stale — the documentation map and the `doc_type`-filtered
+  hits are what make the record reachable;
+- **procedures** — the new features need a repository tool run with specific
+  flags (regenerate, lock a manifest, verify goldens or trace digests), stated
+  in a guide and nowhere in the README; the session that did it once leaves a
+  playbook;
+- **long traces** — a digest or an offset found in the first phase is
+  asserted in the last, which is what the compaction archive keeps;
+- **twins with one signature** — a related twin where the recipe fits as it
+  is, a related twin where only the principle transfers, and a negative twin
+  where the same signature has a different cause and the recipe is a trap.
+
+The suite runs on seven configurations, and **the environment is part of the
+arm**: the plugins ship with loop escalation, the routing plugin's session
+memory and a 200-file documentation budget switched off or too small, so the
+arms that measure them declare them under `runtime_env`
+(`LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED` through the
+`knowledge_escalation_enabled` dimension; `..._ARCHIVE_ENABLED`,
+`..._DOCS_ENABLED`, `..._DOCS_AUTO_INDEX`, `..._DOCS_CONTEXT_ENABLED`,
+`..._DOCS_MAX_FILES`, `..._LOOP_THRESHOLD`,
+`LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_ENABLED` directly). One
+ablation arm keeps the knowledge plugin and turns everything beyond the mined
+recipes off, so each mechanism's share can be read off the matrix: pairs
+(1,4), (2,5), (3,6) isolate the memory under one routing decision, (6,7) the
+mechanisms beyond recipes, (5,6) routing plus escalation on top of the same
+knowledge.
+
 ## What is deliberately not here yet
 
 - No live KB readback: readiness is a probe contract, and the default probe

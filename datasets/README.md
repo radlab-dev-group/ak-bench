@@ -24,6 +24,19 @@
 | `BF_011`   | `atlas-drift-003`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-003/description.md)                | `expert`   | Local `qwen-38-27B`/`qwen-38-Flash-Next` | `2026-11-08 13:40`   |
 | `BF_012`   | `atlas-drift-004`              | `bug_fix`       | [READ](./bug_fix/atlas-drift-004/description.md)                | `expert`   | Local `qwen-38-27B`/`qwen-38-Flash-Next` | `2026-11-08 13:40`   |
 | `NF_010`   | `atlas-lineage-001`            | `new_feature`   | [READ](./new_feature/atlas-lineage-001/description.md)          | `expert`   | Local `qwen-38-27B`/`qwen-38-Flash-Next` | `2026-11-08 11:20`   |
+| `BF_013`   | `atlas-quorum-001`               | `bug_fix`          | [READ](./bug_fix/atlas-quorum-001/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `BF_014`   | `atlas-quorum-002`               | `bug_fix`          | [READ](./bug_fix/atlas-quorum-002/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `BF_015`   | `atlas-quorum-003`               | `bug_fix`          | [READ](./bug_fix/atlas-quorum-003/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `BF_016`   | `atlas-quorum-004`               | `bug_fix`          | [READ](./bug_fix/atlas-quorum-004/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `NF_011`   | `atlas-schema-001`               | `new_feature`      | [READ](./new_feature/atlas-schema-001/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `NF_012`   | `atlas-schema-002`               | `new_feature`      | [READ](./new_feature/atlas-schema-002/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `NF_013`   | `depweaver-lockfile-001`         | `new_feature`      | [READ](./new_feature/depweaver-lockfile-001/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `BF_017`   | `tidewater-election-001`         | `bug_fix`          | [READ](./bug_fix/tidewater-election-001/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `BF_018`   | `tidewater-election-002`         | `bug_fix`          | [READ](./bug_fix/tidewater-election-002/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `BF_019`   | `tidewater-election-003`         | `bug_fix`          | [READ](./bug_fix/tidewater-election-003/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `NF_014`   | `tidewater-snapshot-001`         | `new_feature`      | [READ](./new_feature/tidewater-snapshot-001/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `NF_015`   | `tidewater-snapshot-002`         | `new_feature`      | [READ](./new_feature/tidewater-snapshot-002/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `BF_020`   | `walqueue-compaction-002`        | `bug_fix`          | [READ](./bug_fix/walqueue-compaction-002/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
 
 `Difficulty` is the task descriptor's own `task.difficulty`
 (`src/akbench/datasets/task.py`: `easy` | `medium` | `hard` | `expert`), so the
@@ -40,7 +53,7 @@ Below is the list of the all available tasks without a split to task type
 
 Single line
 ```yaml
-task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledgerlite-rates-001, stockpile-writeoff-001, wordcount-001, walqueue-recovery-001, depweaver-backtracking-001, cadence-catchup-001, freight-shop-001, ledgerlite-reconcile-001, notes-search-001, notes-sync-001, slugify-001, stockpile-fefo-001, streamforge-windows-001, typeweave-inference-001, atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004, atlas-lineage-001 ]
+task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledgerlite-rates-001, stockpile-writeoff-001, wordcount-001, walqueue-recovery-001, depweaver-backtracking-001, cadence-catchup-001, freight-shop-001, ledgerlite-reconcile-001, notes-search-001, notes-sync-001, slugify-001, stockpile-fefo-001, streamforge-windows-001, typeweave-inference-001, atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004, atlas-lineage-001, atlas-schema-001, atlas-schema-002, depweaver-lockfile-001, tidewater-snapshot-001, tidewater-snapshot-002 ]
 ```
 
 Multiline
@@ -68,6 +81,11 @@ task_ids:
   - atlas-drift-003
   - atlas-drift-004
   - atlas-lineage-001
+  - atlas-schema-001
+  - atlas-schema-002
+  - depweaver-lockfile-001
+  - tidewater-snapshot-001
+  - tidewater-snapshot-002
 ```
 
 ### Bugfix tasks
@@ -110,7 +128,7 @@ task_ids:
 
 Single line
 ```yaml
-task_ids: [ atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004 ]
+task_ids: [ atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004, atlas-quorum-001, atlas-quorum-002, atlas-quorum-003, atlas-quorum-004, tidewater-election-001, tidewater-election-002, tidewater-election-003, walqueue-compaction-002 ]
 ```
 
 Multiline
@@ -120,13 +138,21 @@ task_ids:
   - atlas-drift-002
   - atlas-drift-003
   - atlas-drift-004
+  - atlas-quorum-001
+  - atlas-quorum-002
+  - atlas-quorum-003
+  - atlas-quorum-004
+  - tidewater-election-001
+  - tidewater-election-002
+  - tidewater-election-003
+  - walqueue-compaction-002
 ```
 
 **list of all `bugfix` tasks**
 
 Single line
 ```yaml
-task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledgerlite-rates-001, stockpile-writeoff-001, wordcount-001, walqueue-recovery-001, depweaver-backtracking-001, atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004 ]
+task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledgerlite-rates-001, stockpile-writeoff-001, wordcount-001, walqueue-recovery-001, depweaver-backtracking-001, atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004, atlas-quorum-001, atlas-quorum-002, atlas-quorum-003, atlas-quorum-004, tidewater-election-001, tidewater-election-002, tidewater-election-003, walqueue-compaction-002 ]
 ```
 
 Multiline
@@ -144,6 +170,14 @@ task_ids:
   - atlas-drift-002
   - atlas-drift-003
   - atlas-drift-004
+  - atlas-quorum-001
+  - atlas-quorum-002
+  - atlas-quorum-003
+  - atlas-quorum-004
+  - tidewater-election-001
+  - tidewater-election-002
+  - tidewater-election-003
+  - walqueue-compaction-002
 ```
 
 ---
@@ -200,7 +234,7 @@ task_ids:
 
 Single line
 ```yaml
-task_ids: [ cadence-catchup-001, freight-shop-001, ledgerlite-reconcile-001, notes-search-001, notes-sync-001, slugify-001, stockpile-fefo-001, streamforge-windows-001, typeweave-inference-001, atlas-lineage-001 ]
+task_ids: [ cadence-catchup-001, freight-shop-001, ledgerlite-reconcile-001, notes-search-001, notes-sync-001, slugify-001, stockpile-fefo-001, streamforge-windows-001, typeweave-inference-001, atlas-lineage-001, atlas-schema-001, atlas-schema-002, depweaver-lockfile-001, tidewater-snapshot-001, tidewater-snapshot-002 ]
 ```
 
 Multiline
@@ -216,6 +250,11 @@ task_ids:
   - streamforge-windows-001
   - typeweave-inference-001
   - atlas-lineage-001
+  - atlas-schema-001
+  - atlas-schema-002
+  - depweaver-lockfile-001
+  - tidewater-snapshot-001
+  - tidewater-snapshot-002
 ```
 
 ---
