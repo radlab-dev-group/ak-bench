@@ -1,0 +1,18 @@
+diff --git a/src/atlas/storage.py b/src/atlas/storage.py
+index 8e7c932..df670d8 100644
+--- a/src/atlas/storage.py
++++ b/src/atlas/storage.py
+@@ -104,7 +104,12 @@ class ShardStorage:
+             self.recovery.snapshot_published = snapshot.published
+             self.counter.advance_to(snapshot.last_lsn)
+         replayed: list[tuple[FrameKind, Record]] = []
+-        for kind, record in self.log.replay(bounds=self.bounds, snapshot_lsn=self.recovery.snapshot_lsn):
++        # The image is a floor, not a ceiling: the window opens at the
++        # snapshot's number rather than after it.
++        for kind, record in self.log.replay(
++            bounds=LSNBounds(boundary="inclusive"),
++            snapshot_lsn=self.recovery.snapshot_lsn,
++        ):
+             replayed.append((kind, record))
+         for _kind, record in replayed:
+             self.state.apply(record, reconcile=True)

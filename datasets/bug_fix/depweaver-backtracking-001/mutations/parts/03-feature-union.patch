@@ -1,0 +1,13 @@
+diff --git a/src/depweaver/propagation.py b/src/depweaver/propagation.py
+index 5e658d4..f80a256 100644
+--- a/src/depweaver/propagation.py
++++ b/src/depweaver/propagation.py
+@@ -22,7 +22,7 @@ class State:
+             rows.append(constraint)
+             changed = True
+         previous = self.extras.get(name, frozenset())
+-        combined = previous | dependency.extras
++        combined = previous or dependency.extras
+         self.extras[name] = combined
+         return changed or combined != previous
+ 

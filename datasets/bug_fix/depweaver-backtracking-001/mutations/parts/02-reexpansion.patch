@@ -1,0 +1,13 @@
+diff --git a/src/depweaver/propagation.py b/src/depweaver/propagation.py
+index 5e658d4..a63ebee 100644
+--- a/src/depweaver/propagation.py
++++ b/src/depweaver/propagation.py
+@@ -78,7 +78,7 @@ def propagate(request: Request, selected: dict[str, Release]) -> State:
+             release = selected[name]
+             state.selected[name] = release
+             features = state.extras.get(name, frozenset())
+-            expansion = (name, str(release.version), tuple(sorted(features)))
++            expansion = (name, str(release.version), ())
+             if expansion in state.expansion_keys:
+                 continue
+             state.expansion_keys.add(expansion)

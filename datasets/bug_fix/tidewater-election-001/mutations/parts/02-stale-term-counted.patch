@@ -1,0 +1,13 @@
+diff --git a/src/tidewater/node.py b/src/tidewater/node.py
+index e175498..a81ba65 100644
+--- a/src/tidewater/node.py
++++ b/src/tidewater/node.py
+@@ -463,7 +463,7 @@ class Node:
+         if msg.term > self.current_term:
+             self._become_follower(msg.term, reason="vote_response")
+             return
+-        if self.role != CANDIDATE or msg.term != self.current_term or not msg.granted:
++        if self.role != CANDIDATE or not msg.granted:
+             return
+         self.votes.add(msg.voter_id)
+         if self.config.has_majority(self.votes):

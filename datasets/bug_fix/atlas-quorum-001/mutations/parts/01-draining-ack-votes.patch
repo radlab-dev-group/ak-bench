@@ -1,0 +1,15 @@
+diff --git a/src/atlas/replication.py b/src/atlas/replication.py
+index c049643..3e927da 100644
+--- a/src/atlas/replication.py
++++ b/src/atlas/replication.py
+@@ -169,7 +169,9 @@ class Replicator:
+                 written.append(replica)
+             except Exception as exc:  # noqa: BLE001 - a replica failure is data
+                 failures.append(f"{replica}: {exc}")
+-        votes = [replica for replica in written if replica in voting]
++        # Every durable copy is an acknowledgment: the replica appended the
++        # record to its log and applied it, and that is what the quorum counts.
++        votes = list(written)
+         if len(votes) < needed:
+             raise QuorumShortfallError(
+                 key, placement.epoch(), len(votes), needed, phase="write", failures=failures

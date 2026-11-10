@@ -1,0 +1,13 @@
+diff --git a/src/walqueue/journal.py b/src/walqueue/journal.py
+index 08eebf7..57a6324 100644
+--- a/src/walqueue/journal.py
++++ b/src/walqueue/journal.py
+@@ -86,7 +86,7 @@ class Journal:
+         return recovered
+ 
+     def rotate(self) -> None:
+-        number = int(SEGMENT.fullmatch(self.active.name)[1]) + 1
++        number = max(len(list(self.root.glob("wal-*.log"))), len(self.paths)) + 1
+         self.paths.append(self._create(number))
+ 
+     def discard_sealed(self) -> None:

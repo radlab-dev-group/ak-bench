@@ -1,0 +1,24 @@
+diff --git a/src/atlas/antientropy.py b/src/atlas/antientropy.py
+index 2c6b1b9..6de5c12 100644
+--- a/src/atlas/antientropy.py
++++ b/src/atlas/antientropy.py
+@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
+ 
+ from .errors import ConvergenceError
+ from .registry import STRATEGIES
+-from .replication import holders
++from .replication import voters
+ 
+ RANGE_DEPTH = 8
+ 
+@@ -134,7 +134,9 @@ class AntiEntropy:
+     def participants(self) -> list[str]:
+         """The replicas a convergence pass compares and repairs: everyone who holds the shard."""
+ 
+-        return holders(self.nodes, self.placement.current.replicas)
++        # A replica that is leaving will be streamed away by the rebalance;
++        # repair traffic spent on it now is traffic spent twice.
++        return voters(self.nodes, self.placement.current.replicas)
+ 
+     def converge(self, shard: int, *, epoch: int, repairer) -> AntiEntropyReport:
+         """Walk, repair, verify. Raise :class:`ConvergenceError` if the plan still sees two versions."""

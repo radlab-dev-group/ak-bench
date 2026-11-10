@@ -1,0 +1,14 @@
+diff --git a/src/depweaver/trail.py b/src/depweaver/trail.py
+index caaafd2..151a955 100644
+--- a/src/depweaver/trail.py
++++ b/src/depweaver/trail.py
+@@ -31,7 +31,8 @@ class Trail:
+             raise ValueError("invalid rollback level")
+         while self.decisions and self.decisions[-1].level > level:
+             decision = self.decisions.pop()
+-            self.selected.pop(decision.release.name, None)
++            if decision.level > level + 1:
++                self.selected.pop(decision.release.name, None)
+ 
+     def identities(self) -> frozenset[tuple[str, str]]:
+         return frozenset(release.identity for release in self.selected.values())

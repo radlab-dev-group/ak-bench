@@ -1,0 +1,14 @@
+diff --git a/src/walqueue/queue.py b/src/walqueue/queue.py
+index a52cfa1..2d5a326 100644
+--- a/src/walqueue/queue.py
++++ b/src/walqueue/queue.py
+@@ -140,8 +140,8 @@ class Queue:
+     def compact(self) -> None:
+         self.journal.rotate()
+         self.hook("compact.rotated")
+-        self.snapshots.publish(self.sequence, self.state)
+         self.journal.discard_sealed()
++        self.snapshots.publish(self.sequence, self.state)
+         self.hook("compact.pruned")
+ 
+     def inspect(self, task_id: str) -> Task:

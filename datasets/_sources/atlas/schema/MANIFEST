@@ -1,0 +1,5 @@
+# atlas schema lock -- written by tools/gen_tables.py --lock; do not edit
+schema_version=3
+generator_version=1
+tables_json_sha256=ee859bb3d7ffad86dff3c770d4054cfb0f47f54dadd6f63f6f3ba2ca629876e6
+tables_py_sha256=aa4e1e8c339cfd3aafc1593eb3b00ab425895dd16a65621433af28872c819635

@@ -1,0 +1,21 @@
+diff --git a/src/atlas/fencing.py b/src/atlas/fencing.py
+index 68cab81..96b340a 100644
+--- a/src/atlas/fencing.py
++++ b/src/atlas/fencing.py
+@@ -79,11 +79,14 @@ class FenceBook:
+         self.membership.check_epoch(writer, planned_epoch)
+         current = self.leases.get(key)
+         held = current.generation if current is not None else 0
++        # A caller ahead of the store has seen work the store has not yet
++        # recorded; refusing it would strand a caught-up peer, so the check
++        # passes it through.
+         if self.generation_check == "strict":
+-            if offered_generation != held:
++            if offered_generation < held:
+                 raise StaleGenerationError(key, offered_generation, held)
+         else:
+-            if offered_generation > held:
++            if offered_generation < held:
+                 raise StaleGenerationError(key, offered_generation, held)
+ 
+     def acknowledge(self, key: str, offered_generation: int, planned_epoch: int, writer: str) -> None:

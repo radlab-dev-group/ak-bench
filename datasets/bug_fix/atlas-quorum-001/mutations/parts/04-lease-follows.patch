@@ -1,0 +1,15 @@
+diff --git a/src/atlas/fencing.py b/src/atlas/fencing.py
+index 68cab81..4bff419 100644
+--- a/src/atlas/fencing.py
++++ b/src/atlas/fencing.py
+@@ -105,7 +105,7 @@ class FenceBook:
+         for audit; the check that matters is the generation.
+         """
+ 
+-        previous = self.leases.get(key)
+-        if previous is not None and generation <= previous.generation:
+-            raise StaleGenerationError(key, previous.generation, generation)
++        # The holder reports the generation it actually committed at; the
++        # book records what the store holds rather than arguing with it, so a
++        # replica that was behind does not leave the key unwritable.
+         return self.grant(key, holder, generation)
