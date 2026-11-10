@@ -8,6 +8,7 @@ from .codec import request as load_request
 from .errors import SearchLimit, Unsatisfiable
 from .lockfile import Lockfile
 from .model import Request, Resolution
+from .proofs import Proof, prove
 from .repository import Repository
 from .resolver import Resolver
 from .validation import require_valid
@@ -112,6 +113,11 @@ class Session:
             raise KeyError("unknown session record")
         self.records = {name: record for name, record in self.records.items() if name not in names}
         self.order = [name for name in self.order if name not in names]
+
+    def prove(self, name: str) -> Proof:
+        """Proof of solution for a record, under this session's catalog snapshot."""
+        record = self.records[name]
+        return prove(self.repository, record.request, record.resolution)
 
     def update(self, name: str, packages: frozenset[str], *, as_name: str) -> Record:
         previous = self.records[name]
