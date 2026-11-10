@@ -1,0 +1,13 @@
+diff --git a/src/tidewater/node.py b/src/tidewater/node.py
+index e175498..af02812 100644
+--- a/src/tidewater/node.py
++++ b/src/tidewater/node.py
+@@ -410,7 +410,7 @@ class Node:
+         if msg.term < self.current_term:
+             self._deny_vote(src, msg, "stale_term")
+             return
+-        if self.voted_for not in (None, msg.candidate_id):
++        if self.role == FOLLOWER and self.voted_for not in (None, msg.candidate_id):
+             self._deny_vote(src, msg, "already_voted")
+             return
+         if not self.log.is_up_to_date(msg.last_log_index, msg.last_log_term):

@@ -1,0 +1,7 @@
+schedule         partition-minority
+schedule_digest  6fbfacfb8d314be7d0793be164288b7298c5af10ad27d9bfa6327be76d44faec
+seed             983878
+ticks            3600
+events           8447
+digest_events    952
+trace_digest     31eb72dfd3465881ddba859606dc2f6a3b2b9d48effdf0e715175461cd4bd84f

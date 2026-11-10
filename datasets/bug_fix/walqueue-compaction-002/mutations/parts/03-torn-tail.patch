@@ -1,0 +1,13 @@
+diff --git a/src/walqueue/journal.py b/src/walqueue/journal.py
+index 08eebf7..f1f1b8a 100644
+--- a/src/walqueue/journal.py
++++ b/src/walqueue/journal.py
+@@ -60,7 +60,7 @@ class Journal:
+         previous = None
+         expected = through + 1
+         for position, path in enumerate(self.paths):
+-            decoded = decode(path.read_bytes(), allow_torn_tail=position == len(self.paths) - 1)
++            decoded = decode(path.read_bytes(), allow_torn_tail=position == 0)
+             for document in decoded.documents:
+                 try:
+                     sequence = integer(document["sequence"], "transaction sequence", 1)

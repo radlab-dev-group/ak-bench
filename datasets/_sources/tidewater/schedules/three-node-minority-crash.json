@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "name": "three-node-minority-crash",
+  "description": "A three-node cluster loses one node, then a different one, with writes in between. Two of three is a majority, one is not.",
+  "nodes": [
+    "n1",
+    "n2",
+    "n3"
+  ],
+  "seed": 44728,
+  "ticks": 2400,
+  "give_up_after": 0,
+  "options": {
+    "election_timeout": 50,
+    "heartbeat_interval": 10,
+    "pre_vote": true,
+    "max_entries_per_append": 16,
+    "compaction_threshold": 0,
+    "sync_policy": "always"
+  },
+  "network": {
+    "min_delay": 1,
+    "max_delay": 3,
+    "drop_rate": 0.0,
+    "dup_rate": 0.0,
+    "dup_extra_delay": 4
+  },
+  "actions": [
+    {
+      "at": 10,
+      "kind": "workload",
+      "count": 10,
+      "every": 10,
+      "key_prefix": "a"
+    },
+    {
+      "at": 300,
+      "kind": "crash",
+      "node": "n3"
+    },
+    {
+      "at": 320,
+      "kind": "workload",
+      "count": 15,
+      "every": 10,
+      "key_prefix": "b"
+    },
+    {
+      "at": 900,
+      "kind": "restart",
+      "node": "n3"
+    },
+    {
+      "at": 1000,
+      "kind": "crash",
+      "node": "n1"
+    },
+    {
+      "at": 1020,
+      "kind": "workload",
+      "count": 15,
+      "every": 10,
+      "key_prefix": "c"
+    },
+    {
+      "at": 1700,
+      "kind": "restart",
+      "node": "n1"
+    },
+    {
+      "at": 1800,
+      "kind": "workload",
+      "count": 10,
+      "every": 10,
+      "key_prefix": "d"
+    }
+  ]
+}

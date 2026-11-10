@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "name": "lossy-network",
+  "description": "Fifteen percent drops, ten percent duplicates, wide delay. Duplicated and reordered appends must be idempotent.",
+  "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5"
+  ],
+  "seed": 649904,
+  "ticks": 3000,
+  "give_up_after": 0,
+  "options": {
+    "election_timeout": 50,
+    "heartbeat_interval": 10,
+    "pre_vote": true,
+    "max_entries_per_append": 16,
+    "compaction_threshold": 0,
+    "sync_policy": "always"
+  },
+  "network": {
+    "min_delay": 1,
+    "max_delay": 6,
+    "drop_rate": 0.15,
+    "dup_rate": 0.1,
+    "dup_extra_delay": 6
+  },
+  "actions": [
+    {
+      "at": 10,
+      "kind": "workload",
+      "count": 80,
+      "every": 20,
+      "key_prefix": "k"
+    },
+    {
+      "at": 1800,
+      "kind": "network",
+      "drop_rate": 0.3,
+      "dup_rate": 0.2
+    },
+    {
+      "at": 1810,
+      "kind": "workload",
+      "count": 40,
+      "every": 15,
+      "key_prefix": "m"
+    }
+  ]
+}

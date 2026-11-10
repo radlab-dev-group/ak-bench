@@ -152,6 +152,7 @@ runtime:
       knowledge_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED
       knowledge_read_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_ENABLED
       knowledge_write_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_WRITE_ENABLED
+      knowledge_escalation_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED
 
     # Verbose mode waits a few seconds after warning about unmasked logging,
     # and the plugin pipeline loads its embedding model at startup.

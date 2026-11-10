@@ -1,0 +1,27 @@
+diff --git a/src/atlas/wal.py b/src/atlas/wal.py
+index 5d8da8d..84befac 100644
+--- a/src/atlas/wal.py
++++ b/src/atlas/wal.py
+@@ -260,6 +260,7 @@ class WriteAheadLog:
+         healthy = 0
+         committed = 0
+         offset = 0
++        last_frame_start = 0
+         while offset < len(data):
+             if len(data) - offset < FRAME_OVERHEAD:
+                 report.torn = True
+@@ -274,8 +275,14 @@ class WriteAheadLog:
+                 break
+             if frame.kind is FrameKind.COMMIT:
+                 committed += 1
++            last_frame_start = offset
+             healthy = offset + frame.size
+             offset = healthy
++        if report.torn and last_frame_start:
++            # The frame the damage sits next to is not to be trusted either:
++            # a torn tail is the start of a longer interruption, so the cut
++            # goes back one frame past the last one that read cleanly.
++            healthy = last_frame_start
+         if healthy != len(data):
+             report.truncated_bytes = self.truncate_after(path, healthy)
+             report.surviving_transactions = committed

@@ -1,0 +1,19 @@
+diff --git a/src/atlas/replication.py b/src/atlas/replication.py
+index c049643..6a46c80 100644
+--- a/src/atlas/replication.py
++++ b/src/atlas/replication.py
+@@ -197,11 +197,9 @@ class Replicator:
+                 continue
+             # A replica that answers "no such key" has answered: an absent key
+             # is an answer, not a failure, and treating it as one makes the
+-            # first read of a new key a quorum error. A draining replica's
+-            # answer is taken into the resolution but does not count toward
+-            # the read quorum, for the same reason its write does not.
+-            if replica in voting:
+-                answered += 1
++            # first read of a new key a quorum error. An answer is an answer
++            # whichever replica gives it; the read is about what is held.
++            answered += 1
+             record = node.store(self.shard_of(key)).resolve(key)
+             if record is not None:
+                 answers.append(record)

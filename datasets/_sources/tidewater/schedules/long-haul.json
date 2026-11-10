@@ -1,0 +1,196 @@
+{
+  "schema": 1,
+  "name": "long-haul",
+  "description": "Everything at once over six thousand ticks: partitions, crashes, skew, loss. The trace runs to many thousands of events.",
+  "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5"
+  ],
+  "seed": 197623,
+  "ticks": 6000,
+  "give_up_after": 0,
+  "options": {
+    "election_timeout": 50,
+    "heartbeat_interval": 10,
+    "pre_vote": true,
+    "max_entries_per_append": 16,
+    "compaction_threshold": 0,
+    "sync_policy": "always"
+  },
+  "network": {
+    "min_delay": 1,
+    "max_delay": 4,
+    "drop_rate": 0.05,
+    "dup_rate": 0.03,
+    "dup_extra_delay": 4
+  },
+  "actions": [
+    {
+      "at": 10,
+      "kind": "workload",
+      "count": 40,
+      "every": 10,
+      "key_prefix": "a"
+    },
+    {
+      "at": 500,
+      "kind": "partition",
+      "groups": [
+        [
+          "n1",
+          "n2"
+        ],
+        [
+          "n3",
+          "n4",
+          "n5"
+        ]
+      ]
+    },
+    {
+      "at": 510,
+      "kind": "workload",
+      "count": 20,
+      "every": 10,
+      "key_prefix": "b"
+    },
+    {
+      "at": 1000,
+      "kind": "heal"
+    },
+    {
+      "at": 1200,
+      "kind": "crash",
+      "node": "n3"
+    },
+    {
+      "at": 1210,
+      "kind": "workload",
+      "count": 20,
+      "every": 10,
+      "key_prefix": "c"
+    },
+    {
+      "at": 1700,
+      "kind": "restart",
+      "node": "n3"
+    },
+    {
+      "at": 1900,
+      "kind": "skew",
+      "node": "n1",
+      "rate": 3
+    },
+    {
+      "at": 1910,
+      "kind": "workload",
+      "count": 20,
+      "every": 10,
+      "key_prefix": "d"
+    },
+    {
+      "at": 2500,
+      "kind": "isolate",
+      "node": "n5"
+    },
+    {
+      "at": 2510,
+      "kind": "workload",
+      "count": 20,
+      "every": 10,
+      "key_prefix": "e"
+    },
+    {
+      "at": 3000,
+      "kind": "heal"
+    },
+    {
+      "at": 3100,
+      "kind": "network",
+      "drop_rate": 0.2,
+      "dup_rate": 0.1
+    },
+    {
+      "at": 3110,
+      "kind": "workload",
+      "count": 40,
+      "every": 10,
+      "key_prefix": "f"
+    },
+    {
+      "at": 3700,
+      "kind": "network",
+      "drop_rate": 0.05,
+      "dup_rate": 0.03
+    },
+    {
+      "at": 3800,
+      "kind": "crash",
+      "node": "n1"
+    },
+    {
+      "at": 3801,
+      "kind": "crash",
+      "node": "n2"
+    },
+    {
+      "at": 3810,
+      "kind": "workload",
+      "count": 20,
+      "every": 10,
+      "key_prefix": "g"
+    },
+    {
+      "at": 4300,
+      "kind": "restart",
+      "node": "n1"
+    },
+    {
+      "at": 4300,
+      "kind": "restart",
+      "node": "n2"
+    },
+    {
+      "at": 4400,
+      "kind": "partition",
+      "groups": [
+        [
+          "n1",
+          "n2",
+          "n3"
+        ],
+        [
+          "n4",
+          "n5"
+        ]
+      ]
+    },
+    {
+      "at": 4410,
+      "kind": "workload",
+      "count": 20,
+      "every": 10,
+      "key_prefix": "h"
+    },
+    {
+      "at": 4900,
+      "kind": "heal"
+    },
+    {
+      "at": 5000,
+      "kind": "skew",
+      "node": "n1",
+      "rate": 1
+    },
+    {
+      "at": 5010,
+      "kind": "workload",
+      "count": 60,
+      "every": 10,
+      "key_prefix": "i"
+    }
+  ]
+}

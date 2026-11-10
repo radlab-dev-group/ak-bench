@@ -1,0 +1,13 @@
+diff --git a/src/walqueue/journal.py b/src/walqueue/journal.py
+index 08eebf7..1ba6a28 100644
+--- a/src/walqueue/journal.py
++++ b/src/walqueue/journal.py
+@@ -39,7 +39,7 @@ class Journal:
+ 
+     @property
+     def active(self) -> Path:
+-        return self.paths[-1]
++        return self.paths[0]
+ 
+     def append(self, sequence: int, commands: list[dict]) -> None:
+         frame = encode({"sequence": sequence, "commands": commands})

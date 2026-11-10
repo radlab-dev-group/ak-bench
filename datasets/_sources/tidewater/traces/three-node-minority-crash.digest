@@ -1,0 +1,7 @@
+schedule         three-node-minority-crash
+schedule_digest  422daf7343aedc77e454f2625275c06afb0f763ab9270264331ee36e78706ae1
+seed             44728
+ticks            2400
+events           2484
+digest_events    306
+trace_digest     ef6281c47ae127bd5ae64eff861196c57b6c191f452ba54d92f04391c235bb6f

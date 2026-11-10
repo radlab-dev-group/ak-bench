@@ -1,0 +1,7 @@
+schedule         crash-restart-follower
+schedule_digest  bc3e899a7852c868e0e6318aab4331b775e1ed748c4176050f2f2835b6fe9360
+seed             920446
+ticks            2200
+events           5522
+digest_events    523
+trace_digest     9987a1b6ad1859f89ce5cf715f39ed1782e55b55b5cec42e710973f267c9446f

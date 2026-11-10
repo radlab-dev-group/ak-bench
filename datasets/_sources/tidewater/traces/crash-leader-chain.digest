@@ -1,0 +1,7 @@
+schedule         crash-leader-chain
+schedule_digest  1e5e8c4da39669ecf32c3e89e128e66e1746d7526b71d0d4c4062d80c10d4e9b
+seed             726181
+ticks            3600
+events           7196
+digest_events    731
+trace_digest     bc5c07afbba06eae2f15ddca7d6fdb62b8f693838017085c72466b204c4fd3fd

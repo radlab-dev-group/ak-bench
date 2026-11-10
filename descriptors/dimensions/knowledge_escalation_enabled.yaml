@@ -1,0 +1,38 @@
+# The loop-escalation half of the knowledge plugin: when the same failure
+# signature recurs ``loop_threshold`` times in one generation and no verified
+# fix resolves it, the plugin swaps the routed model for the mode's
+# ``escalation_model_name`` (debug and test only). The plugin ships with it
+# off, so an arm that wants the mechanism has to say so — and an arm that
+# measures the memory layer alone has to be able to keep it off while the
+# knowledge plugin stays in the process. That is why it is a dimension and
+# not a line in ``runtime_env``.
+schema_version: "1.0"
+id: knowledge_escalation_enabled
+version: "1.0.0"
+title: Knowledge loop escalation enabled
+description: >-
+  Lets the agentic knowledge layer escalate a looping debug or test turn to the
+  larger model after loop_threshold identical failures.
+
+dimension:
+  type: plugin_configuration
+  source: plugin.agentic_knowledge.env
+  values: [false, true]
+  default: false
+  controllable: true
+  observed: true
+  configure_via: env LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED on the router process
+  verify_via: >-
+    the plugin annotates payload["routing"]["knowledge"]["escalation"] with the
+    action, the reason and loop_count on every request it touches; on the
+    external instance that annotation is not readable, so the factor stays
+    unverified there and needs a managed router to become verified.
+  depends_on:
+    - knowledge_enabled
+    - plugin agentic_knowledge present in LLM_ROUTER_UTILS_PLUGINS_PIPELINE
+  notes: >-
+    Only meaningful when the routed model is not pinned by the request: under
+    a fixed model the routing source is explicit and the plugin never swaps it,
+    so the factor measures something only on the auto_codex alias. The
+    threshold itself (LLM_ROUTER_KNOWLEDGE_AGENTIC_LOOP_THRESHOLD, default 3)
+    is declared in the arm's runtime_env, not here.

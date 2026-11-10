@@ -1,0 +1,17 @@
+diff --git a/src/atlas/rebalance.py b/src/atlas/rebalance.py
+index be2d27e..6193347 100644
+--- a/src/atlas/rebalance.py
++++ b/src/atlas/rebalance.py
+@@ -80,8 +80,10 @@ class Rebalancer:
+         current = self.placement.current
+         found: list[Movement] = []
+         for key in sorted(state_keys):
+-            source = current.owner(key)
+-            destination = target.owner(key)
++            # The key is moving onto the replica that does not have it yet, so
++            # the side that is missing it is the one the copy must land on.
++            source = target.owner(key)
++            destination = current.owner(key)
+             if source == destination:
+                 continue
+             found.append(

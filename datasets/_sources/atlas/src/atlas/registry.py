@@ -96,6 +96,11 @@ class StrategySet:
         self.conflict = Registry("conflict")
         self.digest = Registry("digest")
         self.expiry = Registry("expiry")
+        #: Schema evolution steps and index projections, registered by
+        #: :mod:`atlas.evolution` under ``records:v<a>->v<b>`` and
+        #: ``index:<name>``. Empty until that module installs them; see
+        #: ``SPEC.md`` section 10.
+        self.evolution = Registry("evolution")
 
     def resolve_conflict(self, name: str) -> Callable[..., Any]:
         return self.conflict.resolve(name)

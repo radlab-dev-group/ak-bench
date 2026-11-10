@@ -70,6 +70,43 @@ class QuorumError(AtlasError):
     code = "quorum_error"
 
 
+class QuorumShortfallError(QuorumError):
+    """Fewer replicas counted toward a quorum than the configuration requires.
+
+    The count is of *votes*, which is not the same as the count of replicas
+    that hold the data. The epoch is in the message because a shortfall is
+    always read against the membership it happened under.
+    """
+
+    code = "quorum_shortfall"
+
+    def __init__(self, key: str, epoch: int, counted: int, needed: int, *, phase: str = "write", failures=()) -> None:
+        self.key = key
+        self.epoch = epoch
+        self.counted = counted
+        self.needed = needed
+        self.phase = phase
+        self.failures = tuple(failures)
+        detail = f"; failures: {list(self.failures)}" if self.failures else ""
+        super().__init__(
+            f"acks below quorum for epoch {epoch}: {phase} of {key!r} counted {counted} of {needed}{detail}"
+        )
+
+
+class ConvergenceError(AtlasError):
+    """Anti-entropy finished its pass and a replica the plan names still disagrees."""
+
+    code = "convergence_error"
+
+    def __init__(self, shard: int, epoch: int, keys) -> None:
+        self.shard = shard
+        self.epoch = epoch
+        self.keys = tuple(keys)
+        super().__init__(
+            f"shard {shard} did not converge for epoch {epoch}: {list(self.keys)} still differ between replicas the plan names"
+        )
+
+
 class ReadRepairConflictError(AtlasError):
     """Two replicas disagree and repair could not choose a winner."""
 

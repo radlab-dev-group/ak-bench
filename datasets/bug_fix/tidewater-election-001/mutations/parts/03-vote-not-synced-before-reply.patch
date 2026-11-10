@@ -1,0 +1,12 @@
+diff --git a/src/tidewater/node.py b/src/tidewater/node.py
+index e175498..6d9d98f 100644
+--- a/src/tidewater/node.py
++++ b/src/tidewater/node.py
+@@ -419,7 +419,6 @@ class Node:
+         # Grant. Persist the vote before the reply leaves (SPEC 5.2).
+         if self.voted_for is None:
+             self.storage.set_term(self.current_term, msg.candidate_id)
+-            self.storage.sync()
+         self._reset_election_timer()
+         self.trace.record(self.global_tick, self.node_id, "vote", term=self.current_term,
+                           candidate=msg.candidate_id, granted=True, reason="granted")

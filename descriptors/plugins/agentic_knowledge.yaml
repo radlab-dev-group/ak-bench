@@ -68,7 +68,10 @@ benchmark:
       type: boolean
       role: feature_toggle
       observed: true
-      dimension: false
+      # A dimension since the memory suite: an arm that keeps the knowledge
+      # plugin and turns only this off is how the escalation's share of the
+      # memory effect is read (descriptors/dimensions/knowledge_escalation_enabled.yaml).
+      dimension: true
       controllable: true
       sensitive: false
     - name: LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED

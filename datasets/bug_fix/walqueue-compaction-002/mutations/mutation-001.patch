@@ -1,0 +1,45 @@
+diff --git a/src/walqueue/journal.py b/src/walqueue/journal.py
+index 08eebf7..46a2b30 100644
+--- a/src/walqueue/journal.py
++++ b/src/walqueue/journal.py
+@@ -39,7 +39,7 @@ class Journal:
+ 
+     @property
+     def active(self) -> Path:
+-        return self.paths[-1]
++        return self.paths[0]
+ 
+     def append(self, sequence: int, commands: list[dict]) -> None:
+         frame = encode({"sequence": sequence, "commands": commands})
+@@ -60,7 +60,7 @@ class Journal:
+         previous = None
+         expected = through + 1
+         for position, path in enumerate(self.paths):
+-            decoded = decode(path.read_bytes(), allow_torn_tail=position == len(self.paths) - 1)
++            decoded = decode(path.read_bytes(), allow_torn_tail=position == 0)
+             for document in decoded.documents:
+                 try:
+                     sequence = integer(document["sequence"], "transaction sequence", 1)
+@@ -86,7 +86,7 @@ class Journal:
+         return recovered
+ 
+     def rotate(self) -> None:
+-        number = int(SEGMENT.fullmatch(self.active.name)[1]) + 1
++        number = max(len(list(self.root.glob("wal-*.log"))), len(self.paths)) + 1
+         self.paths.append(self._create(number))
+ 
+     def discard_sealed(self) -> None:
+diff --git a/src/walqueue/queue.py b/src/walqueue/queue.py
+index a52cfa1..2d5a326 100644
+--- a/src/walqueue/queue.py
++++ b/src/walqueue/queue.py
+@@ -140,8 +140,8 @@ class Queue:
+     def compact(self) -> None:
+         self.journal.rotate()
+         self.hook("compact.rotated")
+-        self.snapshots.publish(self.sequence, self.state)
+         self.journal.discard_sealed()
++        self.snapshots.publish(self.sequence, self.state)
+         self.hook("compact.pruned")
+ 
+     def inspect(self, task_id: str) -> Task:

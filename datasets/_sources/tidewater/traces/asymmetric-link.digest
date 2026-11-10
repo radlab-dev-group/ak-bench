@@ -1,0 +1,7 @@
+schedule         asymmetric-link
+schedule_digest  150d49e9412d3dcd395b11ddf15787dce26adc7c504c7e4976fa5979007a4461
+seed             458927
+ticks            3000
+events           7634
+digest_events    673
+trace_digest     0719996925ed925cf293b3535f586e3b6742de5c55dd8ce067f5df5b849f3bbf

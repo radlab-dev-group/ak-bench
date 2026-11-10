@@ -1,0 +1,14 @@
+diff --git a/src/tidewater/storage.py b/src/tidewater/storage.py
+index e1b623c..ff93455 100644
+--- a/src/tidewater/storage.py
++++ b/src/tidewater/storage.py
+@@ -202,7 +202,9 @@ class Storage:
+         self.sync_count += 1
+         if self.sync_policy == "never":
+             return False
++        remembered = self._durable.voted_for
+         self._durable = copy.deepcopy(self._volatile)
++        self._durable.voted_for = remembered
+         self._dirty = False
+         return True
+ 

@@ -1,0 +1,26 @@
+diff --git a/src/atlas/repair.py b/src/atlas/repair.py
+index 27dd8e1..71ed9d7 100644
+--- a/src/atlas/repair.py
++++ b/src/atlas/repair.py
+@@ -94,7 +94,20 @@ class ReadRepairer:
+             current = store.resolve(key)
+             if current is not None and current.vector == winner.vector and current.generation == winner.generation:
+                 continue
+-            store.apply_records([winner], reconcile=True)
++            # The repaired copy has to dominate whatever this replica held, so
++            # it goes in one generation ahead of the winner, under the winner's
++            # own writer, and the memtable accepts it without a tie.
++            store.apply_records(
++                [
++                    winner.advance(
++                        winner.value,
++                        writer=winner.writer,
++                        lsn=store.next_lsn(),
++                        deleted=winner.deleted,
++                    )
++                ],
++                reconcile=True,
++            )
+             written.append(replica)
+         return RepairOutcome(key=key, winner=winner, written_to=tuple(written))
+ 

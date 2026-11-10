@@ -1,0 +1,15 @@
+diff --git a/src/depweaver/candidates.py b/src/depweaver/candidates.py
+index daf10b5..2ccfc2e 100644
+--- a/src/depweaver/candidates.py
++++ b/src/depweaver/candidates.py
+@@ -47,8 +47,8 @@ class CandidateCache:
+             repository.fingerprint,
+             name,
+             tuple(sorted(str(row.dependency.spec) for row in state.constraints[name])),
+-            tuple(sorted(state.extras.get(name, frozenset()))),
+-            request.target.fingerprint,
++            (),
++            "shared-target",
+             tuple(sorted(request.policy.document().items())),
+             request.locked,
+             tuple(sorted(request.update)),

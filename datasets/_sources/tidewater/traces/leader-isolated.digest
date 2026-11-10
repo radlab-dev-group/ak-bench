@@ -1,0 +1,7 @@
+schedule         leader-isolated
+schedule_digest  7d0ee557dd8f69bd60550c5cf1370fa52225b363dff69fbc8188a1a768dd9704
+seed             123017
+ticks            3300
+events           7743
+digest_events    852
+trace_digest     d8a363c3118a91e1d2fb0abc0b7677cb46acf0b73ade0bc4043ba0fd89ac931d

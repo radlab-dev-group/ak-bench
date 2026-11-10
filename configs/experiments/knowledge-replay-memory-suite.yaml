@@ -1,0 +1,356 @@
+# Knowledge replay across the memory suite: four seeds, six learning tasks,
+# seven twins, seven configurations.
+#
+# WHAT THE SUITE IS. Every task in it was written so that the way to solve it
+# is the way the two router plugins work (`agentic_routing_codex`, alias
+# `auto_codex`, and `agentic_knowledge`), and so that a model without that
+# memory fails in a specific, recordable way:
+#
+#   * antagonistic defect pairs — the naive fix of one regression re-raises
+#     the *same* exception and message as the other; a memoryless model
+#     oscillates, the plugin records the recurrence as a dead end, counts the
+#     loop, and escalates the routed model once the loop reaches the threshold;
+#   * the rule that resolves a pair lives in exactly one decision record under
+#     docs/adr, written by symptom, inside a corpus of incident notes that name
+#     the wrong module on purpose; the plugin's documentation map and its
+#     doc_type-filtered hits are what make that record reachable;
+#   * the new features carry a procedure (regenerate with a repository tool,
+#     lock a manifest, verify goldens or trace digests) that the hidden tests
+#     require and the README does not mention; a session that completed it
+#     once leaves a playbook the twin can spend;
+#   * the simulations print long traces, and a digest or an offset found in
+#     the first phase is asserted in the last; the compaction archive is what
+#     keeps the exact value across the summary.
+#
+# The families, their learning task and the role of each twin:
+#
+#   atlas       atlas-quorum-001        learning: two antagonistic pairs over
+#                                       replication/anti-entropy and repair/fencing
+#               atlas-quorum-002        related_transfer: the exact failure
+#                                       signature of one learning part, another line
+#               atlas-quorum-003        related_transfer: the same invariant in
+#                                       a module the learning patch never touched
+#               atlas-quorum-004        negative_transfer: the same signature,
+#                                       a different cause; the recipe is a trap
+#               atlas-schema-001        learning: schema evolution plus the
+#                                       generate/lock/verify procedure
+#               atlas-schema-002        related_transfer: another surface, the
+#                                       same procedure
+#   tidewater   tidewater-election-001  learning: five safety regressions with
+#                                       identical SafetyViolation kinds
+#               tidewater-election-002  related_transfer
+#               tidewater-election-003  negative_transfer
+#               tidewater-snapshot-001  learning: snapshot install, compaction,
+#                                       joint consensus, reference-trace procedure
+#               tidewater-snapshot-002  related_transfer: the same procedure
+#   depweaver   depweaver-lockfile-001  learning and exact replay only
+#   walqueue    walqueue-compaction-002 learning and exact replay only
+#
+# One experiment rather than four because the knowledge plugin scopes its
+# collection by the repository basename (agentic_knowledge scope strategy
+# ``repo_basename``), so the atlas knowledge never reaches a tidewater twin and
+# the families do not contaminate each other, while the arms, the models and
+# the environment stay identical across them, which is what makes the
+# families comparable. The harness names a memory run's checkout
+# ``<run slug>/<repository name>``, so the basename every arm declares is the
+# fixture's name (docs/KNOWLEDGE_REPLAY.md; asserted in
+# tests/unit/test_knowledge_workspace_scope.py).
+#
+# WHICH PLUGINS AN ARM LOADS IS PART OF THE ARM. The pipeline is read when the
+# process starts, so it is declared per combination under ``runtime_env``. A
+# fixed-model arm loads no routing plugin (a pinned model has nothing to
+# route); an arm with ``knowledge_enabled: false`` does not have the knowledge
+# plugin in the process at all, so it writes nothing and cannot contaminate
+# the collections the on arms read.
+#
+# THE ENVIRONMENT IS PART OF THE ARM. The plugins ship with most of what this
+# suite measures switched off: escalation (``escalation.enabled`` false),
+# the routing plugin's session memory (``memory.enabled`` false), and a
+# documentation budget of 200 files that the atlas incident corpus alone
+# exceeds. An arm that wants those mechanisms declares them under
+# ``runtime_env``, which the managed router is started with, and an arm that
+# wants to measure the memory layer without them declares that too. Names are
+# the plugin's own override table (prefix LLM_ROUTER_KNOWLEDGE_AGENTIC_ and
+# LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_; see
+# descriptors/plugins/agentic_knowledge.yaml and docs/ROUTER_INTEGRATION.md).
+#
+# SEVEN ARMS:
+#
+#   1. qwen/Qwen3.8-27B,        knowledge off — THE BASELINE: the fixed larger
+#      model with no memory of any kind.
+#   2. qwen/Qwen3.8-Flash-Next, knowledge off — the fixed small model with no
+#      memory; the arm the suite is designed to defeat.
+#   3. auto_codex,              knowledge off — routing alone: the routing
+#      plugin loaded, the knowledge plugin not in the process.
+#   4. qwen/Qwen3.8-27B,        knowledge on, all memory mechanisms on — arm 1
+#      plus the memory layer (escalation cannot act under a pinned model).
+#   5. qwen/Qwen3.8-Flash-Next, knowledge on, all memory mechanisms on — arm 2
+#      plus the memory layer: the small model with recipes, dead ends,
+#      playbooks, archive and the documentation map, but no escalation.
+#   6. auto_codex,              knowledge on, all memory mechanisms on, loop
+#      escalation on — THE FULL CONFIGURATION the suite was written for.
+#   7. auto_codex,              knowledge on, recipes only — the knowledge
+#      plugin present, escalation off, archive off, documentation off, routing
+#      memory off: the ablation that says what the mined recipes alone are
+#      worth, read against arm 6.
+#
+# Pairs (1,4), (2,5) and (3,6) isolate the memory under one fixed routing
+# decision; (6,7) isolates the mechanisms beyond recipes; (5,6) isolates
+# routing plus escalation on top of the same knowledge; (2,3) says what routing
+# is worth without memory.
+#
+# Readiness: a managed router lifecycle with ``requires_readiness: true`` and
+# ``allow_unverified`` at its default of false — a replay that cannot confirm
+# the knowledge base is there is recorded as unverified, never as verified.
+schema_version: "1.0"
+id: knowledge-replay-memory-suite
+version: "1.0.0"
+title: Knowledge replay across the memory suite, on seven configurations
+description: >-
+  Whether what an agent learned while working six memory-shaped tasks — two
+  pairs of antagonistic regressions in a sharded store, a schema evolution with
+  a lock-and-verify procedure, five safety regressions and a snapshot feature in
+  a deterministic replicated-log simulator, a lockfile proof system and a
+  compaction defect family — carries to their twins in fresh sessions, measured
+  against arms that never had the memory, on seven configurations that switch
+  the plugins' mechanisms (recipes, dead ends, playbooks, compaction archive,
+  documentation map, loop escalation, routing memory) on through the router's
+  process environment. The baseline is the fixed 27B model with no memory; the
+  configuration the suite was written for is auto_codex with every mechanism on.
+
+experiment:
+  type: knowledge_replay
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router-ak-bench
+      # The arms declare the router's process environment, and a memory
+      # experiment must own the knowledge namespace it writes: both need an
+      # instance this run starts.
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories: [bug_fix, new_feature]
+      task_ids:
+        - atlas-quorum-001
+        - atlas-quorum-002
+        - atlas-quorum-003
+        - atlas-quorum-004
+        - atlas-schema-001
+        - atlas-schema-002
+        - tidewater-election-001
+        - tidewater-election-002
+        - tidewater-election-003
+        - tidewater-snapshot-001
+        - tidewater-snapshot-002
+        - depweaver-lockfile-001
+        - walqueue-compaction-002
+
+  factors:
+    strategy: custom_matrix
+    dimensions:
+      - id: model
+        values: [ qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next, auto_codex ]
+      - id: knowledge_enabled
+      - id: knowledge_escalation_enabled
+    baseline:
+      model: qwen/Qwen3.8-27B
+      knowledge_enabled: false
+      knowledge_escalation_enabled: false
+    combinations:
+      # 1. the baseline: the fixed larger model, no plugin in the process — a
+      #    pinned model has nothing to route, so the routing plugin is not
+      #    loaded for it either (the fixed arms of knowledge-replay-atlas made
+      #    the same choice).
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: false
+        knowledge_escalation_enabled: false
+      # 2. the fixed small model, likewise without memory.
+      - model: qwen/Qwen3.8-Flash-Next
+        knowledge_enabled: false
+        knowledge_escalation_enabled: false
+      # 3. routing without memory: the knowledge plugin is not loaded at all.
+      - model: auto_codex
+        knowledge_enabled: false
+        knowledge_escalation_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+          LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_ENABLED: "false"
+      # 4. arm 1 plus the memory layer with every mechanism on. Escalation is
+      #    declared off because a pinned model is routed as explicit and the
+      #    plugin never swaps it; declaring it on would record a mechanism that
+      #    could not act.
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: true
+        knowledge_escalation_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_ENABLED: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_AUTO_INDEX: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_ENABLED: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_FILES: "600"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_TOTAL_BYTES: "4000000"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_LOOP_THRESHOLD: "3"
+      # 5. arm 2 plus the memory layer: the small model with recipes, dead ends,
+      #    playbooks, the compaction archive and the documentation map.
+      - model: qwen/Qwen3.8-Flash-Next
+        knowledge_enabled: true
+        knowledge_escalation_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_ENABLED: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_AUTO_INDEX: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_ENABLED: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_FILES: "600"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_TOTAL_BYTES: "4000000"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_LOOP_THRESHOLD: "3"
+      # 6. the full configuration: routing, the memory layer, loop escalation
+      #    to the 27B model after three identical failures, the routing
+      #    plugin's own session memory.
+      - model: auto_codex
+        knowledge_enabled: true
+        knowledge_escalation_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_ENABLED: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_AUTO_INDEX: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_ENABLED: "true"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_FILES: "600"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_TOTAL_BYTES: "4000000"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_LOOP_THRESHOLD: "3"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_STRONG_RECIPE_SCORE: "0.75"
+          LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_ENABLED: "true"
+      # 7. the ablation: the knowledge plugin present and reading and writing,
+      #    but only the mined recipes, dead ends and playbooks — no archive, no
+      #    documentation, no escalation, no routing memory. Read against arm 6.
+      - model: auto_codex
+        knowledge_enabled: true
+        knowledge_escalation_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED: "false"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_ENABLED: "false"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_AUTO_INDEX: "false"
+          LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_ENABLED: "false"
+          LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_ENABLED: "false"
+
+  execution_policy:
+    repetitions: 1
+    concurrency: 1
+    timeout_seconds: 10800
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  knowledge:
+    plugin: agentic_knowledge
+
+    learning:
+      # Six learning tasks, one or two per seed. Each session is long enough
+      # that the plugin's compaction archive, dead-end recording and loop
+      # counting all fire; what they leave behind is what the twins spend.
+      tasks:
+        - atlas-quorum-001@1.0.0
+        - atlas-schema-001@1.0.0
+        - tidewater-election-001@1.0.0
+        - tidewater-snapshot-001@1.0.0
+        - depweaver-lockfile-001@1.0.0
+        - walqueue-compaction-002@1.0.0
+      write_enabled: true
+      read_enabled: true
+
+    replay:
+      requires_readiness: true
+      allow_unverified: false
+
+    fresh_control: true
+
+    scenarios:
+      # --- exact replays: the same task, a new session, no session history
+      - id: quorum-same-task
+        type: exact_replay
+        task: atlas-quorum-001@1.0.0
+        note: the two antagonistic pairs again; the dead ends should not be walked twice
+      - id: schema-same-task
+        type: exact_replay
+        task: atlas-schema-001@1.0.0
+        note: the generate/lock/verify procedure is a playbook now
+      - id: election-same-task
+        type: exact_replay
+        task: tidewater-election-001@1.0.0
+        note: five safety regressions; the recipes carry the kind, not the line
+      - id: snapshot-same-task
+        type: exact_replay
+        task: tidewater-snapshot-001@1.0.0
+        note: the reference-trace regeneration is a playbook now
+      - id: lockfile-same-task
+        type: exact_replay
+        task: depweaver-lockfile-001@1.0.0
+        note: three causes behind one ProofInvalid; the dead ends name the two wrong ones
+      - id: compaction-same-task
+        type: exact_replay
+        task: walqueue-compaction-002@1.0.0
+        note: one offset, three compactions; the archive holds the segment name
+      # --- related transfers: a different task of the same seed, the same principle
+      - id: quorum-signature-twin
+        type: related_transfer
+        task: atlas-quorum-002@1.0.0
+        note: >-
+          the exact failure signature of one learning part on another line of
+          the same module: the recipe fits as it is, and the measurement is
+          whether it is retrieved and applied
+      - id: quorum-module-twin
+        type: related_transfer
+        task: atlas-quorum-003@1.0.0
+        note: >-
+          the same invariant in a module the learning patch never touched: the
+          recipe transfers as the rule, not as the diff
+      - id: schema-procedure-twin
+        type: related_transfer
+        task: atlas-schema-002@1.0.0
+        note: another surface of the schema, the same tool, the same lock, the same goldens
+      - id: election-twin
+        type: related_transfer
+        task: tidewater-election-002@1.0.0
+        note: the same safety kind broken in another module of the simulator
+      - id: snapshot-procedure-twin
+        type: related_transfer
+        task: tidewater-snapshot-002@1.0.0
+        note: the same trace-regeneration procedure, a different part of the feature
+      # --- negative transfers: the same signature, a different cause; the recipe misleads
+      - id: quorum-trap
+        type: negative_transfer
+        task: atlas-quorum-004@1.0.0
+        note: >-
+          the same exception and message as a learning part, caused elsewhere;
+          applying the learning recipe is the wrong fix and the hidden tests
+          say so
+      - id: election-trap
+        type: negative_transfer
+        task: tidewater-election-003@1.0.0
+        note: the same SafetyViolation kind, a cause the learning session never met
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    # 13 tasks x 7 configurations x 1 repetition = 91 runs of the run plan; the
+    # memory plan of each configuration is 6 learning + 2 x 13 scenarios = 32
+    # arms, so the ceiling leaves room for the arms without letting an
+    # accidental dimension multiply the bill.
+    max_runs: 91

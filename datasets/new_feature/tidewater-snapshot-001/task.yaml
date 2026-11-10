@@ -1,0 +1,44 @@
+schema_version: "1.0"
+id: tidewater-snapshot-001
+version: "1.0.0"
+created_at: "2026-11-10T00:30:00+01:00"
+title: "Implement log compaction and snapshots: take the record, keep the boundary term, and land the corpus entry the change needs"
+description: >-
+  Tidewater is a deterministic Raft-lite simulator whose election,
+  replication, persistence and safety code is complete and green. SPEC.md
+  section 6 — snapshots and log compaction — is declared and not implemented:
+  every entry point in tidewater.snapshot raises FeatureNotImplemented and the
+  seed runs with compaction_threshold = 0. Implement the node half of that
+  contract: when a node's log is long enough it snapshots its state machine at
+  last_applied, makes the record durable before compacting the log, keeps the
+  boundary term so log matching at the boundary still works, and restarts from
+  its snapshot instead of replaying from index 1. The change makes a snapshot
+  event committed-visible, which is a documented digest-visible change: the
+  corpus entry that exercises it goes through the generator, into the MANIFEST
+  and through the reference-trace tool, as the runbook requires.
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
+task:
+  category: new_feature
+  difficulty: expert
+  repository:
+    source: datasets/_sources/tidewater
+    ref: HEAD
+    notes: >-
+      standard-library-only Raft-lite simulator seed; SPEC.md section 6
+      declared with a complete acceptance contract, snapshot.py stubbed; the
+      transfer surface (6.4, 6.5) belongs to the follow-up task
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - implement SPEC.md 6.1, 6.2, 6.3, 6.6 and 6.7 for the node half of the feature without changing the public API, the message types, or the crash contract
+    - "the record is saved and synced before the log is compacted, and the compaction boundary never passes last_applied"
+    - "the boundary keeps its term: term_at(base_index) == base_term, and a prefix against the boundary is matched on that term"
+    - a restart with a snapshot loads the state machine from the record, starts at last_included_index, and replays only the suffix
+    - leave tidewater.snapshot's declared transfer surface raising; installing a snapshot on another node is the next task
+    - "the corpus entry lands through the tools: tools/gen_schedules.py --lock for the schedule and MANIFEST, tools/reference_traces.py for the digest, as docs/runbooks/regenerate-traces.md says; do not hand-write any of them"
+    - "update the two repository records that describe the feature as a stub (tests/test_declared_features.py) and the size of the corpus (tests/test_tools_cli.py); leave every other test alone"
+    - do not add third-party dependencies, threads, wall-clock reads, or randomness outside tidewater.rng

@@ -1,0 +1,37 @@
+{
+  "version": 3,
+  "generated": "atlas/tables.py",
+  "note": "The single source of truth for the generated tables. Edit this file and re-run `python -m atlas.tables --write`; a hand edit to atlas/tables.py is overwritten by the next generation and is not a fix.",
+  "columns": [
+    {"name": "key", "type": "str", "primary": true, "width": 256},
+    {"name": "value", "type": "json", "width": 65536},
+    {"name": "generation", "type": "int", "width": 8},
+    {"name": "lsn", "type": "int", "width": 8},
+    {"name": "written_at", "type": "int", "width": 8},
+    {"name": "writer", "type": "str", "width": 64},
+    {"name": "deleted", "type": "bool", "width": 1},
+    {"name": "attributes", "type": "pairs", "width": 1024}
+  ],
+  "indexes": [
+    {"name": "by_writer", "columns": ["writer", "key"], "unique": false},
+    {"name": "by_lsn", "columns": ["lsn"], "unique": true},
+    {"name": "live_only", "columns": ["deleted", "key"], "unique": false, "where": "deleted = false"}
+  ],
+  "limits": {
+    "max_key_bytes": 256,
+    "max_value_bytes": 65536,
+    "max_attributes": 32,
+    "max_generation": 9007199254740991
+  },
+  "compatibility": {
+    "v2_column_count": 6,
+    "v1_column_count": 4,
+    "reader_must_accept": ["v1", "v2", "v3"],
+    "writer_emits": "v3"
+  },
+  "layouts": {
+    "v1": {"fields": ["key", "value", "gen", "lsn"], "note": "legacy flat layout: value is JSON text, a null value is a tombstone"},
+    "v2": {"fields": ["key", "value", "gen", "lsn", "at", "writer"]},
+    "v3": {"fields": ["key", "value", "gen", "vec", "deleted", "lsn", "at", "writer", "attrs"]}
+  }
+}

@@ -1,6 +1,7 @@
 """The cluster paths: repair, anti-entropy, rebalance, and the parity harness."""
 
 import subprocess
+import pytest
 import sys
 from pathlib import Path
 
@@ -59,6 +60,39 @@ def test_antientropy_finds_no_divergence_on_a_healthy_cluster(store):
     names = sorted(store.nodes)
     report = walk.walk(store.nodes[names[0]], store.nodes[names[1]], 0)
     assert report.clean
+
+
+def test_a_convergence_pass_is_clean_on_a_healthy_cluster(store):
+    store.put("a", 1)
+    store.put("b", 2)
+    walk = AntiEntropy(store.nodes, placement=store.placement, width=4)
+    for shard in range(int(store.config["shards"])):
+        report = walk.converge(shard, epoch=store.placement.epoch(), repairer=store.repairer)
+        assert report.clean
+        assert report.repaired == []
+
+
+def test_a_draining_mark_survives_a_reopen(store):
+    store.nodes["atlas-1"].drain()
+    reopened = store.reopen_replica("atlas-1")
+    assert reopened.draining is True
+    reopened.resume()
+    assert reopened.draining is False
+
+
+def test_a_write_that_cannot_reach_a_quorum_names_the_epoch(store):
+    from atlas.errors import QuorumError, QuorumShortfallError
+
+    store.put("k", "one")
+    order = list(store.replicas_for("k"))
+    kept = {name: store.nodes.pop(name) for name in order[1:]}
+    try:
+        with pytest.raises(QuorumShortfallError) as caught:
+            store.put("k", "two", expected_generation=1)
+        assert isinstance(caught.value, QuorumError)
+        assert "acks below quorum for epoch 1" in str(caught.value)
+    finally:
+        store.nodes.update(kept)
 
 
 def test_a_rebalance_moves_the_key_and_keeps_it_readable(tmp_path, config):

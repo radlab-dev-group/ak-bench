@@ -42,6 +42,7 @@ PYTHONPATH=src python tools/parity.py          # differential harness
 | `atlas.faults` | deterministic crash injection points |
 | `atlas.compat`, `atlas.vendor.ring` | deprecated v1 shims, not the write path |
 | `atlas.lineage` | provenance: **declared, not implemented** |
+| `atlas.evolution` | schema evolution of stored rows: **declared, not implemented**; guide in `docs/schema-evolution.md` |
 
 ## The five rules everything else follows from
 
@@ -66,8 +67,9 @@ Neither is on the write path: `atlas.store.shard_of` is the shard answer and
 `atlas.placement.PlacementService.owner` is the owner answer, and both are
 derived from `atlas.ring`, never from the vendored ring.
 
-`src/atlas/tables.py` is generated from `schema/tables.json`. Editing it is
-not a change; the next regeneration takes the edit back.
+`src/atlas/tables.py` is generated from `schema/tables.json` by hand-running
+`python -m atlas.tables --write` after an edit to the document. Editing the
+module itself is not a change; the next regeneration takes the edit back.
 
 `tools/parity.py` compares the store against a deliberately naive model. It
 is the fastest way to see a divergence and the slowest way to understand one:
@@ -75,5 +77,6 @@ the model knows three rules, and the store has more than three.
 
 ## Status
 
-The store is complete and its suite passes. One feature is declared and not
-implemented: `atlas.lineage`. Its contract is in `SPEC.md` section 9.
+The store is complete and its suite passes. Two features are declared and not
+implemented: `atlas.lineage` (`SPEC.md` section 9) and `atlas.evolution`
+(`SPEC.md` section 10).

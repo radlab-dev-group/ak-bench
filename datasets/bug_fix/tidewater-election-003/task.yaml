@@ -1,0 +1,48 @@
+schema_version: "1.0"
+id: tidewater-election-003
+version: "1.0.0"
+created_at: "2026-11-10T00:30:00+01:00"
+title: Restore the rule that a tally counts voters, in a cluster that elects a leader on names nobody voted for
+description: >-
+  A five-voter Tidewater cluster reports `term 1 has two leaders`. Every
+  answer in both tallies is a grant, in the right term, given to a node that
+  was a candidate when it arrived, and every voter granted once: the tally
+  itself credits machines that never answered, because the set that goes into
+  the majority arithmetic grew by the peer an answer was delivered by. The
+  repository suite is green and the twelve-schedule corpus runs clean, because
+  in the corpus an answer always arrives from the machine that signed it.
+  Restore the documented rule without changing the public API, the wire
+  format, the trace digest, or the crash contract.
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/tidewater
+    ref: HEAD
+    notes: >-
+      standard-library-only Raft-lite simulator seed; one regression in what a
+      candidate adds to its tally; the failure signature is the same
+      election_safety line as the rest of the family and the cause is not
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      The candidate credits the sender reported by the transport next to the
+      voter named by the grant. Terms, roles, and the once-per-term ballot are
+      all respected; the set counted by the configuration's majority test is
+      simply no longer the set of voters, which is the mistake
+      docs/incidents/INC-0008 records under "majority of the wrong set".
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the public API, the message types, the trace format, and the crash contract
+    - do not change the repository suite, the specification, the decision records, or the incident corpus
+    - do not add third-party dependencies, threads, wall-clock reads, or randomness outside tidewater.rng
+    - "count majorities over voters taken from the protocol payloads, as the specification requires"
+    - a run must stay a pure function of (schedule, seed, code); do not regenerate reference digests

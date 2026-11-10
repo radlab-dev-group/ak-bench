@@ -89,3 +89,108 @@ The task contains eight related regressions. Hidden tests have a separate
 counterexample for each and mixed generated traces. Small repository results
 are compared with an independent exhaustive oracle. Larger families require
 constraint-directed search; do not special-case their package names.
+
+## Lockfile canonical form and proofs — declared, not implemented
+
+This section is normative. `src/depweaver/canonical.py`, `src/depweaver/proofs.py`
+and the three cache methods of `store.Store` declare the surface and raise
+NotImplementedError. The procedure that exercises them is
+`tools/relock.py --canonical --prove` followed by `tools/verify_lock.py`; the
+guide is `docs/lockfile-canonical-form.md`, the reasons are `docs/adr/`.
+Where this section and an ADR disagree, the ADR wins (CONTRIBUTING.md).
+
+### Canonical form
+
+* **C1 Normalisation.** Package and extra names normalise as in Metadata.
+  Versions render without build metadata. Extras are normalised,
+  deduplicated and sorted.
+* **C2 Markers (rule M).** A comparison renders as `field op "literal"` with
+  the literal as a double-quoted JSON string. A `python_version` literal of an
+  ordered or equality comparison is coerced to three components (`"3.8"` ->
+  `"3.8.0"`). The literal of `in` / `not in` is split on `,`, deduplicated,
+  sorted and joined with `,` (segments are not trimmed). `and` and `or` chains
+  are flattened; operands are rendered, deduplicated and sorted
+  lexicographically by rendered text, then joined with ` and ` / ` or `. An
+  `or` directly beneath an `and` is parenthesised; nothing else is. The empty
+  marker renders as the empty string.
+* **C3 Active edges.** Selected `P` actively depends on selected `Q` when a
+  dependency declared by `P`'s locked release names `Q` and its marker holds in
+  the lock's target under `P`'s locked extras. Self-edges are ignored.
+  Dependencies on packages outside the solution are not edges.
+* **C4 Layers.** Condense the active graph by strongly connected components. A
+  component with no edge to another component has layer 0; otherwise its layer
+  is one more than the highest layer it points to. Members of one cycle share
+  a layer.
+* **C5 Package order.** Rows are ordered ascending by the tuple
+  `(layer, normalised name, version, extras tuple)`, versions by semantic
+  ordering. This is the install order. It is deliberately not the alphabetical
+  order the lockfile body uses (ADR-0001).
+* **C6 Rows and digest.** A row is
+  `{layer, name, version, extras, provides, requires, requires_python, yanked, artifact}`
+  where `extras` are the locked active extras, `provides` the release's declared
+  extras, `requires` the canonical dependency rows of the release sorted by
+  `(name, marker, spec, extras)`, and `artifact` the release digest or `""`.
+  The canonical document is `{"version": 1, "target": <target document>,
+  "packages": [rows]}`. `lock_digest` is the SHA-256 hex digest of the
+  canonical JSON (`model.canonical`) of that document. Two resolutions with
+  the same selected releases, extras and target have the same digest whatever
+  the order their metadata was declared in, however their markers were
+  spelled and whatever build metadata their versions carried.
+
+### Proofs of solution
+
+* **P1 Payload.** A proof is `{digest, catalog, manifest, chosen, exclusions}`:
+  the `lock_digest`, the catalog (repository) fingerprint, the request
+  fingerprint, the `(name, version)` pairs of the solution in canonical order,
+  and one exclusion per preferred-but-unchosen catalog version. Transport is a
+  codec envelope of kind `proof`; `Proof.load` rejects anything else.
+* **P2 Preferred set.** For chosen `P@v`: when `P` is pinned (locked and not in
+  `update`) every other catalog version of `P`; otherwise every catalog version
+  above `v` (below `v` under `prefer_lowest`). Each member has exactly one
+  exclusion `{name, version, justification}`.
+* **P3 Justifications.** `justification.kind` is one of:
+  `pin` (another version is pinned); `python` (requires_python rejects the
+  target); `yanked` (yanked, policy forbids, not the same lock); `prerelease`
+  (prerelease, policy forbids, not the same lock, no active clause for the
+  package allows prereleases); `range` / `extras` with `{parent, dependency}`
+  naming an active clause for the package — a root whose marker holds (parent
+  `null`) or a dependency of a chosen release whose marker holds under that
+  release's locked extras — whose spec rejects the version (`range`) or whose
+  extras the release lacks (`extras`); `conflict` with `{dependency}` declared
+  by the excluded release and active under the package's locked extras, and
+  either `chosen: [name, version]` (the chosen release of the dependency's
+  target fails its spec or lacks its extras) or `candidates: {version:
+  justification}` (the target is not in the solution and every catalog version
+  matching the spec is itself justified, recursively, with the enclosing
+  dependency counting as an active clause for it). Nesting depth is at most 4.
+* **P4 Verification order.** `verify_proof(manifest, lockfile, proof, catalog)`
+  checks, in this order, and stops at the first failure: the proof digest
+  equals `lock_digest(lockfile)`; `chosen` equals the canonical order; the
+  proof catalog equals `catalog.fingerprint`; the proof manifest equals
+  `manifest.fingerprint`; `validation.validate` reports nothing; every
+  preferred version has exactly one justification that holds — packages in
+  name order, versions ascending, so the reason names the lowest offending
+  version of the first offending package; no exclusion names a version
+  outside the preferred set.
+* **P5 One hash, one reason.** Every failure is `ProofInvalid(hash=..., reason=...)`
+  with `hash` the `lock_digest` of the lockfile *as presented* — never the
+  digest the proof claims — and a single reason string. The message is
+  `proof rejected for <hash>: <reason>`. The reasons for the first three checks
+  are `canonical digest mismatch`, `chosen releases are not in canonical
+  order` and `catalog digest is stale`; a missing clause is `missing
+  justification for <name> <version>` (ADR-0004).
+* **P6 Offline.** Verification runs no solver: it constructs no `Resolver` and
+  calls nothing in `resolver`, `propagation`, `candidates`, `learning` or
+  `trail` (ADR-0002).
+* **P7 Generation.** `prove(catalog, manifest, resolution)` validates the
+  resolution first and raises `ProofUnavailable` when it is invalid or when no
+  justification of the kinds in P3 exists for a preferred version.
+  `Session.prove(name)` proves a record under the session's catalog.
+* **P8 Cache invalidation.** `Store.remember(manifest, lockfile, proof)` writes
+  `resolutions/<manifest fingerprint>.json` as a codec envelope of kind
+  `cached-resolution` with `{manifest, lock, proof}`. `Store.recall(manifest,
+  catalog)` returns the cached lockfile only after its proof verifies under
+  `catalog`; when it does not, the entry is removed and `None` is returned.
+  `Store.invalidate(catalog)` removes every cached resolution whose proof fails
+  under `catalog` and returns their manifest fingerprints. A changed catalog
+  digest is therefore sufficient to invalidate (ADR-0003).

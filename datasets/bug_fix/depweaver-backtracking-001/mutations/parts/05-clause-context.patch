@@ -1,0 +1,13 @@
+diff --git a/src/depweaver/learning.py b/src/depweaver/learning.py
+index 2c4ccc4..e935cc5 100644
+--- a/src/depweaver/learning.py
++++ b/src/depweaver/learning.py
+@@ -12,7 +12,7 @@ class Learner:
+ 
+     def learn(self, conflict: Conflict) -> None:
+         if conflict.culprits:
+-            self.clauses.add(conflict.culprits)
++            self.clauses.add(frozenset({min(conflict.culprits)}))
+ 
+     def violated(
+         self, assignments: frozenset[tuple[str, str]]

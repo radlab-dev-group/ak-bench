@@ -1,0 +1,13 @@
+diff --git a/src/depweaver/candidates.py b/src/depweaver/candidates.py
+index daf10b5..7add5d6 100644
+--- a/src/depweaver/candidates.py
++++ b/src/depweaver/candidates.py
+@@ -8,7 +8,7 @@ from .versions import Version
+ 
+ def pinned_version(name: str, request: Request) -> str | None:
+     locks = dict(request.locked)
+-    if name in locks and name not in request.update:
++    if name in locks and not request.update:
+         return locks[name]
+     return None
+ 

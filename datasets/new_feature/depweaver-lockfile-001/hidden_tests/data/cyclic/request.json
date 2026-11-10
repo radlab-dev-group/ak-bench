@@ -1,0 +1,1 @@
+{"locked":{},"policy":{"allow_prerelease":false,"allow_yanked":false,"max_decisions":100000,"prefer_lowest":false},"roots":[{"extras":[],"marker":"","name":"top","spec":"*"}],"target":{"implementation_name":"cpython","platform_machine":"x86_64","python_version":"3.12.0","sys_platform":"linux"},"update":[]}

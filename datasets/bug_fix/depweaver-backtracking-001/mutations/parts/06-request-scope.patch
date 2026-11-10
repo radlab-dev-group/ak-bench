@@ -1,0 +1,14 @@
+diff --git a/src/depweaver/learning.py b/src/depweaver/learning.py
+index 2c4ccc4..eca3bfb 100644
+--- a/src/depweaver/learning.py
++++ b/src/depweaver/learning.py
+@@ -8,7 +8,8 @@ class Learner:
+         self.clauses: set[frozenset[tuple[str, str]]] = set()
+ 
+     def reset(self) -> None:
+-        self.clauses.clear()
++        if not self.clauses:
++            self.clauses.clear()
+ 
+     def learn(self, conflict: Conflict) -> None:
+         if conflict.culprits:

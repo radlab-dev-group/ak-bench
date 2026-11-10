@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "name": "crash-restart-follower",
+  "description": "n2 crashes, misses writes, restarts and must catch up without losing anything it had acknowledged.",
+  "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5"
+  ],
+  "seed": 920446,
+  "ticks": 2200,
+  "give_up_after": 0,
+  "options": {
+    "election_timeout": 50,
+    "heartbeat_interval": 10,
+    "pre_vote": true,
+    "max_entries_per_append": 16,
+    "compaction_threshold": 0,
+    "sync_policy": "always"
+  },
+  "network": {
+    "min_delay": 1,
+    "max_delay": 3,
+    "drop_rate": 0.0,
+    "dup_rate": 0.0,
+    "dup_extra_delay": 4
+  },
+  "actions": [
+    {
+      "at": 10,
+      "kind": "workload",
+      "count": 10,
+      "every": 10,
+      "key_prefix": "a"
+    },
+    {
+      "at": 300,
+      "kind": "crash",
+      "node": "n2"
+    },
+    {
+      "at": 320,
+      "kind": "workload",
+      "count": 20,
+      "every": 10,
+      "key_prefix": "b"
+    },
+    {
+      "at": 900,
+      "kind": "restart",
+      "node": "n2"
+    },
+    {
+      "at": 1000,
+      "kind": "workload",
+      "count": 10,
+      "every": 10,
+      "key_prefix": "c"
+    },
+    {
+      "at": 1500,
+      "kind": "crash",
+      "node": "n2"
+    },
+    {
+      "at": 1560,
+      "kind": "restart",
+      "node": "n2"
+    },
+    {
+      "at": 1600,
+      "kind": "workload",
+      "count": 10,
+      "every": 10,
+      "key_prefix": "d"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+schema_version: "1.0"
+id: tidewater-election-002
+version: "1.0.0"
+created_at: "2026-11-10T00:30:00+01:00"
+title: Restore the majority of the configuration in a four-voter Raft-lite cluster
+description: >-
+  A four-voter Tidewater cluster elects a leader on two of four ballots and
+  reports entries committed on two of four replicas, so a cluster split in two
+  runs two leaders and commits on both sides. The repository suite is green
+  and the twelve-schedule corpus runs clean: every cluster in it has an odd
+  number of voters. The rule that decides the size of a majority is written
+  once, in the specification, and repeated by symptom in the incident note
+  about a minority side that kept committing; the README's account of a
+  four-node cluster is approximate. Restore the rule without changing the
+  public API, the wire format, the trace digest, or the crash contract.
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/tidewater
+    ref: HEAD
+    notes: >-
+      standard-library-only Raft-lite simulator seed; one regression in the
+      arithmetic that decides what a majority is, invisible for odd-sized
+      configurations
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      The quorum test no longer uses the configuration's own majority size; it
+      rounds half up, which agrees with the rule for every odd size and
+      disagrees for every even one. Elections and commits both go through it,
+      so a four-voter cluster accepts half of itself as a decision.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the public API, the message types, the trace format, and the crash contract
+    - do not change the repository suite, the specification, the decision records, or the incident corpus
+    - do not add third-party dependencies, threads, wall-clock reads, or randomness outside tidewater.rng
+    - "keep the arithmetic in one place: the quorum test asks the configuration, as the specification requires"
+    - a run must stay a pure function of (schedule, seed, code); do not regenerate reference digests

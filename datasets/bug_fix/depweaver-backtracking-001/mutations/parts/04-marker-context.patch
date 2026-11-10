@@ -1,0 +1,12 @@
+diff --git a/src/depweaver/propagation.py b/src/depweaver/propagation.py
+index 5e658d4..4fcbecb 100644
+--- a/src/depweaver/propagation.py
++++ b/src/depweaver/propagation.py
+@@ -83,6 +83,6 @@ def propagate(request: Request, selected: dict[str, Release]) -> State:
+                 continue
+             state.expansion_keys.add(expansion)
+             for dependency in release.dependencies:
+-                if dependency.marker.matches(request.target, features):
++                if dependency.marker.matches(request.target):
+                     changed = state.add(dependency, release.identity) or changed
+     return state

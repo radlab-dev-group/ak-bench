@@ -1,0 +1,22 @@
+[
+  {
+    "patch": "parts/01-rival-candidate-answered.patch",
+    "witness": "test_witness_01_a_candidate_answers_a_rival_with_a_denial"
+  },
+  {
+    "patch": "parts/02-stale-term-counted.patch",
+    "witness": "test_witness_02_a_reply_from_a_finished_term_is_not_a_vote"
+  },
+  {
+    "patch": "parts/03-vote-not-synced-before-reply.patch",
+    "witness": "test_witness_03_a_granted_vote_is_durable_before_the_reply_leaves"
+  },
+  {
+    "patch": "parts/04-tally-carried-over.patch",
+    "witness": "test_witness_04_a_new_election_counts_only_this_election"
+  },
+  {
+    "patch": "parts/05-sync-drops-the-vote.patch",
+    "witness": "test_witness_05_the_sync_call_writes_every_field_a_crash_is_told_to_find"
+  }
+]

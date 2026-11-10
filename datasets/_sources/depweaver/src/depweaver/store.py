@@ -1,4 +1,12 @@
-"""Content-addressed offline artifact storage with verified immutable publication."""
+"""Content-addressed offline artifact storage with verified immutable publication.
+
+Besides artifact blobs and indexes the store is declared to keep cached
+resolutions: a manifest's lockfile together with its proof of solution. A
+cached resolution may only be handed back after its proof verifies under the
+catalog the caller is using now; one that no longer verifies is removed, never
+returned (SPEC.md, "Lockfile canonical form and proofs"). The three cache
+methods are declared and raise NotImplementedError.
+"""
 
 import hashlib
 import os
@@ -8,7 +16,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .codec import envelope, read, unwrap, write
+from .lockfile import Lockfile
+from .model import Request
+from .proofs import Proof
+from .repository import Repository
 from .wheels import ArchiveReport, inspect
+
+RESOLUTION_KIND = "cached-resolution"
 
 
 def fingerprint(value: str) -> str:
@@ -185,3 +199,28 @@ class Store:
             for digest in unused:
                 self.path(digest).unlink()
         return unused
+
+    def resolution_path(self, manifest_fingerprint: str) -> Path:
+        digest = fingerprint(manifest_fingerprint)
+        path = self.root / "resolutions" / (digest + ".json")
+        if not path.resolve().is_relative_to(self.root):
+            raise ValueError("resolution symlink escapes store root")
+        return path
+
+    def remember(self, manifest: Request, lockfile: Lockfile, proof: Proof) -> Path:
+        """Cache a lockfile under its manifest fingerprint together with its proof."""
+        raise NotImplementedError("resolution caching is declared in SPEC.md but not implemented")
+
+    def recall(self, manifest: Request, catalog: Repository) -> Lockfile | None:
+        """Return the cached lockfile if its proof verifies under ``catalog``, else None."""
+        raise NotImplementedError("resolution caching is declared in SPEC.md but not implemented")
+
+    def cached(self) -> tuple[str, ...]:
+        resolutions = self.root / "resolutions"
+        if not resolutions.exists():
+            return ()
+        return tuple(sorted(fingerprint(path.stem) for path in resolutions.glob("*.json")))
+
+    def invalidate(self, catalog: Repository) -> tuple[str, ...]:
+        """Drop every cached resolution whose proof fails under ``catalog``."""
+        raise NotImplementedError("resolution caching is declared in SPEC.md but not implemented")

@@ -1,0 +1,13 @@
+diff --git a/src/tidewater/node.py b/src/tidewater/node.py
+index e175498..2407ab1 100644
+--- a/src/tidewater/node.py
++++ b/src/tidewater/node.py
+@@ -340,7 +340,7 @@ class Node:
+         self.storage.sync()
+         self.role = CANDIDATE
+         self.leader_id = None
+-        self.votes = {self.node_id}
++        self.votes.add(self.node_id)
+         self.prevotes = set()
+         self.elections_started += 1
+         self._reset_election_timer()
