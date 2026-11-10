@@ -1,0 +1,7 @@
+schedule         lossy-network
+schedule_digest  fb127e2ae3a52ae4d66b9deb8d05a89a39149bc709c1ee48eed2ae85ff08757f
+seed             649904
+ticks            3000
+events           9158
+digest_events    1151
+trace_digest     04a0a801f0002b6fbb68f127819be22f62e223b7ff6d696ea6f73c2b0cda531f

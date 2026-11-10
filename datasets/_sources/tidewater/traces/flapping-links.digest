@@ -1,0 +1,7 @@
+schedule         flapping-links
+schedule_digest  5708d7f258b4044be030f118526d3819dd53bb63288ab7dc3873ac395a163a06
+seed             175411
+ticks            1820
+events           4827
+digest_events    440
+trace_digest     89a3c5e208a8143eb82518767b1711bfc9df620744e4d68fd873426da35c98fc

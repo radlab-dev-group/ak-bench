@@ -1,0 +1,7 @@
+schedule         baseline-steady
+schedule_digest  e21bf710bd7e57f3c75056f94f844cbf932ed3972d42e06e457e5af11d953ddd
+seed             983304
+ticks            2000
+events           4684
+digest_events    601
+trace_digest     d3564b459f8f9255056e4bfc9998c259de1da76aa7d05a9c7cc0d443ecb42359

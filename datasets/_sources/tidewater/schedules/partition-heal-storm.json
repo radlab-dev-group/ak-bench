@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "name": "partition-heal-storm",
+  "description": "Six partitions in a row, each healed before the next. Pre-vote keeps the term count low; without it this is an election storm.",
+  "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5"
+  ],
+  "seed": 499287,
+  "ticks": 3020,
+  "give_up_after": 0,
+  "options": {
+    "election_timeout": 50,
+    "heartbeat_interval": 10,
+    "pre_vote": true,
+    "max_entries_per_append": 16,
+    "compaction_threshold": 0,
+    "sync_policy": "always"
+  },
+  "network": {
+    "min_delay": 1,
+    "max_delay": 3,
+    "drop_rate": 0.0,
+    "dup_rate": 0.0,
+    "dup_extra_delay": 4
+  },
+  "actions": [
+    {
+      "at": 10,
+      "kind": "workload",
+      "count": 10,
+      "every": 10,
+      "key_prefix": "w"
+    },
+    {
+      "at": 300,
+      "kind": "partition",
+      "groups": [
+        [
+          "n1",
+          "n2"
+        ],
+        [
+          "n3",
+          "n4",
+          "n5"
+        ]
+      ]
+    },
+    {
+      "at": 305,
+      "kind": "workload",
+      "count": 8,
+      "every": 10,
+      "key_prefix": "s0"
+    },
+    {
+      "at": 560,
+      "kind": "heal"
+    },
+    {
+      "at": 600,
+      "kind": "workload",
+      "count": 4,
+      "every": 10,
+      "key_prefix": "h0"
+    },
+    {
+      "at": 720,
+      "kind": "partition",
+      "groups": [
+        [
+          "n1",
+          "n2",
+          "n3"
+        ],
+        [
+          "n4",
+          "n5"
+        ]
+      ]
+    },
+    {
+      "at": 725,
+      "kind": "workload",
+      "count": 8,
+      "every": 10,
+      "key_prefix": "s1"
+    },
+    {
+      "at": 980,
+      "kind": "heal"
+    },
+    {
+      "at": 1020,
+      "kind": "workload",
+      "count": 4,
+      "every": 10,
+      "key_prefix": "h1"
+    },
+    {
+      "at": 1140,
+      "kind": "partition",
+      "groups": [
+        [
+          "n1"
+        ],
+        [
+          "n2",
+          "n3"
+        ],
+        [
+          "n4",
+          "n5"
+        ]
+      ]
+    },
+    {
+      "at": 1145,
+      "kind": "workload",
+      "count": 8,
+      "every": 10,
+      "key_prefix": "s2"
+    },
+    {
+      "at": 1400,
+      "kind": "heal"
+    },
+    {
+      "at": 1440,
+      "kind": "workload",
+      "count": 4,
+      "every": 10,
+      "key_prefix": "h2"
+    },
+    {
+      "at": 1560,
+      "kind": "partition",
+      "groups": [
+        [
+          "n1",
+          "n5"
+        ],
+        [
+          "n2",
+          "n3",
+          "n4"
+        ]
+      ]
+    },
+    {
+      "at": 1565,
+      "kind": "workload",
+      "count": 8,
+      "every": 10,
+      "key_prefix": "s3"
+    },
+    {
+      "at": 1820,
+      "kind": "heal"
+    },
+    {
+      "at": 1860,
+      "kind": "workload",
+      "count": 4,
+      "every": 10,
+      "key_prefix": "h3"
+    },
+    {
+      "at": 1980,
+      "kind": "partition",
+      "groups": [
+        [
+          "n2"
+        ],
+        [
+          "n1",
+          "n3",
+          "n4",
+          "n5"
+        ]
+      ]
+    },
+    {
+      "at": 1985,
+      "kind": "workload",
+      "count": 8,
+      "every": 10,
+      "key_prefix": "s4"
+    },
+    {
+      "at": 2240,
+      "kind": "heal"
+    },
+    {
+      "at": 2280,
+      "kind": "workload",
+      "count": 4,
+      "every": 10,
+      "key_prefix": "h4"
+    },
+    {
+      "at": 2400,
+      "kind": "partition",
+      "groups": [
+        [
+          "n3",
+          "n4"
+        ],
+        [
+          "n1",
+          "n2",
+          "n5"
+        ]
+      ]
+    },
+    {
+      "at": 2405,
+      "kind": "workload",
+      "count": 8,
+      "every": 10,
+      "key_prefix": "s5"
+    },
+    {
+      "at": 2660,
+      "kind": "heal"
+    },
+    {
+      "at": 2700,
+      "kind": "workload",
+      "count": 4,
+      "every": 10,
+      "key_prefix": "h5"
+    }
+  ]
+}
