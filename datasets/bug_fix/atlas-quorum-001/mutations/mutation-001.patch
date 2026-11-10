@@ -1,0 +1,80 @@
+diff --git a/src/atlas/antientropy.py b/src/atlas/antientropy.py
+index 2c6b1b9..6de5c12 100644
+--- a/src/atlas/antientropy.py
++++ b/src/atlas/antientropy.py
+@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
+ 
+ from .errors import ConvergenceError
+ from .registry import STRATEGIES
+-from .replication import holders
++from .replication import voters
+ 
+ RANGE_DEPTH = 8
+ 
+@@ -134,7 +134,9 @@ class AntiEntropy:
+     def participants(self) -> list[str]:
+         """The replicas a convergence pass compares and repairs: everyone who holds the shard."""
+ 
+-        return holders(self.nodes, self.placement.current.replicas)
++        # A replica that is leaving will be streamed away by the rebalance;
++        # repair traffic spent on it now is traffic spent twice.
++        return voters(self.nodes, self.placement.current.replicas)
+ 
+     def converge(self, shard: int, *, epoch: int, repairer) -> AntiEntropyReport:
+         """Walk, repair, verify. Raise :class:`ConvergenceError` if the plan still sees two versions."""
+diff --git a/src/atlas/fencing.py b/src/atlas/fencing.py
+index 68cab81..4bff419 100644
+--- a/src/atlas/fencing.py
++++ b/src/atlas/fencing.py
+@@ -105,7 +105,7 @@ class FenceBook:
+         for audit; the check that matters is the generation.
+         """
+ 
+-        previous = self.leases.get(key)
+-        if previous is not None and generation <= previous.generation:
+-            raise StaleGenerationError(key, previous.generation, generation)
++        # The holder reports the generation it actually committed at; the
++        # book records what the store holds rather than arguing with it, so a
++        # replica that was behind does not leave the key unwritable.
+         return self.grant(key, holder, generation)
+diff --git a/src/atlas/repair.py b/src/atlas/repair.py
+index 27dd8e1..71ed9d7 100644
+--- a/src/atlas/repair.py
++++ b/src/atlas/repair.py
+@@ -94,7 +94,20 @@ class ReadRepairer:
+             current = store.resolve(key)
+             if current is not None and current.vector == winner.vector and current.generation == winner.generation:
+                 continue
+-            store.apply_records([winner], reconcile=True)
++            # The repaired copy has to dominate whatever this replica held, so
++            # it goes in one generation ahead of the winner, under the winner's
++            # own writer, and the memtable accepts it without a tie.
++            store.apply_records(
++                [
++                    winner.advance(
++                        winner.value,
++                        writer=winner.writer,
++                        lsn=store.next_lsn(),
++                        deleted=winner.deleted,
++                    )
++                ],
++                reconcile=True,
++            )
+             written.append(replica)
+         return RepairOutcome(key=key, winner=winner, written_to=tuple(written))
+ 
+diff --git a/src/atlas/replication.py b/src/atlas/replication.py
+index c049643..3e927da 100644
+--- a/src/atlas/replication.py
++++ b/src/atlas/replication.py
+@@ -169,7 +169,9 @@ class Replicator:
+                 written.append(replica)
+             except Exception as exc:  # noqa: BLE001 - a replica failure is data
+                 failures.append(f"{replica}: {exc}")
+-        votes = [replica for replica in written if replica in voting]
++        # Every durable copy is an acknowledgment: the replica appended the
++        # record to its log and applied it, and that is what the quorum counts.
++        votes = list(written)
+         if len(votes) < needed:
+             raise QuorumShortfallError(
+                 key, placement.epoch(), len(votes), needed, phase="write", failures=failures

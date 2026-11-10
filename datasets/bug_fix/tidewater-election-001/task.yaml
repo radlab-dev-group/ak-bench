@@ -1,0 +1,52 @@
+schema_version: "1.0"
+id: tidewater-election-001
+version: "1.0.0"
+created_at: "2026-11-10T00:30:00+01:00"
+title: Restore the ballot rules that five cooperating regressions break in a Raft-lite election
+description: >-
+  A five-node Tidewater cluster elects two leaders in the same term. The
+  repository suite is green and the twelve-schedule corpus runs clean, so the
+  violations only appear in the orders the operators complained about: two
+  nodes that timed out together, an answer that arrives after its election
+  failed, a voter that reboots between saying yes and remembering it. Five
+  cooperating regressions produce the one line the safety monitor shouts, and
+  two of the pairs are such that the obvious repair of one symptom re-raises
+  the identical violation from the other half. Restore the documented rules
+  without changing the public API, the wire format, the trace digest, or the
+  crash contract.
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/tidewater
+    ref: HEAD
+    notes: >-
+      standard-library-only Raft-lite simulator seed; five cooperating
+      regressions in two antagonistic pairs and one single, all ending in the
+      same election_safety violation
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      Five regressions. Pair one, one ballot per term: a candidate answers a
+      rival in its own term with a grant, and a candidate counts an answer from
+      a term that has closed. Pair two, the state an election may count on: a
+      granted vote replies before it is synced, and sync itself stops making
+      the recorded vote durable. Single: a new election carries the tally of
+      the election that failed. Every one of the five raises the same
+      election_safety line, and repairing half of a pair leaves the other half
+      raising it.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the public API, the message types, the trace format, and the crash contract
+    - do not change the repository suite, the specification, the decision records, or the incident corpus
+    - do not add third-party dependencies, threads, wall-clock reads, or randomness outside tidewater.rng
+    - "keep the safety contract: the six violation kinds are closed and checked every tick"
+    - a run must stay a pure function of (schedule, seed, code); do not regenerate reference digests

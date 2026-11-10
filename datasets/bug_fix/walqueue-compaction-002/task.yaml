@@ -1,0 +1,50 @@
+schema_version: "1.0"
+id: walqueue-compaction-002
+version: "1.0.0"
+created_at: "2026-11-10T00:30:00+01:00"
+title: Restore the compaction rules that four cooperating regressions break in a durable queue
+description: >-
+  A production WALQueue store dies on the second compaction of a run with a
+  name error on a segment it just deleted, leaves a write after a compaction
+  in the segment the compaction threw away, refuses to open after an
+  interrupted compaction and an interrupted write, and loses acknowledged
+  work when a compaction is interrupted before it publishes. The repository
+  suite is green. The four defects cooperate: two of them are two halves of
+  one rule whose obvious fixes undo each other with the same error, and the
+  rules that resolve all four are written down once, in the documentation, by
+  symptom. Restore the documented rules without changing the public API, the
+  storage format, or the crash contract.
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/walqueue
+    ref: HEAD
+    notes: standard-library-only durable queue seed; four cooperating regressions in the compaction path, one antagonistic pair
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      Four regressions in the compaction path. Pair A (antagonistic, same
+      File-exists signature both ways): the rotation step computes the next
+      segment name from a count of segments instead of from the directory,
+      and the append target is the first segment the journal lists instead of
+      the newest one; the naive fix of either half re-raises the other half's
+      error on the next compaction. The torn-tail allowance follows the list
+      position instead of the segment name, and the WAL is pruned before
+      CURRENT is published. Live queue operations and the seed repository
+      suite remain green.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the public API, the storage format, and the fault-injection phases
+    - do not change the repository tests or the decision records and incident notes
+    - do not add third-party dependencies, threads, or timers
+    - keep transaction validation and checksums enabled
+    - a restart must be observationally equivalent to uninterrupted execution at every compaction crash point

@@ -1,0 +1,6 @@
+[
+  {"patch": "parts/01-next-segment-name.patch", "witness": "test_witness_01_the_next_compaction_does_not_reissue_a_segment_name"},
+  {"patch": "parts/02-append-target.patch", "witness": "test_witness_02_the_write_after_a_compaction_lands_in_the_new_segment"},
+  {"patch": "parts/03-torn-tail.patch", "witness": "test_witness_03_only_the_newest_segment_may_end_in_a_torn_tail"},
+  {"patch": "parts/04-prune-before-publish.patch", "witness": "test_witness_04_a_compaction_that_did_not_publish_keeps_every_acknowledged_task"}
+]

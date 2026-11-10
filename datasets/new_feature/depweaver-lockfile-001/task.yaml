@@ -1,0 +1,45 @@
+schema_version: "1.0"
+id: depweaver-lockfile-001
+version: "1.0.0"
+created_at: "2026-11-10T00:30:00+01:00"
+title: "Implement the reproducible lockfile: canonical form, lock digest and proofs of solution"
+description: >-
+  Depweaver is an offline semantic-version dependency resolver with features,
+  markers, partial lock updates, conflict learning and backjumping. Its solver,
+  lockfile, session, store and validation paths are complete and the suite is
+  green. One feature is declared and not implemented: the reproducible
+  lockfile. The contract is normative in SPEC.md ("Lockfile canonical form and
+  proofs"), the reasons are in docs/adr/, the procedure in
+  docs/lockfile-canonical-form.md. Implement the canonical serialisation of a
+  resolution and its digest, proofs of solution that verify offline without
+  the solver, and the proof-driven invalidation of cached resolutions in the
+  store, so that tools/relock.py --canonical --prove and tools/verify_lock.py
+  reproduce the documented digests.
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
+task:
+  category: new_feature
+  difficulty: expert
+  repository:
+    source: datasets/_sources/depweaver
+    ref: HEAD
+    notes: standard-library-only resolver seed; canonical form and proofs declared, not implemented
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - implement the complete SPEC.md section "Lockfile canonical form and proofs" without changing the public API
+    - "the canonical order is the documented one: it is not alphabetical by name, and the digest of a differently ordered document is a different digest"
+    - "verification is offline: verify_proof constructs no Resolver and calls nothing in resolver, propagation, candidates, learning or trail"
+    - "ProofInvalid carries one hash and one reason; the hash is the canonical digest of the lockfile as presented, never the digest the proof claims"
+    - the justification kinds are a closed list; a new kind is a SPEC change, not a feature
+    - a cached resolution whose proof does not verify under the current catalog is removed, never returned
+    - do not modify the repository suite, the solver modules, the tools' command lines or the stubs' public surface
+    - do not add third-party dependencies, threads, timers or network access
+  notes: >-
+    The seed's suite passes while feature tests fail with NotImplementedError.
+    The hidden tests carry generated catalogs, lockfiles and proofs produced by
+    an external reference implementation that never enters the workspace, and
+    compare the agent's digests and proofs with those goldens.

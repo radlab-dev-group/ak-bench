@@ -1,0 +1,13 @@
+diff --git a/src/tidewater/node.py b/src/tidewater/node.py
+index e175498..cc7a0c5 100644
+--- a/src/tidewater/node.py
++++ b/src/tidewater/node.py
+@@ -465,7 +465,7 @@ class Node:
+             return
+         if self.role != CANDIDATE or msg.term != self.current_term or not msg.granted:
+             return
+-        self.votes.add(msg.voter_id)
++        self.votes.update((msg.voter_id, src))
+         if self.config.has_majority(self.votes):
+             self._become_leader()
+ 

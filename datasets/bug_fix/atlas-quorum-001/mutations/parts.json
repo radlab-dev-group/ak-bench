@@ -1,0 +1,6 @@
+[
+  {"patch": "parts/01-draining-ack-votes.patch", "witness": "test_witness_01_a_draining_acknowledgment_does_not_count_toward_the_write_quorum"},
+  {"patch": "parts/02-converge-voters.patch", "witness": "test_witness_02_convergence_repairs_a_draining_replica_the_plan_still_names"},
+  {"patch": "parts/03-repair-mints.patch", "witness": "test_witness_03_repair_carries_the_winner_unchanged_and_a_second_read_is_quiet"},
+  {"patch": "parts/04-lease-follows.patch", "witness": "test_witness_04_the_lease_never_moves_backwards_or_sideways"}
+]

@@ -1,0 +1,16 @@
+diff --git a/src/atlas/rebalance.py b/src/atlas/rebalance.py
+index be2d27e..b637caf 100644
+--- a/src/atlas/rebalance.py
++++ b/src/atlas/rebalance.py
+@@ -111,6 +111,11 @@ class Rebalancer:
+             if source not in self.nodes or destination not in self.nodes:
+                 report.notes.append(f"skipped shard {shard}: {source} -> {destination} is not in the cluster")
+                 continue
++            if getattr(self.nodes[source], "draining", False):
++                # A replica that is leaving is not a participant any more; the
++                # copy is taken from the plan's remaining holders on the next pass.
++                report.notes.append(f"skipped shard {shard}: {source} is draining")
++                continue
+             checkpoint = self.migrator.copy_range(
+                 shard, source=source, destination=destination, keys=set(keys)
+             )

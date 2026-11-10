@@ -1,0 +1,15 @@
+diff --git a/src/atlas/vclock.py b/src/atlas/vclock.py
+index 9cf2d6a..002c661 100644
+--- a/src/atlas/vclock.py
++++ b/src/atlas/vclock.py
+@@ -43,7 +43,9 @@ class VersionVector:
+             items = [(str(name), int(value)) for name, value in counters.items() if value > 0]
+         else:
+             items = [(str(name), int(value)) for name, value in counters if value > 0]
+-        return cls(tuple(sorted(items)))
++        # Writers stay in the order they contributed: the order is part of the
++        # history the vector records, and sorting it away loses that.
++        return cls(tuple(items))
+ 
+     @classmethod
+     def single(cls, node: str, counter: int = 1) -> Self:

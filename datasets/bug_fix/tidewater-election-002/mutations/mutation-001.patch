@@ -1,0 +1,13 @@
+diff --git a/src/tidewater/membership.py b/src/tidewater/membership.py
+index f8638db..2b01d9d 100644
+--- a/src/tidewater/membership.py
++++ b/src/tidewater/membership.py
+@@ -64,7 +64,7 @@ class Configuration:
+         makes a vote from a server that was removed harmless."""
+ 
+         counted = {a for a in acks if a in self.voters}
+-        return len(counted) >= self.majority_size
++        return len(counted) >= (self.size + 1) // 2
+ 
+     def sorted_voters(self) -> tuple[str, ...]:
+         return tuple(sorted(self.voters))

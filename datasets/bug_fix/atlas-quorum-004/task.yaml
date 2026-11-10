@@ -1,0 +1,41 @@
+schema_version: "1.0"
+id: atlas-quorum-004
+version: "1.0.0"
+created_at: "2026-11-10T00:30:00+01:00"
+title: Restore convergence for a shard whose replicas agree through different write orders
+description: >-
+  A production Atlas cluster's convergence pass reports a shard that did not
+  converge, naming a key every replica holds at the same generation, while
+  nothing in the cluster is being retired. The repository suite is green.
+  The message is the one operators have seen before, during a retirement,
+  and the cause is not the one it was then. Find the actual cause; the
+  documentation hierarchy says which notes are rules and which are evidence.
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
+task:
+  category: bug_fix
+  difficulty: expert
+  repository:
+    source: datasets/_sources/atlas
+    ref: HEAD
+    notes: standard-library-only sharded store seed; one regression, same signature as the quorum family with a different cause
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      One regression, in neither of the modules the quorum family's learning
+      task touched: a version vector keeps its writers in arrival order, so the
+      same version reached through two orders compares unequal and the
+      convergence check reports a divergence that repair cannot remove.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the public API, the wire format, and the crash contract
+    - do not change the repository suite, the specification, or the decision records and incident notes
+    - do not add third-party dependencies, threads, or timers
+    - "keep the SPEC invariants: fencing equality, descending tie-break, quorum arithmetic over the configured consistency levels"
+    - the vendored v1 ring and the generated tables are not the write path and must not be "fixed"

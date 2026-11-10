@@ -1,0 +1,50 @@
+schema_version: "1.0"
+id: tidewater-snapshot-002
+version: "1.0.0"
+created_at: "2026-11-10T00:30:00+01:00"
+title: "Carry a snapshot to the node that needs it: chunked transfer, install rules, and the corpus entry for the catch-up"
+description: >-
+  Tidewater already compacts: a node that writes enough takes a record at
+  last_applied, keeps the boundary term, and restarts from its snapshot. That
+  is only half of SPEC.md section 6, and the missing half is the part the
+  operators feel. SPEC 6.4, 6.5 and 6.6 — the transfer of a snapshot to a node
+  whose next_index the leader has compacted away — are still declared: their
+  entry points in tidewater.snapshot raise FeatureNotImplemented, and a
+  follower that was cut off long enough to fall behind the boundary cannot be
+  brought back. Implement the stream (chunk_size bytes at a time, one chunk
+  outstanding, the leader continuing from the offset the follower reports), the
+  install rule (what survives, what is discarded, what must be durable before
+  done is replied), and the crash in the middle; complete 6.7 by making an
+  install committed-visible. The change is digest-visible, so the corpus entry
+  that covers it goes through the generator, into the MANIFEST and through the
+  reference-trace tool, exactly as the runbook for the previous change required.
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
+task:
+  category: new_feature
+  difficulty: expert
+  repository:
+    source: datasets/_sources/tidewater
+    ref: HEAD
+    notes: >-
+      standard-library-only Raft-lite simulator seed; SPEC.md section 6.1, 6.2,
+      6.3, 6.6 and 6.7 for the node half are implemented in the seed snapshot,
+      the transfer surface (6.4, 6.5) is declared and stubbed; the repository
+      tools and the runbook for regenerating the trace corpus are part of the
+      seed and are the procedure this task has to follow
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - implement SPEC.md 6.4, 6.5, the crash-mid-transfer half of 6.6 and the install event of 6.7 without changing the public API, the message types, or the storage contract
+    - "a chunk carries data[offset, offset + chunk_size) of the record in flight and done only on the chunk that carries the last byte; chunks go in order, one outstanding at a time"
+    - "the leader continues from the offset the follower reports, forwards or backwards, and a transfer keeps the record it opened with"
+    - "a chunk whose offset is not the one expected is answered with the expected offset and otherwise ignored; the buffer is volatile, so a restarted follower asks for offset 0 again"
+    - "on the last chunk: keep the suffix after the boundary only when the follower holds the boundary entry with the boundary term, otherwise discard the log; base_index and base_term become the boundary; commit_index = last_applied = last_included_index; save and sync the record and the log before replying done = True"
+    - "on done the leader sets match_index to last_included_index, next_index to last_included_index + 1 and resumes AppendEntries for that peer"
+    - "snapshot_installed joins DIGEST_KINDS with the boundary, as SPEC 6.7 says, and SPEC.md 8.4 is updated to match"
+    - "the corpus entry lands through the tools: tools/gen_schedules.py --lock for the schedule and MANIFEST, tools/reference_traces.py for the digest, as docs/runbooks/regenerate-traces.md says; do not hand-write any of them"
+    - "update the repository records that describe the transfer as a stub (tests/test_declared_features.py), the digest kinds (tests/test_messages_trace.py) and the size of the corpus (tests/test_tools_cli.py); leave every other test alone"
+    - do not add third-party dependencies, threads, wall-clock reads, or randomness outside tidewater.rng

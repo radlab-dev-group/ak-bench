@@ -1,0 +1,38 @@
+schema_version: "1.0"
+id: atlas-schema-002
+version: "1.0.0"
+created_at: "2026-11-10T00:30:00+01:00"
+title: "Implement index projection and declare a secondary index by generation, with the generated tables locked"
+description: >-
+  Atlas is a sharded, replicated, fenced key-value store. Its write, read,
+  recovery, and rebalance paths are complete and their suite is green. The
+  schema document declares three secondary indexes and SPEC.md section 10
+  says what the projection of an index over a set of rows is; the code that
+  projects them is declared and not implemented. Implement the projection
+  for every declared index, declare a fourth index, by_generation, in the
+  schema document, and carry the change through the repository's procedure
+  for a schema change: the generated tables, their lock, and a golden for the
+  new index. The hidden tests check the index behaviour and the procedure's
+  artefacts with the repository's own tools.
+authors:
+  - "[local] qwen/Qwen3.8-27B"
+  - "[local] qwen/Qwen3.8-Flash-Next"
+task:
+  category: new_feature
+  difficulty: expert
+  repository:
+    source: datasets/_sources/atlas
+    ref: HEAD
+    notes: standard-library-only sharded store seed; index projection declared, not implemented
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - implement the index half of the SPEC.md section 10 contract for every declared index without changing the public API
+    - "declare the new index in schema/tables.json only, as `by_generation` over (generation, key), not unique, no predicate; an index that exists in the generated module but not in the document is a hand edit, not a change"
+    - follow the documented procedure for a schema change and leave its artefacts in the tree; the hidden tests check them with the repository's tools
+    - the golden frame of the new index is produced by atlas.codec from the golden rows; do not edit the rows and do not change the codec
+    - do not modify the repository suite, the incident corpus, or the stub's public surface
+    - do not add third-party dependencies, threads, or timers
+    - a second installation of the index projections into the same registry registers nothing and raises nothing

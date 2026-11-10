@@ -1,0 +1,14 @@
+{
+  "v1_first_live_key": "alpha:0008",
+  "v1_first_segment_sha256": "9df457c5a7699e13d66855102d67568a2485a4a7de6bceeef1d1de8321b854ff",
+  "v1_last_tombstone_key": "x-ray:0229",
+  "v1_live_keys": 1643,
+  "v1_tombstone_keys": 4,
+  "v1_upgraded_sha256": "f03fa38edf3446deecffe1e8a1997f1f903cb508ca1f9a55599d1119cb048609",
+  "v1_wal_records": 1800,
+  "v1_wal_segments": 3,
+  "v2_snapshot_records": 1200,
+  "v2_snapshot_sha256": "79c4df212727e49f3709a9687184a79e2bd593b96e123d33f403e6959ebbbd40",
+  "v2_tombstones": 93,
+  "v2_upgraded_sha256": "194eb587b4488f782990d8b9e40dcbb587a266a08bda992c97db22bc00397e3e"
+}
