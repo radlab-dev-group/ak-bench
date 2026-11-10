@@ -1,0 +1,7 @@
+schedule         compaction-catchup
+schedule_digest  4f556df18d7fbf6d65c805e8e7ccede9ec925f7eb1efacc6b758ab060e630737
+seed             872162
+ticks            3200
+events           9244
+digest_events    1188
+trace_digest     41f4922914c8a73f4df963542808c9e5e1afb6a4ec38a74485aeb8fdd9e39a42

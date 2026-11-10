@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "name": "compaction-catchup",
+  "description": "Compaction on, and n2 is cut off long enough that the cluster compacts away the entries it needs. When the link heals the leader can no longer replay n2 forward: it has to bring it level with a snapshot, chunk by chunk, and keep the cluster committing while it does.",
+  "nodes": [
+    "n1",
+    "n2",
+    "n3",
+    "n4",
+    "n5"
+  ],
+  "seed": 872162,
+  "ticks": 3200,
+  "give_up_after": 0,
+  "options": {
+    "election_timeout": 50,
+    "heartbeat_interval": 10,
+    "pre_vote": true,
+    "max_entries_per_append": 16,
+    "compaction_threshold": 20,
+    "sync_policy": "always"
+  },
+  "network": {
+    "min_delay": 1,
+    "max_delay": 4,
+    "drop_rate": 0.04,
+    "dup_rate": 0.02,
+    "dup_extra_delay": 4
+  },
+  "actions": [
+    {
+      "at": 10,
+      "kind": "workload",
+      "count": 20,
+      "every": 15,
+      "key_prefix": "a"
+    },
+    {
+      "at": 300,
+      "kind": "isolate",
+      "node": "n2"
+    },
+    {
+      "at": 320,
+      "kind": "workload",
+      "count": 70,
+      "every": 15,
+      "key_prefix": "b"
+    },
+    {
+      "at": 1900,
+      "kind": "heal"
+    },
+    {
+      "at": 1950,
+      "kind": "workload",
+      "count": 40,
+      "every": 15,
+      "key_prefix": "c"
+    }
+  ]
+}

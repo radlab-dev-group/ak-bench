@@ -44,7 +44,7 @@ def test_dataset_list_json_shape(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert payload["count"] == 22
+    assert payload["count"] == 35
     assert {task["id"] for task in payload["tasks"]} == {
         "wordcount-001",
         "bookshop-tiers-001",
@@ -68,6 +68,19 @@ def test_dataset_list_json_shape(project: Path) -> None:
         "atlas-drift-003",
         "atlas-drift-004",
         "atlas-lineage-001",
+        "atlas-quorum-001",
+        "atlas-quorum-002",
+        "atlas-quorum-003",
+        "atlas-quorum-004",
+        "atlas-schema-001",
+        "atlas-schema-002",
+        "tidewater-election-001",
+        "tidewater-election-002",
+        "tidewater-election-003",
+        "tidewater-snapshot-001",
+        "tidewater-snapshot-002",
+        "depweaver-lockfile-001",
+        "walqueue-compaction-002",
     }
     assert {task["category"] for task in payload["tasks"]} == {"bug_fix", "new_feature"}
     for task in payload["tasks"]:
@@ -76,9 +89,9 @@ def test_dataset_list_json_shape(project: Path) -> None:
 
 def test_dataset_list_category_filter(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--category", "bug_fix", "--json"])
-    assert _payload(result.output)["count"] == 12
+    assert _payload(result.output)["count"] == 20
     result = runner.invoke(app, ["dataset", "list", "--category", "new_feature", "--json"])
-    assert _payload(result.output)["count"] == 10
+    assert _payload(result.output)["count"] == 15
     result = runner.invoke(app, ["dataset", "list", "--category", "nope", "--json"])
     assert _payload(result.output)["count"] == 0
 
@@ -88,7 +101,7 @@ def test_dataset_validate_reports_ok(project: Path) -> None:
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     assert payload["ok"] is True
-    assert payload["tasks"] == 22
+    assert payload["tasks"] == 35
 
 
 def test_dataset_validate_fails_on_broken_task(project: Path) -> None:
@@ -120,6 +133,11 @@ def test_dataset_validate_verifies_mutation(project: Path) -> None:
     assert checks["stockpile-writeoff-001@1.0.0"]["mutation_verified"] == "verified"
     assert checks["walqueue-recovery-001@1.0.0"]["mutation_verified"] == "verified"
     assert checks["depweaver-backtracking-001@1.0.0"]["mutation_verified"] == "verified"
+    # The memory suite's bug-fix tasks, over the two seeds it added.
+    for task in ("atlas-quorum-001", "atlas-quorum-002", "atlas-quorum-003", "atlas-quorum-004",
+                 "tidewater-election-001", "tidewater-election-002", "tidewater-election-003",
+                 "walqueue-compaction-002"):
+        assert checks[f"{task}@1.0.0"]["mutation_verified"] == "verified", task
     # A new-feature task has no mutation to verify.
     assert checks["slugify-001@1.0.0"]["mutation_verified"] == "no_mutation"
     assert checks["notes-search-001@1.0.0"]["mutation_verified"] == "no_mutation"
@@ -130,6 +148,9 @@ def test_dataset_validate_verifies_mutation(project: Path) -> None:
     assert checks["freight-shop-001@1.0.0"]["mutation_verified"] == "no_mutation"
     assert checks["streamforge-windows-001@1.0.0"]["mutation_verified"] == "no_mutation"
     assert checks["typeweave-inference-001@1.0.0"]["mutation_verified"] == "no_mutation"
+    for task in ("atlas-schema-001", "atlas-schema-002", "depweaver-lockfile-001",
+                 "tidewater-snapshot-001", "tidewater-snapshot-002"):
+        assert checks[f"{task}@1.0.0"]["mutation_verified"] == "no_mutation", task
 
 
 def test_dataset_show_json_shape(project: Path) -> None:

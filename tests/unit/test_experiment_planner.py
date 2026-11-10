@@ -522,7 +522,8 @@ def test_the_shipped_atlas_memory_experiment_declares_its_six_arms(
     has no control for routing. The pipelines are the part that rots quietly: an
     arm that says `knowledge_enabled: false` while loading the knowledge plugin
     is an off arm that reads, and an arm that drops the routing plugin does not
-    route at all.
+    route at all — which is why only the alias arms load it: a fixed model asks
+    for one model by name and has nothing to route.
     """
 
     from akbench.experiments import load_experiment_file
@@ -540,12 +541,87 @@ def test_the_shipped_atlas_memory_experiment_declares_its_six_arms(
         ("qwen/Qwen3.8-Flash-Next", False),
         ("qwen/Qwen3.8-Flash-Next", True),
     ]
-    for (_model, enabled), variant in arms.items():
-        declared = variant.runtime_env[pipeline]
-        assert declared.startswith("agentic_routing_codex"), declared
-        assert ("agentic_knowledge" in declared) is enabled, declared
-    # The reference is a fixed model with no memory of any kind.
+    for (model, enabled), variant in arms.items():
+        declared = variant.runtime_env.get(pipeline, "")
+        assert ("agentic_knowledge" in declared) is enabled, (model, enabled, declared)
+        assert ("agentic_routing_codex" in declared) is (model == "auto_codex"), (
+            model,
+            enabled,
+            declared,
+        )
+    # The reference is a fixed model with no memory, and no plugin of any kind.
     baseline = next(variant for variant in plan.variants if variant.is_baseline)
     assert baseline.values == {"model": "qwen/Qwen3.8-27B", "knowledge_enabled": False}
-    # 4 tasks of the family x 6 configurations, one repetition each.
-    assert plan.counts.runs == 24
+    assert baseline.runtime_env.get(pipeline) is None
+    # 1 task x 6 configurations, one repetition each.
+    assert plan.counts.runs == 6
+
+
+def test_the_shipped_memory_suite_switches_the_plugin_mechanisms_on_per_arm(
+    planner: ExperimentPlanner,
+) -> None:
+    """The memory suite measures mechanisms the plugins ship switched off.
+
+    Loop escalation, the compaction archive, the documentation map and the
+    routing plugin's session memory are off by default; an arm that claims to
+    measure them must declare them on the process it starts, and the ablation
+    arm that keeps the knowledge plugin while turning them off must say so
+    just as explicitly, or the two arms would differ in nothing the record
+    can show.
+    """
+
+    from akbench.experiments import load_experiment_file
+
+    plan = planner.plan(
+        load_experiment_file(EXPERIMENTS / "knowledge-replay-memory-suite.yaml")
+    )
+    pipeline = "LLM_ROUTER_UTILS_PLUGINS_PIPELINE"
+    prefix = "LLM_ROUTER_KNOWLEDGE_AGENTIC_"
+    arms = {
+        (
+            v.values["model"],
+            v.values["knowledge_enabled"],
+            v.values["knowledge_escalation_enabled"],
+        ): v
+        for v in plan.variants
+    }
+    assert sorted(arms) == [
+        ("auto_codex", False, False),
+        ("auto_codex", True, False),
+        ("auto_codex", True, True),
+        ("qwen/Qwen3.8-27B", False, False),
+        ("qwen/Qwen3.8-27B", True, False),
+        ("qwen/Qwen3.8-Flash-Next", False, False),
+        ("qwen/Qwen3.8-Flash-Next", True, False),
+    ]
+    for (model, enabled, escalation), variant in arms.items():
+        declared = variant.runtime_env.get(pipeline, "")
+        assert ("agentic_knowledge" in declared) is enabled, (model, declared)
+        assert ("agentic_routing_codex" in declared) is (model == "auto_codex"), (
+            model,
+            declared,
+        )
+        if escalation:
+            # The full configuration: every mechanism declared on.
+            for name in ("ARCHIVE_ENABLED", "DOCS_ENABLED", "DOCS_CONTEXT_ENABLED"):
+                assert variant.runtime_env[prefix + name] == "true", name
+            assert variant.runtime_env[prefix + "LOOP_THRESHOLD"] == "3"
+            assert (
+                variant.runtime_env["LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_ENABLED"]
+                == "true"
+            )
+    # The ablation keeps the plugin and switches the mechanisms beyond recipes off.
+    ablation = arms[("auto_codex", True, False)]
+    for name in ("ARCHIVE_ENABLED", "DOCS_ENABLED", "DOCS_CONTEXT_ENABLED"):
+        assert ablation.runtime_env[prefix + name] == "false", name
+    # The documentation budget is raised above the atlas incident corpus.
+    full = arms[("auto_codex", True, True)]
+    assert int(full.runtime_env[prefix + "DOCS_MAX_FILES"]) > 400
+    baseline = next(variant for variant in plan.variants if variant.is_baseline)
+    assert baseline.values == {
+        "model": "qwen/Qwen3.8-27B",
+        "knowledge_enabled": False,
+        "knowledge_escalation_enabled": False,
+    }
+    # 13 tasks of the suite x 7 configurations, one repetition each.
+    assert plan.counts.runs == 91
