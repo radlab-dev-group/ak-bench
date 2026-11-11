@@ -1,0 +1,27 @@
+schema_version: "1.0"
+id: shopcore-layered-001
+version: "1.0.0"
+created_at: "2026-11-10T19:00:00+01:00"
+title: Split the order monolith into pricing, repository and notifier layers
+description: >-
+  OrderService mixes pricing, sqlite storage and notifications. Split it into shopcore.pricing, shopcore.repository and shopcore.notifier, keeping place_order behaviour identical.
+authors:
+  - "[arena] Arena AI agent"
+task:
+  category: architecture
+  difficulty: hard
+  repository:
+    source: datasets/_sources/shopcore
+    ref: HEAD
+    notes: standard-library-only seed fixture directory
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 1200
+  constraints:
+    - preserve the public API of the shopcore package (OrderService.place_order keeps its signature and results)
+    - do not modify the repository test suite under tests/
+    - do not change the pricing rules
+    - do not add third-party dependencies
+  notes: >-
+    The base state fails the hidden tests by design: the target modules do not exist yet, and the hidden tests import them.
