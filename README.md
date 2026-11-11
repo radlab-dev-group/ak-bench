@@ -20,7 +20,6 @@ task execution through a chosen agent and verifies the outcome independently.
 uv venv --python 3.12 .venv
 uv pip install -e ".[dev]"
 
-scripts/run-postgres.sh start   # local PostgreSQL (data in a Docker volume)
 akbench init                    # directories + configuration + database (migrations to head)
 akbench doctor                  # environment readiness
 akbench config show             # effective configuration, paths, database
@@ -28,11 +27,12 @@ akbench descriptor validate     # component descriptors
 akbench dataset validate        # tasks (add --verify-mutations to prove defects)
 ```
 
-Recorded benchmarks go to **PostgreSQL** by default; the connection parameters
-live in the project `.env` (copy `.env.example` if you start from the
-repository). The engine and `scripts/run-postgres.sh` read the same
-`AKBENCH_PG_*` names, so one file drives both. To keep a run on a local
-SQLite file instead: `export AKBENCH_DB_BACKEND=sqlite`.
+Recorded benchmarks go to a **SQLite file** by default — `data/akbench.sqlite` —
+so a fresh clone runs with no server, no credential and no `.env`. The shared
+mode is **PostgreSQL**, chosen on purpose with
+`AKBENCH_DB_BACKEND=postgres` plus the `AKBENCH_PG_*` names; for a local
+instance `scripts/run-postgres.sh start` starts the container that reads them,
+and the engine and the script read the same names, so one `.env` drives both.
 
 The `data/` directory is local, untracked and safe to delete at any time:
 workspaces, artifacts, runtime instances and the SQLite file are all created
@@ -298,12 +298,13 @@ while it is not.
 
 Where a recorded benchmark lives is chosen by `database.backend`:
 
-- **`postgres` (default)** — the parameters of `database.postgres` are the
-  same `AKBENCH_PG_*` names `scripts/run-postgres.sh` reads, so the project
-  `.env` file configures the helper container and the engine at once. An
-  exported variable beats the file; `AKBENCH__DATABASE__POSTGRES__*` beats
-  both.
-- **`sqlite`** — the file named by `paths.database_file`.
+- **`sqlite` (default)** — the file named by `paths.database_file`; a fresh
+  clone records here without a server or a credential.
+- **`postgres`** — the shared mode, for a database several checkouts write to.
+  The parameters of `database.postgres` are the same `AKBENCH_PG_*` names
+  `scripts/run-postgres.sh` reads, so the project `.env` file configures the
+  helper container and the engine at once. An exported variable beats the
+  file; `AKBENCH__DATABASE__POSTGRES__*` beats both.
 - **`database.url`** overrides both and pins a full SQLAlchemy URL.
 
 The URL is shown with the password redacted (`akbench config show`, the UI
@@ -393,11 +394,21 @@ spike/          # Phase 0 code (flow validation)
 
 ## Documentation
 
+- `docs/ARCHITECTURE.md` — the modules, the plan-to-code mapping, and the place
+  of the optional dashboard
 - `docs/AGENT_INTEGRATION.md` — verified Codex CLI capabilities, including what
   its interface does **not** provide (cost, cancellation, session reset)
 - `docs/ROUTER_INTEGRATION.md` — LLM Router: healthcheck, models, plugins,
   metrics and verification limits
 - `docs/DESCRIPTOR_SYSTEM.md` — descriptor kinds, registries, ENV allowlist, dimension rules
+- `docs/EXPERIMENT_DESCRIPTORS.md` — every block of an experiment file, field by field
+- `docs/DIMENSION_DESCRIPTORS.md` — the nine dimension types, `source` routing, controllability
+- `docs/EXPERIMENT_TYPES.md` — configuration / agent comparison / model comparison / knowledge replay
+- `docs/FACTORIAL_DESIGN.md` — the five matrix strategies, baseline, deduplication, cost limits
+- `docs/TASK_FORMAT.md` — `task.yaml` in full, mutations and `parts.json`, hidden tests
+- `docs/CATEGORY_SYSTEM.md` — the nine categories, their difficulty gates, adding one
+- `docs/RUNTIME_ADAPTERS.md` — the manager contract, the two lifecycles, `factor_env`, model evidence
+- `docs/ISOLATION_AND_SECURITY.md` — what is isolated, how, and what AK-Bench does **not** guarantee
 - `docs/DATASETS.md` — tasks, repositories, repeatable workspaces, mutation verification
 - `docs/AGENT_ADAPTERS.md` — the adapter contract, agent registry, capability gating, contract tests
 - `docs/RUNTIME_MANAGER.md` — execution modes, the runtime manager, the LLM Router adapter, the configuration triad
@@ -414,6 +425,25 @@ spike/          # Phase 0 code (flow validation)
 - `docs/CLI.md` — every implemented command and the interface facts that go with it
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 - `CHANGELOG.md` — release notes per version, with a short summary table at the top
+
+## Plan conformance
+
+The platform was built from `.plans/_partialy_done_to_verify/AK-Bench-implementation-plan.md`
+(§1–30). An audit of that plan against this code, and the closed list of what
+was missing, live next to it:
+
+- `.plans/_partialy_done_to_verify/AK-Bench-audyt-planu.md` — the audit: phase by
+  phase, section by section, with the evidence in the repository.
+- `.plans/_partialy_done_to_verify/AK-Bench-plan-do-100-procent.md` — the plan of
+  the gaps (phases A, C–K) and the state of each.
+
+Two deviations are permanent and documented rather than fixed, and both are
+stated where they apply: the Docker sandbox of plan §5/§14 is `deferred` —
+host isolation is a worktree per run, a private `CODEX_HOME`, the agent's own
+`sandbox_mode` and the copy-based evaluation sandbox
+(`docs/ISOLATION_AND_SECURITY.md`) — and the plan's proposed directory sketch
+is mapped to the real modules in `docs/ARCHITECTURE.md` instead of the code
+being reshaped to match it.
 
 ## Conventions
 

@@ -7,6 +7,7 @@ plain ``pip install`` without an ``alembic.ini`` in the working directory.
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,12 @@ from akbench.core.errors import DatabaseError
 from akbench.storage.db import create_db_engine, database_path_from_url
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+
+#: Migrations of one database are applied in turn, and SQLite holds a single
+#: writer: two threads racing the first upgrade of a fresh file corrupt the
+#: ``alembic_version`` row. The lock is per process, which is all the CLI is;
+#: a run at concurrency greater than one calls this from its worker threads.
+_UPGRADE_LOCK = threading.Lock()
 
 
 def _escape(value: str) -> str:
@@ -59,12 +66,13 @@ def upgrade(database_url: str, revision: str = "head") -> tuple[str | None, str]
     if path is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
 
-    before = current_revision(create_db_engine(database_url))
-    try:
-        command.upgrade(build_config(database_url), revision)
-    except Exception as exc:
-        raise DatabaseError(f"migration to {revision!r} failed: {exc}") from exc
-    after = current_revision(create_db_engine(database_url))
+    with _UPGRADE_LOCK:
+        before = current_revision(create_db_engine(database_url))
+        try:
+            command.upgrade(build_config(database_url), revision)
+        except Exception as exc:
+            raise DatabaseError(f"migration to {revision!r} failed: {exc}") from exc
+        after = current_revision(create_db_engine(database_url))
     return before, after
 
 

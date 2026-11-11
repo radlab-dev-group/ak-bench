@@ -8,7 +8,9 @@ description: Selects the agent (and therefore the adapter) that executes a task.
 dimension:
   type: agent_reference
   source: experiment.agent.id
-  values: [codex]
+  # The agent ids this installation describes and implements; an experiment may
+  # only compare agents that exist (descriptors/agents/, agents/catalog.py).
+  values: [codex, fake, http]
   controllable: true
   observed: true
   configure_via: experiment descriptor agent.id resolved through the registry

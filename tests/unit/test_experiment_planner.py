@@ -702,3 +702,98 @@ def test_the_shipped_memory_suite_switches_the_plugin_mechanisms_on_per_arm(
     }
     # 13 tasks of the suite x 7 configurations, one repetition each.
     assert plan.counts.runs == 91
+
+
+# ------------------------------------------------------- agent comparison
+
+
+def _comparison(values: list[str]) -> dict:
+    """The shipped comparison, with the agent factor rewritten to ``values``."""
+    payload = document("agent-comparison")
+    dimensions = payload["experiment"]["factors"]["dimensions"]
+    assert [item["id"] for item in dimensions] == ["agent"]
+    dimensions[0]["values"] = values
+    return payload
+
+
+def test_an_agent_comparison_expands_one_variant_per_agent(
+    planner: ExperimentPlanner,
+) -> None:
+    """The agent is a factor like any other, so each arm gets its own variant."""
+    plan = planner.plan(experiment(_comparison(["codex", "fake"])))
+
+    assert plan.ok
+    assert [variant.agent_id for variant in plan.variants] == ["codex", "fake"]
+    assert len({variant.config_hash for variant in plan.variants}) == 2
+    assert plan.counts.variants == 2
+
+
+def test_an_agent_comparison_marks_the_capability_differences(
+    planner: ExperimentPlanner,
+) -> None:
+    """What the arms cannot do stays visible instead of becoming a zero."""
+    report = planner.validate(experiment(_comparison(["codex", "fake"])))
+
+    differences = [issue for issue in report.warnings if issue.code == "agent_capability_difference"]
+    assert len(differences) == 1
+    assert "codex vs fake" in differences[0].message
+    assert differences[0].context["agents"] == ["codex", "fake"]
+    # Only names both descriptors speak about are compared, so the reported set
+    # is exactly the shared names whose status differs between the two.
+    from akbench.descriptors import load_registry
+
+    registry = load_registry(REPO_ROOT / "descriptors")
+    codex = next(
+        entry.descriptor for entry in registry.entries() if getattr(entry.descriptor, "id", None) == "codex"
+    )
+    fake = next(
+        entry.descriptor for entry in registry.entries() if getattr(entry.descriptor, "id", None) == "fake"
+    )
+    shared = set(codex.agent.capabilities) & set(fake.agent.capabilities)
+    expected = {
+        name: [codex.agent.capabilities[name].value, fake.agent.capabilities[name].value]
+        for name in shared
+        if codex.agent.capabilities[name] is not fake.agent.capabilities[name]
+    }
+    assert differences[0].context["differences"] == expected
+    assert expected["timeout_control"] == ["unsupported", "verified"]
+
+
+def test_an_arm_without_a_descriptor_is_refused(tmp_path: Path) -> None:
+    """An arm the dimension allows but no descriptor describes is refused."""
+    import shutil
+
+    from akbench.experiments import parse_experiment
+
+    tree = tmp_path / "descriptors"
+    shutil.copytree(REPO_ROOT / "descriptors", tree)
+    (tree / "agents" / "http.yaml").unlink()
+    descriptors = load_registry(tree)
+    dataset = Dataset.load(REPO_ROOT / "datasets", base_dir=REPO_ROOT)
+    comparison = ExperimentPlanner(
+        descriptors=descriptors,
+        dataset=dataset,
+        datasets_dir=REPO_ROOT / "datasets",
+        implemented_evaluators={name for name, _ in default_registry().entries()},
+    )
+    report = comparison.validate(parse_experiment(_comparison(["codex", "http"])))
+
+    assert "agent_unknown" in codes(report)
+
+
+def test_a_single_arm_agent_comparison_warns(planner: ExperimentPlanner) -> None:
+    """An experiment that names itself a comparison but has one arm says so."""
+    payload = _comparison(["codex"])
+    plan = planner.plan(experiment(payload))
+
+    assert plan.ok
+    assert "agent_comparison_single_arm" in warnings(plan.validation)
+
+
+def test_an_agent_comparison_sends_no_configuration_to_either_arm(
+    planner: ExperimentPlanner,
+) -> None:
+    """A parameter belongs to an agent, so a shared arm configuration is empty."""
+    plan = planner.plan(experiment(_comparison(["codex", "fake"])))
+
+    assert all(variant.agent_config == {} for variant in plan.variants)

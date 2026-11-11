@@ -36,6 +36,8 @@ exit code is part of the interface.
 | `akbench report all/experiment/task` | write the static HTML reports |
 | `akbench export experiment UID [--no-prompts] [--no-diffs] [--no-traces]` | write one experiment out, screened; the switches leave prompts, the produced change or the traces out, and the export says what it left out |
 | `akbench export experiment UID --include-artifacts` | also copy the run's artifacts, the filters deciding what may be copied |
+| `akbench ui [--host H] [--port P]` | start the FastAPI dashboard; optional, the benchmark never needs it (README, "Serving the dashboard") |
+| `akbench migrate list` / `migrate sqlite FILE…` | list the imported namespaces, or import SQLite histories into the shared PostgreSQL database, one namespace each |
 
 ## Conventions that are part of the interface
 
@@ -67,6 +69,8 @@ exit code is part of the interface.
 | `experiment cancel exp-0001` | same | see below — there is no daemon to signal |
 | `report --experiment/--all` | `report experiment UID` / `report all` | subcommands rather than flags |
 | `export --experiment UID --format json` | `export experiment UID [--format json]` | as above |
+| (not in the sketch) | `migrate list` / `migrate sqlite FILE…` | added later: the shared mode needs a way to bring the local histories over, one namespace each |
+| (not in the sketch) | `ui` | added later: the dashboard is an optional add-on, and the plan's own rule is that the CLI plus static HTML are the primary interfaces |
 
 ## How cancel works without a daemon
 

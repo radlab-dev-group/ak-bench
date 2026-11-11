@@ -698,7 +698,12 @@ def scope_to_runs(data: HistoryData, runs: list[dict[str, Any]]) -> HistoryData:
 
 @dataclass(frozen=True)
 class ExperimentReport:
-    """One experiment: what it planned, what it ran, what it measured."""
+    """One experiment: what it planned, what it ran, what it measured.
+
+    ``arms`` is the comparison view of the same runs, pooled per agent instead
+    of per configuration; it is only filled when the experiment planned more
+    than one agent, so every other experiment page is exactly what it was.
+    """
 
     experiment: dict[str, Any]
     runs: list[dict[str, Any]]
@@ -707,6 +712,7 @@ class ExperimentReport:
     metrics: list[dict[str, Any]] = field(default_factory=list)
     summary: dict[str, Any] = field(default_factory=dict)
     unverified: list[dict[str, Any]] = field(default_factory=list)
+    arms: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -838,16 +844,69 @@ def task_definition(dataset: Any, uid: str) -> dict[str, Any] | None:
 
 
 def build_experiment_report(data: HistoryData, uid: str) -> ExperimentReport:
+    experiment = data.experiment(uid) or {"uid": uid}
     runs = order_by_start(data.runs_for_experiment(uid))
     return ExperimentReport(
-        experiment=data.experiment(uid) or {"uid": uid},
+        experiment=experiment,
         runs=runs,
         variants=data.variants_for(uid),
         snapshots=data.snapshots_for(uid),
         metrics=data.metrics_for(uid),
         summary=summarize_runs(runs),
         unverified=unverified_configurations(scope_to_runs(data, runs)),
+        # Only an experiment that declared itself a comparison states its arms:
+        # a matrix that happens to hold two agents is still one experiment of
+        # some other kind, and calling it a comparison would be a claim its
+        # descriptor never made.
+        arms=(
+            agent_arms(runs)
+            if experiment.get("type") == "agent_comparison"
+            else []
+        ),
     )
+
+
+def agent_arms(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The runs of one experiment, pooled per agent, in arm order.
+
+    A comparison asks one question per arm, so each arm is summarized over all
+    of its own runs with the same honest numbers the rest of the report uses.
+    An agent that never ran a run of this experiment has no arm here: an arm
+    without a run is a plan, not a result.
+    """
+    ordered = order_by_start(runs)
+    seen: list[str] = []
+    for run in ordered:
+        agent = str(run.get("agent") or "")
+        if agent and agent not in seen:
+            seen.append(agent)
+    arms: list[dict[str, Any]] = []
+    for agent in seen:
+        arm_runs = [run for run in ordered if str(run.get("agent") or "") == agent]
+        summary = summarize_runs(arm_runs)
+        run_count = len(arm_runs)
+        summary["runs"] = run_count
+        summary.update(
+            {
+                "agent": agent,
+                "arm_runs": arm_runs,
+                # the ranking ranks per-run means, so an arm states the same
+                "mean_input_tokens": mean_per_run(
+                    summary["input_tokens"], summary["input_token_runs"]
+                ),
+                "mean_output_tokens": mean_per_run(
+                    summary["output_tokens"], summary["output_token_runs"]
+                ),
+                "mean_total_tokens": mean_per_run(
+                    summary["total_tokens"], summary["token_runs"]
+                ),
+                "mean_tool_calls": mean_per_run(
+                    summary["tool_calls"], summary["tool_call_runs"]
+                ),
+            }
+        )
+        arms.append(summary)
+    return arms
 
 
 def build_variant_report(

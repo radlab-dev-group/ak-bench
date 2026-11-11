@@ -69,7 +69,7 @@ All five kinds of plan section 16 are implemented and registered in
 The `diff` and `python` evaluators take their subject from the task, not from
 the workspace, so both inputs travel with the task:
 
-```yaml
+```yaml fragment
 # a task judged by how close it gets to a reference change
 evaluator: diff_evaluator
 # and the reference, shipped with the task like a hidden test

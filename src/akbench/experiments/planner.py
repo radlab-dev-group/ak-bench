@@ -171,6 +171,10 @@ class ExperimentPlan:
     agent_id: str
     mode: str
     runtime_id: str | None
+    #: The environment the experiment declares for the runtime it owns, applied
+    #: to every arm (the plugin pipeline a full-factorial arm loads). A
+    #: combination's own runtime_env overrides it arm by arm.
+    runtime_env: dict[str, str] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -278,6 +282,9 @@ class ExperimentPlanner:
             agent_id=body.agent.id,
             mode=body.execution.mode,
             runtime_id=body.execution.runtime.id if body.execution.runtime else None,
+            runtime_env=dict(
+                body.execution.runtime.env if body.execution.runtime else {}
+            ),
         )
 
     # ------------------------------------------------------------ components
@@ -372,6 +379,70 @@ class ExperimentPlanner:
                         f"factor {factor.id!r} values {outside} are not in agent "
                         f"{agent.id} allowed set {parameter.allowed}",
                     )
+
+        self._check_comparison_arms(descriptor, factors, agent, report)
+
+    def _check_comparison_arms(
+        self,
+        descriptor: ExperimentDescriptor,
+        factors: list[Factor],
+        primary: AgentDescriptor,
+        report: ValidationReport,
+    ) -> None:
+        """Every arm of an agent comparison has to be an agent that exists.
+
+        An agent factor selects the adapter per variant, so the checks above
+        cover one arm only. The other arms are checked here against the same
+        rules, and what differs between them is recorded rather than smoothed
+        over: a capability one agent lacks stays visible in the report as
+        ``unsupported`` instead of becoming a zero (plan 6.5, F3).
+        """
+        arms = [
+            str(value)
+            for factor in factors
+            if factor.descriptor.dimension.source == AGENT_ID_SOURCE
+            for value in factor.values
+            if str(value) != primary.id
+        ]
+        body = descriptor.experiment
+        if body.type is ExperimentType.AGENT_COMPARISON and len(arms) < 1:
+            report.warn(
+                "agent_comparison_single_arm",
+                f"experiment {descriptor.id} compares agents but its matrix holds "
+                f"only {primary.id!r}: add an agent factor with at least one other agent id",
+            )
+        for agent_id in arms:
+            entry = self.descriptors.get(DescriptorKind.AGENT, agent_id)
+            if entry is None or not isinstance(entry.descriptor, AgentDescriptor):
+                report.error(
+                    "agent_unknown",
+                    f"agent {agent_id!r} is an arm of the comparison but is not described "
+                    f"in {DescriptorKind.AGENT.value}/",
+                )
+                continue
+            other = entry.descriptor
+            missing = other.missing_capabilities(body.required_capabilities)
+            if missing:
+                report.error(
+                    "capability_unavailable",
+                    f"agent {other.id} cannot provide: {', '.join(missing)}. "
+                    "Every arm of a comparison must provide the required capabilities.",
+                )
+            differences = _capability_differences(primary, other)
+            if differences:
+                report.warn(
+                    "agent_capability_difference",
+                    f"{primary.id} vs {other.id}: "
+                    + ", ".join(
+                        f"{name} {left.value}/{right.value}"
+                        for name, (left, right) in sorted(differences.items())
+                    ),
+                    agents=[primary.id, other.id],
+                    differences={
+                        name: [left.value, right.value]
+                        for name, (left, right) in sorted(differences.items())
+                    },
+                )
 
     def _check_environment(
         self, descriptor: ExperimentDescriptor, report: ValidationReport
@@ -518,15 +589,20 @@ class ExperimentPlanner:
         and an environment sent nowhere is not a configuration, so the plan is
         refused rather than pretending an arm chose its plugins.
         """
-        if not any(item.get(RUNTIME_ENV_KEY) for item in combinations):
+        declared = dict(selection.env or {})
+        if not declared and not any(item.get(RUNTIME_ENV_KEY) for item in combinations):
             return
         if selection.lifecycle != Lifecycle.MANAGED.value or runtime.runtime.managed is None:
+            whose = (
+                "execution.runtime.env"
+                if declared and not any(item.get(RUNTIME_ENV_KEY) for item in combinations)
+                else f"a combination declares {RUNTIME_ENV_KEY}"
+            )
             report.error(
                 "runtime_environment_needs_managed",
-                f"a combination declares {RUNTIME_ENV_KEY}, which is applied to the "
-                f"instance a run starts; runtime {runtime.id} with lifecycle "
-                f"{selection.lifecycle or 'default'} has no managed launch block, so "
-                "there is no process to set it on",
+                f"{whose}, which is applied to the instance a run starts; runtime "
+                f"{runtime.id} with lifecycle {selection.lifecycle or 'default'} has no "
+                "managed launch block, so there is no process to set it on",
             )
 
     def _check_plugin_control(
@@ -900,6 +976,23 @@ class ExperimentPlanner:
         assignments = strategy(factors, baseline, selected)
         return assignments, [{} for _ in assignments]
 
+
+
+def _capability_differences(
+    left: AgentDescriptor, right: AgentDescriptor
+) -> dict[str, tuple[Any, Any]]:
+    """Capabilities the two agents declare differently.
+
+    Only names both descriptors speak about are compared: a capability one
+    agent omits entirely is a gap, not a difference, and the gap shows up when
+    a run asks for it.
+    """
+    differences: dict[str, tuple[Any, Any]] = {}
+    for name, status in left.agent.capabilities.items():
+        other = right.agent.capabilities.get(name)
+        if other is not None and other is not status:
+            differences[name] = (status, other)
+    return differences
 
 def _agent_parameter(factor: Factor) -> str | None:
     """The agent configuration parameter a factor drives, when it drives one."""

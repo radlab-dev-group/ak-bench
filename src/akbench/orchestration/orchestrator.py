@@ -198,6 +198,16 @@ class RunOrchestrator:
             context.agent_status = result.status.value
             context.exit_code = result.exit_code
             context.observations = dict(result.observations) or None
+            # A flat total is a sum, so it is only stated when the parts exist;
+            # an adapter that reports parts but no total keeps the total missing
+            # rather than having one invented for it (plan 6.3).
+            if (
+                result.usage is not None
+                and result.usage.total_tokens is not None
+                and context.observations
+                and context.observations.get("token_usage") is not None
+            ):
+                context.observations["token_usage"]["total_tokens"] = result.usage.total_tokens
 
             context.transition(RunState.COLLECTING, "observations collected")
 

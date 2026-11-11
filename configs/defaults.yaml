@@ -19,9 +19,11 @@ paths:
   logs_dir: data/logs
 
 database:
-  # Recorded benchmarks go to PostgreSQL by default. "sqlite" writes the
-  # paths.database_file SQLite file instead; database.url overrides both.
-  backend: postgres
+  # The local default is the SQLite file at paths.database_file, so a fresh
+  # clone runs without a server, a credential or a .env. PostgreSQL is the
+  # shared mode: backend: postgres plus the AKBENCH_PG_* names (or a .env with
+  # them). database.url overrides both.
+  backend: sqlite
   url: null
   postgres:
     # Defaults of scripts/run-postgres.sh; .env (AKBENCH_PG_*) wins over them.

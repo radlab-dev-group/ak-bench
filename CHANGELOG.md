@@ -14,8 +14,98 @@ release tagged as `v<version>`.
 
 ## [Unreleased]
 
+### Changed
+
+- **The default database is SQLite.** A fresh clone records to
+  `data/akbench.sqlite` with no server, no credential and no `.env`:
+  `akbench init && akbench doctor` run on a checkout that has never seen a
+  database. PostgreSQL is now the shared mode, chosen on purpose with
+  `AKBENCH_DB_BACKEND=postgres` plus the `AKBENCH_PG_*` names; installations
+  already on it are unaffected, because the configuration says which engine a
+  run belongs to and there is no automatic migration between them. `README.md`,
+  `.env.example` and `docs/STORAGE.md` state which mode is the default and what
+  each one is for.
+
 ### Added
 
+- **`tests/unit/test_bench_ui_import.py`**: the dashboard is an add-on, and
+  importing it or building the app must reach for no database: `akbench ui`
+  starts the FastAPI app on request, and the benchmark never depends on it.
+- **`configs/experiments/auto-codex-on-off.yaml`** (plan 25, C): the routing
+  plugin alone, in its four configurations, with the model pinned to the
+  `auto_codex` trigger alias and the plugin loaded in every arm.
+- **`configs/experiments/full-matrix-12.yaml`** (plan 25, E): memory × routing ×
+  model as a real `full_factorial` — twelve configurations over two tasks, each
+  started on an instance the experiment owns with both plugins present. Its
+  header names the control rows (routing fires on the alias only) and states how
+  its off arms differ from `full-matrix.yaml`'s: a plugin switched off, not a
+  plugin absent.
+- **`execution.runtime.env`**: an experiment whose matrix is expanded by a
+  strategy rather than written out has no combination to carry a launch
+  environment, so it may declare one once, for every arm. Applied to the
+  instance the run starts, refused against an external runtime
+  (`runtime_environment_needs_managed`), and overridden arm by arm by a
+  combination's own `runtime_env`. The runtime descriptor maps the two routing
+  toggles onto the plugin's environment like it already mapped the knowledge
+  ones, so a routing factor is a fact about a process rather than a recorded
+  wish.
+- **`tests/unit/test_shipped_experiments.py`**: every YAML in
+  `configs/experiments/` is loaded and planned, declares an evaluator, a metric
+  and a timeout, and stays inside its own `limits.max_runs`; the two matrices
+  are checked against the numbers their acceptance criteria name. A new
+  experiment cannot join the directory without passing the same gate.
+- **`fake` agent** (the reference adapter, plan 6.5, F1): promoted from a
+  contract-test helper to a real, registered agent —
+  `src/akbench/agents/fake.py`, descriptor `descriptors/agents/fake.yaml`,
+  one entry in `agents/catalog.py`. Deterministic, in-memory, and its behaviour
+  is a controllable per-run parameter (`complete`/`noop`/`hang`/`fail`/
+  `infrastructure_error`, with the aliases `solve` and `timeout`); the
+  contract suite in `tests/contract/test_fake_agent_contract.py` was extended
+  for the scripting, the aliases and the per-run override.
+- **`http` agent** (the "agent API" class, plan 6.5, F2):
+  `src/akbench/agents/http.py`, stdlib-only, speaking AK-Bench's own
+  agent-server protocol — `POST /tasks`, `GET /sessions/{id}`,
+  `POST /sessions/{id}/cancel`, `GET /sessions/{id}/result`, optional
+  `GET /version` — documented in `docs/AGENT_ADAPTERS.md` as the contract an
+  agent server must fulfil. The workspace is the server's, token usage is
+  passed through only when the server reports it, and an unreachable server,
+  an HTTP 5xx or a malformed body is an infrastructure error, never an agent
+  failure. The contract suite runs against a real loopback stub server
+  (`tests/contract/stubs/agent_server_stub.py`).
+- **Agent comparison** (plan 6.5, F3): `configs/experiments/agent-comparison.yaml`
+  varies the agent and nothing else — `codex` and `fake` on the same task, the
+  agent as a real factor. The planner now checks every arm of an
+  `agent_comparison` against the same rules as the primary and records the
+  capability differences between the arms (`agent_capability_difference`)
+  rather than smoothing them over; an experiment that declares itself a
+  comparison but holds a single arm is told so. The report of a comparison
+  gains an "Agent comparison" section: one row per agent, over every run that
+  experiment recorded for it, with a measure an agent never reported left
+  "not measured" instead of turned into a zero. A single-agent experiment
+  renders no such section.
+- **`configs/experiments/arena-roadmap-knowledge.yaml`**: the fifty new tasks in
+  one arm — the managed local router, the `auto_codex` routing alias over the
+  27B base model, and the knowledge plugin reading and writing (pipeline
+  `agentic_routing_codex,agentic_knowledge`, `knowledge_enabled: true` applied
+  to the process the run owns). `experiment validate` and `plan` are green:
+  1 variant over the 50 tasks.
+- **Fifty new tasks: the easy/medium/hard family and the roadmap task types.**
+  The first ten are one `bug_fix` and one `new_feature` each over five new
+  standard-library fixtures (`timetable`, `quiz`, `garden`, `playlist`,
+  `cachekit`), filling the difficulty levels the dataset barely touched. The
+  other forty are the seven task types the roadmap asked for — `debugging`
+  (a defect the fixture suite never looks at), `security` (a vulnerability in
+  the base code), `refactoring` (a declared target structure), `testing`
+  (the agent writes the tests), `code_review` (a PR and a `REVIEW.md`),
+  `performance` (correct but counted work) and `architecture` (a declared
+  boundary) — each on its own standard-library fixture, with the seven
+  categories enabled. Every task is proven by its integrity suite: each
+  mutation `verified` with the seed suite green in both states, each missing
+  feature `NotImplementedError` on the seed and complete under an isolated
+  reference, and each roadmap task failing its hidden tests on the base
+  fixture and passing hidden, public and fixture suites with its reference
+  solution, which lives in the test files and never in a seed. The dataset is
+  85 tasks; `akbench dataset validate` reports all of them.
 - **Export filters: leave prompts, diffs or traces out on purpose** (plan
   section 21). `akbench export experiment` gains `--no-prompts` (the agent's
   own text: its final message, `last_message.txt`, and the prompt fields in
@@ -93,6 +183,37 @@ release tagged as `v<version>`.
   `akbench evaluate task` gained the inputs these evaluators need —
   `--reference-patch`, `--script`, `--command` — and an unknown evaluator id is
   still an explicit `EvaluatorNotFound`, never a stand-in.
+- **The eleven missing documentation files (plan phase K, §28).** Every one of
+  the plan's §28 list now exists and describes only what the code does:
+  `docs/ARCHITECTURE.md` (the plan-to-code module mapping, the §2 rules, and
+  the role of the optional `bench_ui`), `docs/RUNTIME_ADAPTERS.md` (the
+  `RuntimeManager` contract, the managed/external lifecycles, how a factor
+  value becomes a process configuration through `factor_env` and the launch
+  environment, and model verification from the instance log),
+  `docs/TASK_FORMAT.md` (`task.yaml` field by field, `parts.json`, hidden and
+  public tests, the two rules that keep the defect honest),
+  `docs/CATEGORY_SYSTEM.md` (the nine categories, their difficulty gates,
+  adding a category without an engine change),
+  `docs/EXPERIMENT_DESCRIPTORS.md` (every block of `ExperimentBody`, the
+  validation codes, the limits), `docs/DIMENSION_DESCRIPTORS.md` (the nine
+  types, `source` routing, controllability, the shipped dimensions),
+  `docs/EXPERIMENT_TYPES.md` (when to use each of the four types and what the
+  validator refuses), `docs/FACTORIAL_DESIGN.md` (the five strategies,
+  baseline and pinned values, deduplication, the cost bound and the limits),
+  `docs/ISOLATION_AND_SECURITY.md` (the threat model, what is enforced today,
+  the deferred Docker sandbox named as deferred, and what AK-Bench explicitly
+  does not guarantee). `docs/AGENT_ADAPTERS.md` and `docs/EVALUATORS.md`
+  already carry the `fake`/`http` protocol and the five evaluators from phases
+  F and C, so the plan's list of documentation files is complete.
+  `docs/CLI.md` gains the commands that postdate the plan's sketch (`ui`,
+  `migrate`) with their aliases, and `README.md` links the plan-conformance
+  audit next to the plan it describes.
+- **`tests/unit/test_docs_examples.py`**: every complete YAML example in the
+  docs is run through the same loader the platform uses: a documented field
+  that no longer validates in code is a failing test. A block whose fence says
+  `yaml fragment` shows part of a larger file and is skipped, and the suite
+  asserts a minimum number of complete examples are validated, so it cannot
+  pass by checking nothing.
 
 ### Fixed
 

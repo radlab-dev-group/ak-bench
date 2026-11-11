@@ -115,7 +115,7 @@ agent and stops it when the run ends, and the run keeps the evidence.
 
 The launch block is declared in the descriptor, not in the experiment:
 
-```yaml
+```yaml fragment
 runtime:
   adapter: llm_router
   supported_lifecycles: [managed]

@@ -1,18 +1,19 @@
 # Storage
 
-The project's state lives in one database — PostgreSQL by default, a SQLite
-file when `database.backend: sqlite` is configured — created and migrated by
-`akbench init`. The connection parameters of the default backend come from the
-project `.env` (`AKBENCH_PG_*`, the names `scripts/run-postgres.sh` reads);
-`database.url` pins a full SQLAlchemy URL over both. This page describes the
-layout, the history model added in phase 11, and the rules that keep a recorded
-result honest.
+The project's state lives in one database — a SQLite file by default, at
+`paths.database_file` (`data/akbench.sqlite`), and PostgreSQL when the shared
+mode is configured with `database.backend: postgres` — created and migrated by
+`akbench init`. The default needs no server, no credential and no `.env`; the
+shared mode's parameters come from the project `.env` (`AKBENCH_PG_*`, the
+names `scripts/run-postgres.sh` reads), and `database.url` pins a full
+SQLAlchemy URL over both. This page describes the layout, the history model
+added in phase 11, and the rules that keep a recorded result honest.
 
 ## Namespaces: many histories, one server
 
 A working directory has exactly one history, so two of them cannot share one
-schema: they would collide on the first primary key. PostgreSQL keeps them
-apart with schemas, one per imported SQLite file:
+schema: they would collide on the first primary key. In the shared mode
+PostgreSQL keeps them apart with schemas, one per imported SQLite file:
 
 ```bash
 akbench migrate sqlite data/akbench.sqlite          # → namespace `akbench`

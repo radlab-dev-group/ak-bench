@@ -19,6 +19,7 @@ from akbench.cli.main import app
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUB = REPO_ROOT / "tests" / "contract" / "stubs" / "codex_fixer_stub.py"
+EXPERIMENTS = REPO_ROOT / "configs" / "experiments"
 runner = CliRunner()
 
 
@@ -142,3 +143,36 @@ def test_report_on_an_empty_database_is_a_hint_not_a_crash(project: Path) -> Non
     result = runner.invoke(app, ["report", "all"])
     assert result.exit_code == 1
     assert "akbench init" in result.output
+
+
+def test_the_agent_comparison_report_shows_the_arms_side_by_side(project: Path) -> None:
+    """The report page of a comparison names every agent, with its numbers.
+
+    A single-agent experiment must not gain the section at all: its page
+    renders exactly what it did before, so the new view belongs to comparisons
+    rather than becoming noise on every experiment.
+    """
+    for experiment in (EXPERIMENTS / "agent-comparison.yaml",
+                       EXPERIMENTS / "wordcount-direct-sanity.yaml"):
+        result = runner.invoke(
+            app, ["experiment", "run", str(experiment), "--store", "--json"]
+        )
+        assert result.exit_code == 0, result.output
+
+    comparison = runner.invoke(
+        app, ["report", "experiment", "agent-comparison@1.0.0", "--json"]
+    )
+    assert comparison.exit_code == 0, comparison.output
+    body = Path(_json(comparison.output)["report"]).read_text(encoding="utf-8")
+    assert "Agent comparison" in body
+    assert "&gt;codex&lt;" not in body  # the agent names are linked, not escaped away
+    assert ">codex" in body
+    assert ">fake" in body
+
+    single = runner.invoke(
+        app, ["report", "experiment", "wordcount-direct-sanity@1.0.0", "--json"]
+    )
+    assert single.exit_code == 0, single.output
+    assert "Agent comparison" not in Path(_json(single.output)["report"]).read_text(
+        encoding="utf-8"
+    )

@@ -129,11 +129,124 @@ pass.
 | `tidewater-snapshot-001` | `new_feature` | expert | `tidewater` | the node half of SPEC section 6 is declared; the isolated reference takes the record, keeps the boundary term, restarts from it, and lands the corpus entry through the documented tools |
 | `tidewater-snapshot-002` | `new_feature` | expert | `tidewater` | the transfer half of SPEC section 6 is declared; the reference streams and installs the snapshot, survives a crash mid-transfer, and lands its own corpus entry the same way |
 | `walqueue-compaction-002` | `bug_fix` | expert | `walqueue` | base passes; four cooperating compaction regressions fail their own witnesses and the combined mutation preserves the seed suite |
+| `timetable-overlap-001` | `bug_fix` | easy | `timetable` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `quiz-streak-001` | `bug_fix` | medium | `quiz` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `garden-watering-001` | `bug_fix` | medium | `garden` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `playlist-queue-001` | `bug_fix` | hard | `playlist` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `cachekit-eviction-001` | `bug_fix` | hard | `cachekit` | passes on the base commit, fails once the mutation patch is applied (`verified`) |
+| `timetable-slots-001` | `new_feature` | easy | `timetable` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `quiz-ranking-001` | `new_feature` | medium | `quiz` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `garden-plan-001` | `new_feature` | medium | `garden` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `playlist-mix-001` | `new_feature` | hard | `playlist` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `cachekit-ttl-001` | `new_feature` | hard | `cachekit` | fails on the base commit because the feature is missing; passes once the agent implements the specification |
+| `csvkit-quoted-field-001` | `debugging` | easy | `csvkit` | fails on the base commit because the defect is present; passes once the agent fixes it |
+| `dates-month-boundary-001` | `debugging` | easy | `dates` | fails on the base commit because the defect is present; passes once the agent fixes it |
+| `indexer-stale-entry-001` | `debugging` | medium | `indexer` | fails on the base commit because the defect is present; passes once the agent fixes it |
+| `pipeline-stage-order-001` | `debugging` | hard | `pipeline` | fails on the base commit because the defect is present; passes once the agent fixes it |
+| `retryq-retry-order-001` | `debugging` | medium | `retryq` | fails on the base commit because the defect is present; passes once the agent fixes it |
+| `syncer-conflict-001` | `debugging` | hard | `syncer` | fails on the base commit because the defect is present; passes once the agent fixes it |
+| `authkit-token-reuse-001` | `security` | expert | `authkit` | fails on the base commit because the vulnerability is present; passes once the agent closes it |
+| `authkit-token-timing-001` | `security` | hard | `authkit` | fails on the base commit because the vulnerability is present; passes once the agent closes it |
+| `configkit-unsafe-load-001` | `security` | hard | `configkit` | fails on the base commit because the vulnerability is present; passes once the agent closes it |
+| `fetcher-open-redirect-001` | `security` | expert | `fetcher` | fails on the base commit because the vulnerability is present; passes once the agent closes it |
+| `filebox-path-traversal-001` | `security` | medium | `filebox` | fails on the base commit because the vulnerability is present; passes once the agent closes it |
+| `shopdb-sql-injection-001` | `security` | medium | `shopdb` | fails on the base commit because the vulnerability is present; passes once the agent closes it |
+| `billing-split-function-001` | `refactoring` | medium | `billing` | fails on the base commit because the target structure is missing; passes once the agent refactors |
+| `forms-extract-validator-001` | `refactoring` | easy | `forms` | fails on the base commit because the target structure is missing; passes once the agent refactors |
+| `queuekit-deque-migration-001` | `refactoring` | hard | `queuekit` | fails on the base commit because the target structure is missing; passes once the agent refactors |
+| `reportgen-split-module-001` | `refactoring` | hard | `reportgen` | fails on the base commit because the target structure is missing; passes once the agent refactors |
+| `rules-early-return-001` | `refactoring` | easy | `rules` | fails on the base commit because the target structure is missing; passes once the agent refactors |
+| `session-explicit-state-001` | `refactoring` | medium | `session` | fails on the base commit because the target structure is missing; passes once the agent refactors |
+| `cachekit-lru-001` | `testing` | easy | `cachekit` | the agent's tests must pass on the correct code and fail on a mutated variant |
+| `garden-watering-tests-001` | `testing` | hard | `garden` | the agent's tests must pass on the correct code and fail on a mutated variant |
+| `playlist-queue-tests-001` | `testing` | hard | `playlist` | the agent's tests must pass on the correct code and fail on a mutated variant |
+| `quiz-streak-tests-001` | `testing` | medium | `quiz` | the agent's tests must pass on the correct code and fail on a mutated variant |
+| `timetable-overlap-tests-001` | `testing` | medium | `timetable` | the agent's tests must pass on the correct code and fail on a mutated variant |
+| `wordcount-top-words-001` | `testing` | easy | `wordcount` | the agent's tests must pass on the correct code and fail on a mutated variant |
+| `review-api-break-001` | `code_review` | hard | `apikit` | REVIEW.md must name the seeded issues in the PR |
+| `review-leak-001` | `code_review` | easy | `leakkit` | REVIEW.md must name the seeded issues in the PR |
+| `review-pr-large-001` | `code_review` | hard | `largekit` | REVIEW.md must name the seeded issues in the PR |
+| `review-pr-multi-001` | `code_review` | medium | `multikit` | REVIEW.md must name the seeded issues in the PR |
+| `review-pr-small-001` | `code_review` | easy | `reviewkit` | REVIEW.md must name the seeded issues in the PR |
+| `review-race-001` | `code_review` | medium | `racekit` | REVIEW.md must name the seeded issues in the PR |
+| `config-cache-001` | `performance` | hard | `configkit` | fails on the base commit because the implementation does too much work (counted operations); passes once optimized |
+| `dedup-linear-001` | `performance` | medium | `dedupkit` | fails on the base commit because the implementation does too much work (counted operations); passes once optimized |
+| `fib-memo-001` | `performance` | hard | `fibkit` | fails on the base commit because the implementation does too much work (counted operations); passes once optimized |
+| `index-lookup-001` | `performance` | medium | `indexkit` | fails on the base commit because the implementation does too much work (counted operations); passes once optimized |
+| `inverted-index-001` | `performance` | expert | `searchkit` | fails on the base commit because the implementation does too much work (counted operations); passes once optimized |
+| `sorted-search-001` | `performance` | medium | `sortedkit` | fails on the base commit because the implementation does too much work (counted operations); passes once optimized |
+| `eventbus-decoupling-001` | `architecture` | expert | `eventbus` | fails on the base commit because the target structure is missing; passes once the agent restructures |
+| `inventory-repository-001` | `architecture` | hard | `inventory` | fails on the base commit because the target structure is missing; passes once the agent restructures |
+| `plugcore-registry-001` | `architecture` | expert | `plugcore` | fails on the base commit because the target structure is missing; passes once the agent restructures |
+| `shopcore-layered-001` | `architecture` | hard | `shopcore` | fails on the base commit because the target structure is missing; passes once the agent restructures |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
 `tests/integration/test_workspaces.py`: the hidden tests must fail on the base
 state and pass against a reference implementation.
+
+### The easy/medium/hard family
+
+Ten tasks over five new standard-library fixtures (`timetable`, `quiz`,
+`garden`, `playlist`, `cachekit`), one `bug_fix` and one `new_feature` per
+fixture, fill the difficulty levels the earlier dataset barely touched
+(two `easy`, no `medium`, two `hard` before them). Each fixture is a
+complete, working package with one finished module carrying the bug-fix
+defect and one declared stub carrying the new-feature specification, so
+both tasks share the same seed exactly as the `bookshop` and `notesapi`
+pairs do. Difficulty follows the shape of the work: `easy` is a single
+function with a single boundary (`timetable-overlap-001`,
+`timetable-slots-001`), `medium` adds a second interacting rule (a streak
+reset, a rain postponement, a shared rank, a capacity-limited plan), and
+`hard` keeps the defect small but hides it behind a pipeline or a stateful
+sequence (disc-before-track ordering, a read that must refresh recency, a
+greedy mix with a tolerance, a TTL cache whose `put` reclaims expired
+entries before evicting a live one). The integrity suite is
+`tests/integration/test_arena_dataset_tasks.py`: it proves every new
+mutation `verified` with the seed suite green in both states, and every
+new feature missing on the seed (`NotImplementedError`) and complete under
+its isolated reference, which never enters a seed or an agent workspace.
+
+```bash
+python -m pytest tests/integration/test_arena_dataset_tasks.py
+```
+
+### The roadmap task types
+
+Forty tasks over seven categories the roadmap asked for (`debugging`,
+`security`, `refactoring`, `testing`, `code_review`, `performance`,
+`architecture`), each on its own standard-library fixture, so a run never
+depends on a package the machine may not have. The fixtures are complete,
+working packages whose own suite is green on the base commit; what each task
+changes about them is what the category is about:
+
+- `debugging` — a defect is present in the base code and the fixture's suite
+  never looks where it bites (a quoted CSV field, a December boundary, a
+  re-queued task that jumps the line). The agent diagnoses and repairs.
+- `security` — a vulnerability is present in the base code (an interpolated
+  SQL name, a token compared with `==`, a path joined from user input, an
+  unvalidated redirect, a config loaded through `eval`). The agent closes it
+  without changing the API.
+- `refactoring` — the target structure is declared and missing (a predicates
+  module, an extracted validator, an explicit state object). Behaviour is
+  pinned by the hidden tests; only the shape may change.
+- `testing` — the agent writes the tests: they must pass on the code as it
+  is and fail on a mutated variant, which is the only way a test suite is
+  worth scoring.
+- `code_review` — the agent reads a PR (`PR.md` in the workspace) and writes
+  `REVIEW.md`; the hidden tests check that the seeded findings are named.
+- `performance` — the base implementation is correct but does too much work,
+  counted by the hidden tests (a profiled Fibonacci, a quadratic dedup, a
+  scan where a lookup was expected).
+- `architecture` — the base dispatches or reaches across a boundary the task
+  declares away (a registry instead of an `if`/`elif` chain, a repository
+  object, a service that depends on a publisher interface).
+
+The integrity proof is `tests/integration/test_roadmap_dataset_tasks.py`:
+for every one of the forty it shows the hidden tests failing on the base
+fixture, the fixture's own suite passing there, and the hidden, public and
+fixture suites all passing once the reference solution — kept in the test
+file, never in a seed — is applied.
 
 ### What makes the harder tasks hard
 

@@ -284,7 +284,7 @@ eksperyment z nieistniejącym środowiskiem jest odrzucany na etapie `validate`.
 
 ---
 
-## FAZA F — Drugi agent i klasy agentów (§6.5, §25A)
+## FAZA F ✅ ZREALIZOWANA — Drugi agent i klasy agentów (§6.5, §25A)
 
 Audyt: tylko `codex` (process). Framework gotowy, ale `agent_comparison` nieużywalny.
 
@@ -376,7 +376,7 @@ na external bez sygnałów nadal `unavailable` (test negatywny).
 
 ---
 
-## FAZA H — Brakujące przykłady eksperymentów (§25 C, E, A)
+## FAZA H ✅ ZREALIZOWANA — Brakujące przykłady eksperymentów (§25 C, E, A)
 
 ### H1. Auto Codex ON/OFF (przykład C)
 
@@ -432,7 +432,7 @@ nawet bez flag. E2E: eksport z flagami przechodzi walidację schematu JSON.
 
 ---
 
-## FAZA J — Baza domyślna: SQLite (§5, §27) + porządek z `bench_ui`
+## FAZA J ✅ ZREALIZOWANA — Baza domyślna: SQLite (§5, §27) + porządek z `bench_ui`
 
 Audyt: plan mówi SQLite, repo domyślnie PostgreSQL (odstępstwo udokumentowane,
 ale niezgodne z §27 MVP). Decyzja: **wróć do SQLite jako domyślnej** (zgodność z planem),
@@ -460,7 +460,7 @@ bez PostgreSQL i bez `.env`; `pytest` zielony w trybie domyślnym.
 
 ---
 
-## FAZA K — Dokumentacja (§28): brakujące 11 plików
+## FAZA K ✅ ZREALIZOWANA — Dokumentacja (§28): brakujące 11 plików
 
 Każdy plik: opisuje **tylko istniejącą** implementację (po Fazach A–J), z przykładami
 YAML/kodu zgodnymi z kodem. Szablon: cel, pojęcia, format, przykłady, ograniczenia.
@@ -609,14 +609,14 @@ błąd jest jawny (`infrastructure_error`), nie cichy.
 - [x] C 5 evaluatorów zarejestrowanych i przetestowanych — `DiffEvaluator`, `StaticAnalysisEvaluator`, `PythonEvaluator` w `src/akbench/evaluators/`; `default_registry()` → 5 (`pytest`, `command`, `diff`, `static_analysis`, `python`); `tests/unit/test_evaluators_supplementary.py` (11) + `test_evaluators.py` (test równości kindów z rejestrem) + 3 testy E2E CLI w `tests/integration/test_evaluate_cli.py`; `akbench evaluate task` przyjmuje `--reference-patch/--script/--command`; docs `docs/EVALUATORS.md` z sekcją o każdym. Diff nigdy nie zwraca `passed` (test).
 - [x] D concurrency, resume, cancel, `experiment show`, `runtime start/stop/verify/status`, `evaluator list` — `concurrency` z `execution_policy` realizowany przez `ThreadPoolExecutor` w `src/akbench/cli/experiments.py::_run_experiment` (wyniki w kolejności planu, `--concurrency` nadpisuje, ostrzeżenie `concurrency_above_one` w planie); `experiment resume UID` (klucz komórki: task+variant+repetition z historii, `cancelled` się ponawia, drugi resume = zero runów); `experiment cancel UID` + SIGINT/SIGTERM w `run single`/`agent run` przez `CancelToken`/`FileCancelSource` (`src/akbench/orchestration/cancellation.py`), run kończy się `cancelled` z zachowanymi artefaktami; `PREPARE_LOCK` w `datasets/workspace.py` (git worktree na współdzielonym bare cache); nowe komendy `experiment show`, `runtime start/stop/verify/status`, `evaluator list`; testy: `tests/unit/test_cancellation.py` (7), 3 testy cancel w `tests/integration/test_orchestrator.py`, `tests/integration/test_experiment_scheduler_cli.py` (5, w tym cancel procesu przez marker); `docs/CLI.md` z tabelą plan vs implementacja
 - [x] E kind `environment` + deskryptory + walidacja w plannerze — `src/akbench/descriptors/environment.py` (`EnvironmentBody`: os/python/tools/network/filesystem/sandbox/image/limits; docker wymaga image, host go odrzuca), `DescriptorKind.ENVIRONMENT` + rejestracja w `DESCRIPTOR_MODELS`, katalog `descriptors/environments/` (`local-host.yaml`, `docker-python312.yaml`); `experiment.environment: <id>` w `experiments/descriptor.py`, walidacja `_check_environment` w plannerze (`environment_unknown`, `environment_sandbox_unavailable` — Faza B nie istnieje, więc docker jest odrzucany, a nie udawany), digest w `descriptor_snapshots`, snapshot środowiska w rekordzie runu i w manifeście obok `sandbox_image` (`orchestration/lifecycle.py`, `storage/manifest.py`); E2 = tabela mapowania §5.1 w `docs/ARCHITECTURE.md` → Faza K (tu bez przenosin plików); testy: `tests/unit/test_environment_descriptor.py` (5) + 6 testów plannera (walidacja, nieznane środowisko, docker, concurrency warning) + E2E manifestu w `tests/integration/test_experiment_scheduler_cli.py`; docs: `docs/DESCRIPTOR_SYSTEM.md`, `docs/EXPERIMENTS.md`, `docs/STORAGE.md`
-- [ ] F agenci `fake` + `http`, `agent-comparison.yaml` E2E
+- [x] F agenci `fake` + `http`, `agent-comparison.yaml` E2E — `src/akbench/agents/fake.py` + `descriptors/agents/fake.yaml` (rejestracja w `agents/catalog.py`), `src/akbench/agents/http.py` + `descriptors/agents/http.yaml` z protokołem AK-Bench (`POST /tasks`, `GET /sessions/{id}`, `POST /sessions/{id}/cancel`, `GET /sessions/{id}/result`, `GET /version`); testy kontraktowe: `tests/contract/test_fake_agent_contract.py` i `test_http_agent_contract.py` (prawdziwy serwer-stub `tests/contract/stubs/agent_server_stub.py`, nie mock); `configs/experiments/agent-comparison.yaml` planuje się (dwa ramiona: codex, fake), planner sprawdza każde ramię i recorduje różnice capabilities (`agent_capability_difference`), raport ma sekcję Agent comparison — commity `e927e78`, `f921954`, `9737a44`
 - [ ] G metryki knowledge mierzone z logu managed (min. write/retrieval count), `unavailable` bez sygnałów
-- [ ] H `auto-codex-on-off.yaml`, `full-matrix-12.yaml` (12 wariantów), strażnik shipped YAML-i
+- [x] H `auto-codex-on-off.yaml`, `full-matrix-12.yaml` (12 wariantów), strażnik shipped YAML-i — `configs/experiments/auto-codex-on-off.yaml` (dwa przełączniki routingu, model pinowany do aliasu `auto_codex`), `configs/experiments/full-matrix-12.yaml` (`full_factorial` knowledge × routing × model = 12 wariantów, liczba asercjonowana w teście); nowa możliwość `execution.runtime.env` (środowisko startowe instancji dla macierzy rozbudowywanej przez strategię, walidacja `runtime_environment_needs_managed`) + `factor_env` przełączników routingu w deskryptorze runtime; strażnik `tests/unit/test_shipped_experiments.py` (każdy YAML z `configs/experiments/` ładowany i planowany, własne limity, ewaluator/metryka/timeout) — commit `0c68c7c`
 - [x] I flagi eksportu `--no-prompts/--no-diffs/--no-traces` (`src/akbench/export/filters.py`: `ExportFilters`, `filter_document`, `filter_payload`;
-- [ ] J SQLite domyślnie, Postgres opt-in, `init/doctor` bez `.env`
+- [x] J SQLite domyślnie, Postgres opt-in, `init/doctor` bez `.env` — `configs/defaults.yaml` (`database.backend: sqlite`, `paths.database_file: data/akbench.sqlite`) + `src/akbench/config/models.py`; Postgres przez `AKBENCH_DB_BACKEND=postgres` + `AKBENCH_PG_*`; README, `.env.example` i `docs/STORAGE.md` zaktualizowane; `tests/unit/test_config.py` (domyślną bazą jest plik SQLite, Postgres tylko jawnie) i `tests/unit/test_bench_ui_import.py` (import `bench_ui` i `create_app()` nie wymagają bazy); na świeżym klonie `akbench init && akbench doctor` przeszły bez `.env` i bez Postgresa — commit `f8abea5`
 
 ### Dokumentacja i release (Fazy K–L)
-- [ ] K wszystkie 23 pliki z §28 + test przykładów z docs
+- [x] K wszystkie 23 pliki z §28 + test przykładów z docs — dopisane: `docs/ARCHITECTURE.md` (diagram §3, mapa mapowania §5.1 → realne moduły, zasady §2, rola `bench_ui`), `docs/RUNTIME_ADAPTERS.md`, `docs/TASK_FORMAT.md`, `docs/CATEGORY_SYSTEM.md`, `docs/EXPERIMENT_DESCRIPTORS.md`, `docs/DIMENSION_DESCRIPTORS.md`, `docs/EXPERIMENT_TYPES.md`, `docs/FACTORIAL_DESIGN.md`, `docs/ISOLATION_AND_SECURITY.md` (Docker/Faza B oznaczone wprost jako `deferred`); rozszerzone: `docs/AGENT_ADAPTERS.md` (`fake` + `http` + protokół HTTP) i `docs/EVALUATORS.md` (5 evaluatorów). `docs/CLI.md` ma tabelę §22 z aliasami i komendami powstałymi po szkicu (`ui`, `migrate`), `README.md` ma sekcję Plan conformance z linkami do audytu. Nazwy z listy §28 są pokryte w całości, przy czym trzy mają inne nazwy niż w planie, a treść pełną: `DATASET_FORMAT.md` → `docs/DATASETS.md`, `PLUGIN_DESCRIPTORS.md` → `docs/PLUGINS.md`, `KNOWLEDGE_EXPERIMENTS.md` → `docs/KNOWLEDGE_REPLAY.md`. Test: `tests/unit/test_docs_examples.py` — każdy kompletny blok `yaml` z `docs/` jest walidowany loaderem właściwego deskryptora, fragmenty są oznaczane `yaml fragment`, a test pilnuje, żeby nie przeszedł, kiedy nie waliduje niczego.
 - [ ] L1 checklist §1–30 planu źródłowego z dowodami w audycie
 - [ ] L2 pełna macierz testów zielona na świeżym klonie
 - [ ] L3 demonstracja 12 punktów §30

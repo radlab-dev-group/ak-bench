@@ -154,6 +154,18 @@ def test_validate_flags_unknown_category(tmp_path: Path, registry: DescriptorReg
 
 
 def test_validate_flags_disabled_category(tmp_path: Path, registry: DescriptorRegistry) -> None:
+    # Every shipped category is enabled, so disable one in a copy of the
+    # shipped descriptors to exercise the disabled-category check.
+    import shutil
+
+    descriptors = tmp_path / "descriptors"
+    shutil.copytree(SHIPPED_DESCRIPTORS, descriptors)
+    refactoring = descriptors / "categories" / "refactoring.yaml"
+    refactoring.write_text(
+        refactoring.read_text(encoding="utf-8").replace("enabled: true", "enabled: false"),
+        encoding="utf-8",
+    )
+    disabled_registry = load_registry(descriptors)
     _write_task(
         tmp_path,
         "bug_fix",
@@ -162,7 +174,7 @@ def test_validate_flags_disabled_category(tmp_path: Path, registry: DescriptorRe
             "category: bug_fix", "category: refactoring"
         ),
     )
-    report = Dataset.load(tmp_path).validate(registry)
+    report = Dataset.load(tmp_path).validate(disabled_registry)
     assert not report.ok
     assert any("disabled" in issue for issue in report.tasks[0].issues)
 

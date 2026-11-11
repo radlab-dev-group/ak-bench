@@ -37,6 +37,56 @@
 | `NF_014`   | `tidewater-snapshot-001`         | `new_feature`      | [READ](./new_feature/tidewater-snapshot-001/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
 | `NF_015`   | `tidewater-snapshot-002`         | `new_feature`      | [READ](./new_feature/tidewater-snapshot-002/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
 | `BF_020`   | `walqueue-compaction-002`        | `bug_fix`          | [READ](./bug_fix/walqueue-compaction-002/description.md)          | `expert`   | Local `qwen/Qwen3.8-27B`/`qwen/Qwen3.8-Flash-Next` | `2026-11-10 00:30`   |
+| `BF_021`   | `timetable-overlap-001` | `bug_fix` | [READ](./bug_fix/timetable-overlap-001/description.md) | `easy` | Arena AI agent | `2026-11-10 18:00`   |
+| `BF_022`   | `quiz-streak-001` | `bug_fix` | [READ](./bug_fix/quiz-streak-001/description.md) | `medium` | Arena AI agent | `2026-11-10 18:00`   |
+| `BF_023`   | `garden-watering-001` | `bug_fix` | [READ](./bug_fix/garden-watering-001/description.md) | `medium` | Arena AI agent | `2026-11-10 18:00`   |
+| `BF_024`   | `playlist-queue-001` | `bug_fix` | [READ](./bug_fix/playlist-queue-001/description.md) | `hard` | Arena AI agent | `2026-11-10 18:00`   |
+| `BF_025`   | `cachekit-eviction-001` | `bug_fix` | [READ](./bug_fix/cachekit-eviction-001/description.md) | `hard` | Arena AI agent | `2026-11-10 18:00`   |
+| `NF_016`   | `timetable-slots-001` | `new_feature` | [READ](./new_feature/timetable-slots-001/description.md) | `easy` | Arena AI agent | `2026-11-10 18:00`   |
+| `NF_017`   | `quiz-ranking-001` | `new_feature` | [READ](./new_feature/quiz-ranking-001/description.md) | `medium` | Arena AI agent | `2026-11-10 18:00`   |
+| `NF_018`   | `garden-plan-001` | `new_feature` | [READ](./new_feature/garden-plan-001/description.md) | `medium` | Arena AI agent | `2026-11-10 18:00`   |
+| `NF_019`   | `playlist-mix-001` | `new_feature` | [READ](./new_feature/playlist-mix-001/description.md) | `hard` | Arena AI agent | `2026-11-10 18:00`   |
+| `NF_020`   | `cachekit-ttl-001` | `new_feature` | [READ](./new_feature/cachekit-ttl-001/description.md) | `hard` | Arena AI agent | `2026-11-10 18:00`   |
+| `DB_001`   | `csvkit-quoted-field-001` | `debugging` | [READ](./debugging/csvkit-quoted-field-001/description.md) | `easy` | Arena AI agent | `2026-11-10 19:00`   |
+| `DB_002`   | `dates-month-boundary-001` | `debugging` | [READ](./debugging/dates-month-boundary-001/description.md) | `easy` | Arena AI agent | `2026-11-10 19:00`   |
+| `DB_003`   | `indexer-stale-entry-001` | `debugging` | [READ](./debugging/indexer-stale-entry-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `DB_004`   | `pipeline-stage-order-001` | `debugging` | [READ](./debugging/pipeline-stage-order-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `DB_005`   | `retryq-retry-order-001` | `debugging` | [READ](./debugging/retryq-retry-order-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `DB_006`   | `syncer-conflict-001` | `debugging` | [READ](./debugging/syncer-conflict-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `SEC_001`   | `authkit-token-reuse-001` | `security` | [READ](./security/authkit-token-reuse-001/description.md) | `expert` | Arena AI agent | `2026-11-10 19:00`   |
+| `SEC_002`   | `authkit-token-timing-001` | `security` | [READ](./security/authkit-token-timing-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `SEC_003`   | `configkit-unsafe-load-001` | `security` | [READ](./security/configkit-unsafe-load-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `SEC_004`   | `fetcher-open-redirect-001` | `security` | [READ](./security/fetcher-open-redirect-001/description.md) | `expert` | Arena AI agent | `2026-11-10 19:00`   |
+| `SEC_005`   | `filebox-path-traversal-001` | `security` | [READ](./security/filebox-path-traversal-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `SEC_006`   | `shopdb-sql-injection-001` | `security` | [READ](./security/shopdb-sql-injection-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `RF_001`   | `billing-split-function-001` | `refactoring` | [READ](./refactoring/billing-split-function-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `RF_002`   | `forms-extract-validator-001` | `refactoring` | [READ](./refactoring/forms-extract-validator-001/description.md) | `easy` | Arena AI agent | `2026-11-10 19:00`   |
+| `RF_003`   | `queuekit-deque-migration-001` | `refactoring` | [READ](./refactoring/queuekit-deque-migration-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `RF_004`   | `reportgen-split-module-001` | `refactoring` | [READ](./refactoring/reportgen-split-module-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `RF_005`   | `rules-early-return-001` | `refactoring` | [READ](./refactoring/rules-early-return-001/description.md) | `easy` | Arena AI agent | `2026-11-10 19:00`   |
+| `RF_006`   | `session-explicit-state-001` | `refactoring` | [READ](./refactoring/session-explicit-state-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `TST_001`   | `cachekit-lru-001` | `testing` | [READ](./testing/cachekit-lru-001/description.md) | `easy` | Arena AI agent | `2026-11-10 19:00`   |
+| `TST_002`   | `garden-watering-tests-001` | `testing` | [READ](./testing/garden-watering-tests-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `TST_003`   | `playlist-queue-tests-001` | `testing` | [READ](./testing/playlist-queue-tests-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `TST_004`   | `quiz-streak-tests-001` | `testing` | [READ](./testing/quiz-streak-tests-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `TST_005`   | `timetable-overlap-tests-001` | `testing` | [READ](./testing/timetable-overlap-tests-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `TST_006`   | `wordcount-top-words-001` | `testing` | [READ](./testing/wordcount-top-words-001/description.md) | `easy` | Arena AI agent | `2026-11-10 19:00`   |
+| `CR_001`   | `review-api-break-001` | `code_review` | [READ](./code_review/review-api-break-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `CR_002`   | `review-leak-001` | `code_review` | [READ](./code_review/review-leak-001/description.md) | `easy` | Arena AI agent | `2026-11-10 19:00`   |
+| `CR_003`   | `review-pr-large-001` | `code_review` | [READ](./code_review/review-pr-large-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `CR_004`   | `review-pr-multi-001` | `code_review` | [READ](./code_review/review-pr-multi-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `CR_005`   | `review-pr-small-001` | `code_review` | [READ](./code_review/review-pr-small-001/description.md) | `easy` | Arena AI agent | `2026-11-10 19:00`   |
+| `CR_006`   | `review-race-001` | `code_review` | [READ](./code_review/review-race-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `PERF_001`   | `config-cache-001` | `performance` | [READ](./performance/config-cache-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `PERF_002`   | `dedup-linear-001` | `performance` | [READ](./performance/dedup-linear-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `PERF_003`   | `fib-memo-001` | `performance` | [READ](./performance/fib-memo-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `PERF_004`   | `index-lookup-001` | `performance` | [READ](./performance/index-lookup-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `PERF_005`   | `inverted-index-001` | `performance` | [READ](./performance/inverted-index-001/description.md) | `expert` | Arena AI agent | `2026-11-10 19:00`   |
+| `PERF_006`   | `sorted-search-001` | `performance` | [READ](./performance/sorted-search-001/description.md) | `medium` | Arena AI agent | `2026-11-10 19:00`   |
+| `ARCH_001`   | `eventbus-decoupling-001` | `architecture` | [READ](./architecture/eventbus-decoupling-001/description.md) | `expert` | Arena AI agent | `2026-11-10 19:00`   |
+| `ARCH_002`   | `inventory-repository-001` | `architecture` | [READ](./architecture/inventory-repository-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `ARCH_003`   | `plugcore-registry-001` | `architecture` | [READ](./architecture/plugcore-registry-001/description.md) | `expert` | Arena AI agent | `2026-11-10 19:00`   |
+| `ARCH_004`   | `shopcore-layered-001` | `architecture` | [READ](./architecture/shopcore-layered-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
 
 `Difficulty` is the task descriptor's own `task.difficulty`
 (`src/akbench/datasets/task.py`: `easy` | `medium` | `hard` | `expert`), so the
@@ -53,7 +103,7 @@ Below is the list of the all available tasks without a split to task type
 
 Single line
 ```yaml
-task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledgerlite-rates-001, stockpile-writeoff-001, wordcount-001, walqueue-recovery-001, depweaver-backtracking-001, cadence-catchup-001, freight-shop-001, ledgerlite-reconcile-001, notes-search-001, notes-sync-001, slugify-001, stockpile-fefo-001, streamforge-windows-001, typeweave-inference-001, atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004, atlas-lineage-001, atlas-schema-001, atlas-schema-002, depweaver-lockfile-001, tidewater-snapshot-001, tidewater-snapshot-002 ]
+task_ids: [ bookshop-stock-002, bookshop-tiers-001, cadence-takeover-001, ledgerlite-rates-001, stockpile-writeoff-001, wordcount-001, walqueue-recovery-001, depweaver-backtracking-001, cadence-catchup-001, freight-shop-001, ledgerlite-reconcile-001, notes-search-001, notes-sync-001, slugify-001, stockpile-fefo-001, streamforge-windows-001, typeweave-inference-001, atlas-drift-001, atlas-drift-002, atlas-drift-003, atlas-drift-004, atlas-lineage-001, atlas-schema-001, atlas-schema-002, depweaver-lockfile-001, tidewater-snapshot-001, tidewater-snapshot-002 , timetable-overlap-001, quiz-streak-001, garden-watering-001, playlist-queue-001, cachekit-eviction-001, timetable-slots-001, quiz-ranking-001, garden-plan-001, playlist-mix-001, cachekit-ttl-001, csvkit-quoted-field-001, dates-month-boundary-001, indexer-stale-entry-001, pipeline-stage-order-001, retryq-retry-order-001, syncer-conflict-001, authkit-token-reuse-001, authkit-token-timing-001, configkit-unsafe-load-001, fetcher-open-redirect-001, filebox-path-traversal-001, shopdb-sql-injection-001, billing-split-function-001, forms-extract-validator-001, queuekit-deque-migration-001, reportgen-split-module-001, rules-early-return-001, session-explicit-state-001, cachekit-lru-001, garden-watering-tests-001, playlist-queue-tests-001, quiz-streak-tests-001, timetable-overlap-tests-001, wordcount-top-words-001, review-api-break-001, review-leak-001, review-pr-large-001, review-pr-multi-001, review-pr-small-001, review-race-001, config-cache-001, dedup-linear-001, fib-memo-001, index-lookup-001, inverted-index-001, sorted-search-001, eventbus-decoupling-001, inventory-repository-001, plugcore-registry-001, shopcore-layered-001]
 ```
 
 Multiline
@@ -85,7 +135,57 @@ task_ids:
   - atlas-schema-002
   - depweaver-lockfile-001
   - tidewater-snapshot-001
-  - tidewater-snapshot-002
+  - tidewater-snapshot-002  - timetable-overlap-001
+  - quiz-streak-001
+  - garden-watering-001
+  - playlist-queue-001
+  - cachekit-eviction-001
+  - timetable-slots-001
+  - quiz-ranking-001
+  - garden-plan-001
+  - playlist-mix-001
+  - cachekit-ttl-001
+  - csvkit-quoted-field-001
+  - dates-month-boundary-001
+  - indexer-stale-entry-001
+  - pipeline-stage-order-001
+  - retryq-retry-order-001
+  - syncer-conflict-001
+  - authkit-token-reuse-001
+  - authkit-token-timing-001
+  - configkit-unsafe-load-001
+  - fetcher-open-redirect-001
+  - filebox-path-traversal-001
+  - shopdb-sql-injection-001
+  - billing-split-function-001
+  - forms-extract-validator-001
+  - queuekit-deque-migration-001
+  - reportgen-split-module-001
+  - rules-early-return-001
+  - session-explicit-state-001
+  - cachekit-lru-001
+  - garden-watering-tests-001
+  - playlist-queue-tests-001
+  - quiz-streak-tests-001
+  - timetable-overlap-tests-001
+  - wordcount-top-words-001
+  - review-api-break-001
+  - review-leak-001
+  - review-pr-large-001
+  - review-pr-multi-001
+  - review-pr-small-001
+  - review-race-001
+  - config-cache-001
+  - dedup-linear-001
+  - fib-memo-001
+  - index-lookup-001
+  - inverted-index-001
+  - sorted-search-001
+  - eventbus-decoupling-001
+  - inventory-repository-001
+  - plugcore-registry-001
+  - shopcore-layered-001
+
 ```
 
 ### Bugfix tasks

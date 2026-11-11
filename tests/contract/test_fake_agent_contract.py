@@ -38,9 +38,10 @@ class FakeContractProfile:
         return FakeAdapter(behaviour=behaviour, **overrides)  # type: ignore[arg-type]
 
     def make_config(self, **overrides: object) -> AgentConfig:
+        parameters = overrides.pop("parameters", None) or {}
         return AgentConfig(
             agent_id="fake",
-            parameters={},
+            parameters=dict(parameters),
             artifacts_dir=self.tmp_path / "artifacts",
             **overrides,  # type: ignore[arg-type]
         )
@@ -74,3 +75,60 @@ class TestFakeAgentContract(AgentContractSuite):
     @pytest.fixture(autouse=True)
     def _bind_profile(self, tmp_path: Path) -> None:
         self.profile = FakeContractProfile(tmp_path=tmp_path)
+
+
+class TestFakeAgentBehaviours:
+    """The scripted behaviours, the per-run override and the alias resolution.
+
+    The contract suite above proves the adapter satisfies the contract; these
+    tests prove the fake does what it claims to do, which is the whole point
+    of a reference agent: a comparison can rely on its output exactly.
+    """
+
+    def _run(self, tmp_path: Path, **overrides: object) -> tuple[FakeAdapter, AgentConfig]:
+        profile = FakeContractProfile(tmp_path=tmp_path)
+        adapter = profile.make_adapter(**overrides)
+        config = profile.make_config()
+        session = adapter.start_session(config, profile.workspace())
+        adapter.submit_task(session, profile.task())
+        return adapter, session
+
+    def test_complete_writes_the_workspace_marker(self, tmp_path: Path) -> None:
+        adapter, session = self._run(tmp_path, behaviour="complete")
+        result = adapter.wait_for_completion(session, timeout=10)
+        assert result.status.value == "completed"
+        assert (session.workspace / "AKBENCH_FAKE_RUN.txt").is_file()
+        assert result.workspace_changes == ["AKBENCH_FAKE_RUN.txt"]
+
+    def test_noop_completes_without_touching_the_workspace(self, tmp_path: Path) -> None:
+        adapter, session = self._run(tmp_path, behaviour="noop")
+        result = adapter.wait_for_completion(session, timeout=10)
+        assert result.status.value == "completed"
+        assert not (session.workspace / "AKBENCH_FAKE_RUN.txt").exists()
+        assert result.workspace_changes == []
+
+    def test_alias_names_resolve_to_the_same_behaviour(self, tmp_path: Path) -> None:
+        from fake_agent import resolve_behaviour
+
+        assert resolve_behaviour("solve") == "complete"
+        assert resolve_behaviour("timeout") == "hang"
+        with pytest.raises(ValueError, match="unknown fake behaviour"):
+            resolve_behaviour("explode")
+
+    def test_per_run_behaviour_parameter_overrides_the_adapter(self, tmp_path: Path) -> None:
+        """An experiment re-scripts one run through the config parameter."""
+        profile = FakeContractProfile(tmp_path=tmp_path)
+        adapter = profile.make_adapter(behaviour="fail")
+        config = profile.make_config(parameters={"behaviour": "noop"})
+        session = adapter.start_session(config, profile.workspace())
+        adapter.submit_task(session, profile.task())
+        result = adapter.wait_for_completion(session, timeout=10)
+        assert result.status.value == "completed"
+        assert not (session.workspace / "AKBENCH_FAKE_RUN.txt").exists()
+
+    def test_unknown_behaviour_parameter_is_refused(self, tmp_path: Path) -> None:
+        profile = FakeContractProfile(tmp_path=tmp_path)
+        adapter = profile.make_adapter()
+        config = profile.make_config(parameters={"behaviour": "explode"})
+        with pytest.raises(ValueError, match="unknown fake behaviour"):
+            adapter.start_session(config, profile.workspace())

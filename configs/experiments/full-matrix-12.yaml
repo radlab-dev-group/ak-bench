@@ -1,0 +1,95 @@
+# The full twelve (plan section 25, example E): memory x routing x model, all
+# at once, as a real factorial rather than a written-out list.
+#
+# THE THREE AXES. `knowledge_enabled` is the memory layer, `routing_heuristic_enabled`
+# is the Auto Codex classifier, and `model` is what the run asks the router for.
+# Two values each, two values each, three values, twelve configurations, every
+# one of them a cell the plan can name and a process this experiment starts.
+#
+# WHAT "OFF" MEANS HERE, AND HOW IT DIFFERS FROM full-matrix.yaml. Both plugins
+# are loaded in every arm, because a strategy-expanded matrix declares its
+# values, not the process each value starts, and the pipeline is therefore
+# stated once for the whole experiment under execution.runtime.env. The off arm
+# of this experiment is a plugin present and switched off; in
+# `full-matrix.yaml`, which writes its combinations out, the off arm is a plugin
+# absent. The two are different questions and the two files say which they ask.
+#
+# THE ALIAS IS NOT A MEASUREMENT. `auto_codex` is a decision the routing plugin
+# takes per request, not a model that serves: what answered is recorded per run
+# by routed_model. It is in the model axis because it is what the run asks for,
+# and a row that asks for it reads as "the alias, on an instance whose routing
+# classifier was on/off".
+#
+# WHICH ROWS ARE CONTROLS. Routing fires on the trigger alias only (the plugin
+# descriptor says so), so the rows whose model is a direct model cannot be
+# routed: those are the controls that show the classifier changed nothing when
+# nothing was being classified. The rows that read the alias are the ones that
+# measure it. Stating that here is the point — a matrix that hides which of its
+# cells can move is a matrix whose results cannot be read.
+schema_version: "1.0"
+id: full-matrix-12
+version: "1.0.0"
+title: Memory, routing and model — the twelve configurations
+description: >-
+  Every combination of the knowledge toggle, the Auto Codex classifier and the
+  requested model on two bug-fix tasks: twelve configurations, each run on an
+  instance this experiment starts with both plugins loaded. It is the full
+  product the plan's example asks for, expanded by the strategy rather than
+  written out, with the alias rows and the control rows named as such.
+
+experiment:
+  type: configuration
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router-ak-bench
+      lifecycle: managed
+      # Every arm starts with both plugins present; the factors below are the
+      # plugins' own toggles, applied by the runtime to the process it launches.
+      env:
+        LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+
+  dataset:
+    filters:
+      task_ids: [wordcount-001, slugify-001]
+
+  factors:
+    strategy: full_factorial
+    dimensions:
+      - id: knowledge_enabled
+      - id: routing_heuristic_enabled
+      - id: model
+        values: [qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next, auto_codex]
+    baseline:
+      knowledge_enabled: false
+      routing_heuristic_enabled: false
+      model: qwen/Qwen3.8-27B
+
+  execution_policy:
+    repetitions: 1
+    concurrency: 1
+    # The bound covers the whole of a run: starting this run's instance (model
+    # config, plugin pipeline, verbose logging) and then the agent working.
+    timeout_seconds: 10800
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    # 2 tasks x 12 configurations x 1 repetition = 24 runs; the ceiling leaves
+    # room for one rerun of the matrix and nothing more.
+    max_runs: 32

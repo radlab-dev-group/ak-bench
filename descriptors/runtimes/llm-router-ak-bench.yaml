@@ -153,6 +153,12 @@ runtime:
       knowledge_read_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_ENABLED
       knowledge_write_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_WRITE_ENABLED
       knowledge_escalation_enabled: LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED
+      # The two halves of the routing plugin, from the plugin's own override
+      # table (descriptors/plugins/agentic_routing_codex.yaml). The routing
+      # fires on the trigger alias, so a factor that toggles it is only a
+      # control when the requested model is that alias.
+      routing_heuristic_enabled: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_ENABLED
+      routing_semantic_enabled: LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SEMANTIC_ENABLED
 
     # Verbose mode waits a few seconds after warning about unmasked logging,
     # and the plugin pipeline loads its embedding model at startup.
