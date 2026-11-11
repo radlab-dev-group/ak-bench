@@ -1,0 +1,26 @@
+schema_version: "1.0"
+id: sorted-search-001
+version: "1.0.0"
+created_at: "2026-11-10T19:00:00+01:00"
+title: Add a binary search for the sorted list
+description: >-
+  find_position scans linearly even though the list is sorted. Add sortedkit.search.find_position with binary search and make the package function delegate to it.
+authors:
+  - "[arena] Arena AI agent"
+task:
+  category: performance
+  difficulty: medium
+  repository:
+    source: datasets/_sources/sortedkit
+    ref: HEAD
+    notes: standard-library-only seed fixture directory
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 600
+  constraints:
+    - preserve the public API of the sortedkit package (find_position keeps its signature and results)
+    - do not modify the repository test suite under tests/
+    - do not add third-party dependencies
+  notes: >-
+    The hidden tests count < comparisons on instrumented items: a linear scan needs up to 1000, a binary search about 10.
