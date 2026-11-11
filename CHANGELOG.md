@@ -16,6 +16,23 @@ release tagged as `v<version>`.
 
 ### Added
 
+- **Fifty new tasks: the easy/medium/hard family and the roadmap task types.**
+  The first ten are one `bug_fix` and one `new_feature` each over five new
+  standard-library fixtures (`timetable`, `quiz`, `garden`, `playlist`,
+  `cachekit`), filling the difficulty levels the dataset barely touched. The
+  other forty are the seven task types the roadmap asked for — `debugging`
+  (a defect the fixture suite never looks at), `security` (a vulnerability in
+  the base code), `refactoring` (a declared target structure), `testing`
+  (the agent writes the tests), `code_review` (a PR and a `REVIEW.md`),
+  `performance` (correct but counted work) and `architecture` (a declared
+  boundary) — each on its own standard-library fixture, with the seven
+  categories enabled. Every task is proven by its integrity suite: each
+  mutation `verified` with the seed suite green in both states, each missing
+  feature `NotImplementedError` on the seed and complete under an isolated
+  reference, and each roadmap task failing its hidden tests on the base
+  fixture and passing hidden, public and fixture suites with its reference
+  solution, which lives in the test files and never in a seed. The dataset is
+  85 tasks; `akbench dataset validate` reports all of them.
 - **Export filters: leave prompts, diffs or traces out on purpose** (plan
   section 21). `akbench export experiment` gains `--no-prompts` (the agent's
   own text: its final message, `last_message.txt`, and the prompt fields in
