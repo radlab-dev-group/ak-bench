@@ -1,0 +1,8 @@
+[project]
+name = "searchkit"
+version = "1.0.0"
+description = "Document search fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
