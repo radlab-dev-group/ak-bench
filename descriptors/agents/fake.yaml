@@ -1,0 +1,74 @@
+# The reference agent (plan 6.5, F1): a deterministic implementation of the
+# agent contract, for CI and for the agent comparison. Every capability is
+# verified because it is implemented by us and exercised by the contract
+# suite, with one declared exception: cost, which nothing about this adapter
+# can know.
+schema_version: "1.0"
+id: fake
+version: "1.0.0"
+title: Fake agent (reference adapter)
+description: >-
+  Deterministic in-memory implementation of the agent contract. It starts no
+  process, opens no socket and reports no model. Its behaviour is scripted
+  through the controllable `behaviour` parameter, which an experiment may set
+  per run; the alias names (`solve`, `timeout`) are resolved by the adapter,
+  so the allowed list here carries the canonical ids only.
+
+agent:
+  adapter: fake
+  execution_type: process
+
+  capabilities:
+    workspace_binding: verified        # workspace is passed in, marker is written
+    fresh_session: verified            # new session state per start_session
+    session_reset: unsupported         # a session is one-shot by contract
+    task_submission: verified          # submit_task
+    completion_detection: verified     # wait_for_completion
+    status_query: verified             # get_status
+    cancellation: verified             # cancel flips a run to cancelled
+    timeout_control: verified          # wait_for_completion(timeout=...)
+    token_usage: verified              # declared fixed pair, not measured
+    cost_usage: unsupported            # no cost exists to report
+    tool_trace: verified               # tool_call_count is observed, always 0
+    model_observation: unsupported     # there is no model
+    streaming_output: unsupported      # nothing streams
+    filesystem_control: verified       # the marker write is the only change
+    network_control: unsupported       # no network
+    session_export: verified           # fake_log.txt artifact
+    structured_output: verified        # AgentResult is the structured output
+    managed_worktree: unsupported      # no worktree
+
+  configuration_schema:
+    behaviour:
+      type: string
+      controllable: true
+      default: complete
+      allowed: [complete, noop, hang, fail, infrastructure_error]
+      applies_via: adapter constructor / per-run config parameter
+      verification: contract suite (tests/contract/test_fake_agent_contract.py)
+    report_usage:
+      type: boolean
+      controllable: true
+      default: true
+      applies_via: adapter constructor
+      verification: contract suite
+    report_version:
+      type: boolean
+      controllable: true
+      default: true
+      applies_via: adapter constructor
+      verification: contract suite
+
+  observability:
+    session_id: supported
+    token_usage: supported
+    cost: unsupported
+    tool_calls: supported
+    model_selection: unsupported
+    streaming_output: unsupported
+    session_export: supported
+
+  version_detection: ["the adapter reports fake-agent 1.0 by itself"]
+  notes: >-
+    Adding a real agent never touches this file: it means one descriptor, one
+    adapter class, one entry in agents/catalog.py and the contract suite.
