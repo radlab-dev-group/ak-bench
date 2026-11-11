@@ -1,0 +1,12 @@
+diff --git a/src/cachekit/lru.py b/src/cachekit/lru.py
+index 1443cf2..c163e27 100644
+--- a/src/cachekit/lru.py
++++ b/src/cachekit/lru.py
+@@ -36,7 +36,6 @@ class LRUCache:
+         """The value for ``key``, or ``None``; a hit refreshes recency."""
+         if key not in self._data:
+             return None
+-        self._data.move_to_end(key)
+         return self._data[key]
+ 
+     def put(self, key: Any, value: Any) -> None:

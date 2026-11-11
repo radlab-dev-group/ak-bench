@@ -1,0 +1,13 @@
+diff --git a/src/playlist/queue.py b/src/playlist/queue.py
+index 2d2a565..152718e 100644
+--- a/src/playlist/queue.py
++++ b/src/playlist/queue.py
+@@ -19,7 +19,7 @@ from playlist.model import Track
+ 
+ def album_order(tracks: Iterable[Track]) -> list[Track]:
+     """The tracks in album order, under the rules above."""
+-    return sorted(tracks, key=lambda track: (track.disc, track.track_no, track.track_id))
++    return sorted(tracks, key=lambda track: (track.track_no, track.disc, track.track_id))
+ 
+ 
+ def build_queue(

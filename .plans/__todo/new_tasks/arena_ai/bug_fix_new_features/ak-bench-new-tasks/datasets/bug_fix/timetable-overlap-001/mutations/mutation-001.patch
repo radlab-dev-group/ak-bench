@@ -1,0 +1,13 @@
+diff --git a/src/timetable/overlap.py b/src/timetable/overlap.py
+index a54a528..04fb120 100644
+--- a/src/timetable/overlap.py
++++ b/src/timetable/overlap.py
+@@ -14,7 +14,7 @@ from timetable.model import Lesson
+ 
+ def overlaps(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
+     """True when ``[a_start, a_end)`` and ``[b_start, b_end)`` share a minute."""
+-    return a_start < b_end and b_start < a_end
++    return a_start <= b_end and b_start <= a_end
+ 
+ 
+ def conflicts(lessons: Iterable[Lesson]) -> list[tuple[str, str]]:

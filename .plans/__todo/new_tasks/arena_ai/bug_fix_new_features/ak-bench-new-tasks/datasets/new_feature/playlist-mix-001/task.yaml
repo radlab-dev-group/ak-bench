@@ -1,0 +1,32 @@
+schema_version: "1.0"
+id: playlist-mix-001
+version: "1.0.0"
+created_at: "2026-11-10T18:00:00+01:00"
+title: Implement build_mix from its specification
+description: >-
+  playlist.build_mix is declared and specified in src/playlist/mix.py but
+  raises NotImplementedError. Implement it from the written contract,
+  keeping the album queue intact.
+authors:
+  - "[arena] Arena AI agent"
+task:
+  category: new_feature
+  difficulty: hard
+  repository:
+    source: datasets/_sources/playlist
+    ref: HEAD
+    notes: standard-library-only seed fixture directory
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 1200
+  constraints:
+    - do not change the public API of the playlist package
+    - do not modify the repository test suite under tests/
+    - do not change the track record or the album queue
+    - do not add third-party dependencies
+    - do not modify the mix spec in the mix module docstring
+  notes: >-
+    The base state fails the hidden tests by design: the feature is missing,
+    which is the opposite of the bug-fix convention where hidden tests pass on
+    the base commit.
