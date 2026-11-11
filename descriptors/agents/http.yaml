@@ -1,0 +1,78 @@
+# The API class of agent (plan 6.5, F2): an agent reached over HTTP through
+# AK-Bench's own protocol, documented in docs/AGENT_ADAPTERS.md. The protocol
+# is ours, so the capabilities below are claims about our contract rather than
+# about a vendor product, and each is verified against the stub server in
+# tests/contract/stubs/agent_server_stub.py.
+schema_version: "1.0"
+id: http
+version: "1.0.0"
+title: HTTP agent server (AK-Bench protocol)
+description: >-
+  Adapter for an agent that runs behind an HTTP endpoint. It speaks the
+  four-request AK-Bench agent-server protocol (POST /tasks, GET /sessions/{id},
+  POST /sessions/{id}/cancel, GET /sessions/{id}/result, plus an optional
+  GET /version). It is the reference implementation of the "agent API" class:
+  a real product that exposes something else needs its own translating
+  adapter, verified against that product's documentation.
+
+agent:
+  adapter: http
+  execution_type: http
+
+  capabilities:
+    workspace_binding: partial         # the path is sent; the server decides
+    fresh_session: verified            # a session id per POST /tasks
+    session_reset: unsupported         # the protocol has no reset
+    task_submission: verified          # POST /tasks
+    completion_detection: verified     # polling GET /sessions/{id}
+    status_query: verified             # GET /sessions/{id}
+    cancellation: verified             # POST /sessions/{id}/cancel
+    timeout_control: verified          # the adapter's own wait deadline
+    token_usage: unsupported           # only if the server reports it
+    cost_usage: unsupported            # never inferred
+    tool_trace: unsupported            # server-side, not exported
+    model_observation: unsupported     # the server does not say
+    streaming_output: unsupported      # poll, no stream
+    filesystem_control: unsupported    # the workspace is not ours to control
+    network_control: unsupported       # server-side
+    session_export: partial            # the exchange log is ours, the rest is theirs
+    structured_output: verified        # JSON in, JSON out
+    managed_worktree: unsupported      # no worktree
+
+  configuration_schema:
+    base_url:
+      type: string
+      controllable: true
+      applies_via: "absolute URL of the agent server; a runtime binding's base_url is used when set"
+      verification: contract suite (tests/contract/test_http_agent_contract.py)
+    api_key_env:
+      type: string
+      controllable: true
+      applies_via: "name of the environment variable holding the bearer token"
+      verification: contract suite
+    poll_interval:
+      type: number
+      controllable: true
+      default: 0.05
+      applies_via: "seconds between GET /sessions/{id} calls while waiting"
+      verification: contract suite
+    request_timeout:
+      type: number
+      controllable: true
+      default: 30
+      applies_via: "seconds one HTTP call may take"
+      verification: contract suite
+
+  observability:
+    session_id: supported
+    token_usage: partial               # passed through when the server reports it
+    cost: unsupported
+    tool_calls: unsupported
+    model_selection: unsupported
+    streaming_output: unsupported
+    session_export: partial
+
+  notes: >-
+    An unreachable server, an HTTP 5xx or a malformed body is an
+    infrastructure error and never an agent failure (plan rule 11). A server
+    that cannot cancel answers 405; the run is still reported cancelled.

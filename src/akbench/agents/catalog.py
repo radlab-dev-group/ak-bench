@@ -19,6 +19,7 @@ from typing import Any
 from akbench.agents.codex import CodexAdapter, CodexOptions
 from akbench.agents.errors import AgentError
 from akbench.agents.fake import FakeAdapter, FakeOptions
+from akbench.agents.http import HttpAdapter, HttpOptions
 from akbench.agents.registry import AdapterFactory, AgentRegistry
 from akbench.descriptors.agent import AgentDescriptor
 from akbench.descriptors.runtime import RuntimeDescriptor
@@ -27,6 +28,7 @@ from akbench.descriptors.runtime import RuntimeDescriptor
 ADAPTER_TYPES: dict[str, type] = {
     CodexAdapter.adapter_id: CodexAdapter,
     FakeAdapter.adapter_id: FakeAdapter,
+    HttpAdapter.adapter_id: HttpAdapter,
 }
 
 
@@ -132,6 +134,8 @@ __all__ = [
     "CodexOptions",
     "FakeAdapter",
     "FakeOptions",
+    "HttpAdapter",
+    "HttpOptions",
     "adapter_class",
     "binding_from_runtime",
     "build_agent_registry",
