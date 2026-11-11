@@ -1,0 +1,8 @@
+[project]
+name = "queuekit"
+version = "1.0.0"
+description = "Queue fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
