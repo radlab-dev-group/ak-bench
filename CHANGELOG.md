@@ -12,6 +12,30 @@ release tagged as `v<version>`.
 | 0.1.1   | **Security:** dashboard authentication and roles, protected task answers and artifacts, hardened PostgreSQL configuration, response headers and input validation. **Added:** model verification indicators, themes, keyboard navigation, run export, tool-call metrics, task downloads and score charts, recorded task files and descriptors, agent and runtime pages. **Changed:** configuration labels, sortable tables, code and YAML viewers, PostgreSQL as the default database, automatic `.env` loading and SQLite-to-PostgreSQL migration. **Datasets:** the atlas sharded-store family — five `expert` tasks over one standard-library fixture (a five-module learning task, three single-defect twins in other modules, one new-feature task from a declared stub), a memory-replay experiment over six model × knowledge configurations with a no-memory baseline, and the knowledge scope pin that lets a replay read what its learning run wrote (an off arm is a process without the plugin). **UI:** model comparison on the dashboard — a Pareto chart and a paired base-vs-memory comparison with a delta heatmap, Wilson confidence intervals and low-sample marking on the model charts — and a full-page loading spinner.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 0.1.0   | **Added:** the first release: the whole of AK-Bench, from the initial commit to now. A `typer` CLI (`akbench init/doctor/config`, experiments, datasets, runs, reports and exports); YAML/ENV configuration with an environment allowlist where secrets stay opaque (presence only, `src/akbench/config/`); a descriptor system with eight kinds — agents, runtimes, plugins, dimensions, models, categories, evaluators, metrics — versioned, digest-pinned and registered (`src/akbench/descriptors/`, `docs/DESCRIPTOR_SYSTEM.md`); tasks, datasets, repeatable workspaces, mutation verification and hidden tests (`src/akbench/datasets/`, `docs/DATASETS.md`); an agent-adapter framework with a Codex CLI adapter and capability gating (`src/akbench/agents/`, `docs/AGENT_ADAPTERS.md`); a runtime manager with direct/runtime/router execution, managed self-starting LLM Router instances with per-run port ownership and the instance log kept as a run artifact, plus model verification from that log (`src/akbench/runtime/`, `docs/RUNTIME_MANAGER.md`); a pytest/command evaluator engine with verdicts and hidden-test isolation (`src/akbench/evaluators/`, `docs/EVALUATORS.md`); a run orchestrator with a lifecycle state machine, isolation, retries and run records (`src/akbench/orchestration/`, `docs/RUN_ORCHESTRATOR.md`); an experiment descriptor and planner with matrix strategies, validation that refuses unmeasurable plans, factor routing by dimension source and environment bound to a combination (`src/akbench/experiments/`, `docs/EXPERIMENTS.md`); plugin observability — a run reports only the plugins it configured, with verification statuses (`src/akbench/plugins/`, `docs/PLUGINS.md`); knowledge replay for memory experiments (`docs/KNOWLEDGE_REPLAY.md`); SQLite storage, artifacts, a reproducibility manifest with digests, aggregates and baseline deltas (`src/akbench/storage/`, `src/akbench/metrics/`); a static HTML report — dashboard with a configuration ranking pooled across experiments, experiment/task/agent/runtime/plugin/model pages, a "Not verified" table and an in-report `docs/` subpage (`src/akbench/reporting/`, `docs/REPORTING.md`); JSON/CSV/HTML export with secret screening (`src/akbench/export/`, `docs/EXPORT.md`); shipped descriptors and eight experiment configs under `descriptors/` and `configs/experiments/`. |
 
+## [Unreleased]
+
+### Fixed
+
+- **Fresh-clone dataset integrity (Faza A planu do 100%).** The parts of a
+  multi-defect mutation (`mutations/parts/*.patch`) are referenced by
+  `parts.json`, so they are now a first-class part of a task: `6102769`
+  removed the generic `parts/` `.gitignore` pattern and committed all 29
+  patch files; `tests/unit/test_dataset_integrity.py` fails a checkout where
+  a referenced part is missing from disk or from git.
+- **The `data` directory is no longer a symlink** to the sibling
+  `ak-bench-data` repository, which a fresh clone does not have (a dangling
+  symlink broke `RepositoryManager` on a clean checkout). `data/` is now a
+  plain, untracked directory created on demand by `akbench init` /
+  `doctor`; historical data from the old location is imported with
+  `akbench migrate sqlite …` (README Quick start documents this).
+- **Audit and the 100% plan corrected against the code** (`.plans/`): the
+  audit now carries a 2026-11-11 verification note — task and test counts,
+  the commit it describes, and the two defects that do not exist in the
+  current code (the atlas arm test and the live-router test are both green
+  as written); the plan's source-plan path, §13 checklist reference, CLI
+  paths, `default_registry` comment wording, and `full-matrix.yaml` strategy
+  are fixed, and Phase A (A1–A5) is checked off with the evidence for each.
+
 ## [0.1.2] - 2026-11-10
 
 ### Added
