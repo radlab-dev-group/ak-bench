@@ -56,7 +56,7 @@ signal.
 
 An experiment may name the environment its runs execute in:
 
-```yaml
+```yaml fragment
 experiment:
   environment:
     id: local-host      # descriptors/environments/local-host.yaml
@@ -99,7 +99,7 @@ from the factor values, the variant's identity hashes it, the orchestrator
 hands it to the runtime adapter, and the adapter applies it last, so it wins
 over the descriptor's static environment and over the ambient shell.
 
-```yaml
+```yaml fragment
   factors:
     strategy: custom_matrix
     dimensions:
@@ -132,7 +132,7 @@ An experiment whose matrix is expanded by a strategy rather than written out
 (`full_factorial`, `one_factor_at_a_time`, `pairwise`) has no combination to
 hang that declaration on, so it states the environment once, for every arm:
 
-```yaml
+```yaml fragment
   execution:
     mode: router
     runtime:
