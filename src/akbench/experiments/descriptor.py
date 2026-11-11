@@ -65,6 +65,13 @@ class AgentSelection(_StrictModel):
 class RuntimeSelection(_StrictModel):
     id: str = Field(..., min_length=1, max_length=128)
     lifecycle: str | None = None
+    #: The environment this experiment declares for the runtime it owns, applied
+    #: to every arm. This is how an experiment that varies a factor by strategy
+    #: rather than by declared combination still states the plugin pipeline its
+    #: instance starts with: a managed instance loads the plugins it is told
+    #: about at launch, and an arm that measures a plugin must name it here.
+    #: A combination's own runtime_env overrides these values arm by arm.
+    env: dict[str, str] = Field(default_factory=dict)
 
 
 class EnvironmentSelection(_StrictModel):

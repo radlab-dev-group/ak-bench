@@ -1,0 +1,81 @@
+# The routing plugin ON/OFF, one model, one agent (plan section 25, example C).
+#
+# The question is not which model wins but whether the agentic routing plugin
+# changes the outcome at all: one agent, one model, one task set, and the two
+# routing toggles as the only factors. The model is pinned to the alias
+# auto_codex, which is the trigger the routing plugin listens for — a model
+# value the plugin does not route would make the toggles no-ops, and an arm
+# that measures nothing is a cell nobody should read.
+#
+# THE PIPELINE IS THE ARM. The routing plugin is loaded in every arm, because
+# loading a plugin is decided when the process starts and an arm without it
+# would not measure the plugin, it would measure its absence. What differs
+# between the arms is the plugin's own toggles, applied to the environment the
+# run's instance starts with: heuristic on/off, semantic on/off, in the four
+# combinations the full factorial gives.
+#
+# WHAT IS RECORDED. The requested value is the alias in every arm; what really
+# served each request is recorded by routed_model, so an arm whose routing
+# fired reads as a different model than one whose did not, without the two
+# claims being confused.
+schema_version: "1.0"
+id: auto-codex-on-off
+version: "1.0.0"
+title: Auto Codex routing on/off
+description: >-
+  Does the agentic routing plugin change the outcome when the agent, the model and the task set are held still? The two routing toggles are the only factors, the model is pinned to the routing alias, and every arm records the model that really served its requests.
+
+experiment:
+  type: configuration
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+      model: auto_codex
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router-ak-bench
+      lifecycle: managed
+      # The routing plugin is loaded in every arm of this experiment: which
+      # plugins a process loads is decided when it starts, and an arm without
+      # the plugin would not measure the toggle, it would measure the plugin's
+      # absence. What the arms differ in is the plugin's own configuration,
+      # applied to the instance this run starts.
+      env:
+        LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+
+  dataset:
+    filters:
+      task_ids: [wordcount-001, slugify-001]
+
+  factors:
+    strategy: full_factorial
+    dimensions:
+      - id: routing_heuristic_enabled
+      - id: routing_semantic_enabled
+    baseline:
+      routing_heuristic_enabled: false
+      routing_semantic_enabled: false
+
+  execution_policy:
+    repetitions: 2
+    concurrency: 1
+    timeout_seconds: 10800
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    # 2 tasks x 4 routing configurations x 2 repetitions, with room for a rerun.
+    max_runs: 32

@@ -656,7 +656,12 @@ def _execute_one(
         # the variant value becomes the state of a process this run
         # started instead of a hope aimed at a shared router.
         runtime_environment=dict(variant.environment_requests),
-        runtime_env=dict(variant.runtime_env),
+        # The experiment's own declared launch environment comes first and the
+        # variant's on top of it: the experiment says what every arm's instance
+        # loads, the variant says what this arm says about itself, and an arm
+        # that contradicts the experiment wins because it is the more specific
+        # statement of the process about to start.
+        runtime_env={**plan.runtime_env, **variant.runtime_env},
         artifacts_dir=artifacts_dir,
         evaluation_dir=artifacts_dir / "evaluation",
         agent_timeout=policy.timeout_seconds,

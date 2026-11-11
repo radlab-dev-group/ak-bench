@@ -126,6 +126,35 @@ plan error (`runtime_environment_needs_managed`): an environment sent nowhere
 is not a configuration. The environment the run declared is recorded in the
 run record as `runtime_environment` and named in the plan and run output.
 
+### The launch environment of an experiment
+
+An experiment whose matrix is expanded by a strategy rather than written out
+(`full_factorial`, `one_factor_at_a_time`, `pairwise`) has no combination to
+hang that declaration on, so it states the environment once, for every arm:
+
+```yaml
+  execution:
+    mode: router
+    runtime:
+      id: llm-router-ak-bench
+      lifecycle: managed
+      env:
+        LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+```
+
+The rule is the same and so is the failure: this is applied to the instance the
+run starts, and against an external runtime it is refused with
+`runtime_environment_needs_managed`. The values are strings, and a YAML boolean
+is rejected by the descriptor rather than reaching a process as `True`.
+
+Two arms of one such experiment differ in what a plugin is *told*, not in
+whether the plugin is present, because a strategy expands values and a pipeline
+is not a value. An experiment that wants an arm without a plugin at all writes
+its combinations out with `custom_matrix` — that is `full-matrix.yaml`, whose
+off arm is a plugin absent, as against `full-matrix-12.yaml`, whose off arm is
+a plugin switched off. Which of the two questions is being asked belongs in the
+file, not in a reader's memory.
+
 ## The shipped examples
 
 | File | What it shows |
@@ -140,6 +169,8 @@ run record as `runtime_environment` and named in the plan and run output.
 | `knowledge-replay.yaml` | a memory experiment; the managed instance gives it its own namespace |
 | `arena-roadmap-knowledge.yaml` | the fifty arena and roadmap tasks, one arm: the routing alias over the 27B base model, knowledge on |
 | `agent-comparison.yaml` | the second agent class: `codex` and `fake` on the same task, the agent as the only factor (plan 6.5, F3) |
+| `auto-codex-on-off.yaml` | the routing plugin alone: its two toggles, the model pinned to the trigger alias (plan 25, C) |
+| `full-matrix-12.yaml` | memory × routing × model as a real factorial — twelve configurations (plan 25, E) |
 
 The split between the two runtimes is a rule, not a choice per file: an
 experiment varies a *plugin* configuration only where the run owns the
@@ -151,7 +182,9 @@ not have. The shared descriptor declares `external` only; a plan that asked it
 for `managed` would be refused, because a shared instance AK-Bench does not
 start is not a managed one.
 
-The plan's example E adds Auto Codex as a third axis; it is deliberately left
-out of `full-matrix.yaml` because the router in this installation refuses
-per-run control of the routing alias. A smaller matrix whose cells are all
-real is preferred over a larger one whose cells are assumed.
+The plan's example E adds the routing alias as a third axis. It is left out of
+`full-matrix.yaml`, whose off arms are plugins absent, and shipped as
+`full-matrix-12.yaml`, whose plugins are all present and whose factors are the
+toggles: a smaller matrix whose cells are all real beats a larger one whose
+cells are assumed, and a larger matrix is honest once the file says which of
+its cells can move.

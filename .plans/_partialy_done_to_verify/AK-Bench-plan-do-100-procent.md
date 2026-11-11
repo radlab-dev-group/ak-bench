@@ -376,7 +376,7 @@ na external bez sygnałów nadal `unavailable` (test negatywny).
 
 ---
 
-## FAZA H — Brakujące przykłady eksperymentów (§25 C, E, A)
+## FAZA H ✅ ZREALIZOWANA — Brakujące przykłady eksperymentów (§25 C, E, A)
 
 ### H1. Auto Codex ON/OFF (przykład C)
 

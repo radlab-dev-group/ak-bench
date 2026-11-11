@@ -171,6 +171,10 @@ class ExperimentPlan:
     agent_id: str
     mode: str
     runtime_id: str | None
+    #: The environment the experiment declares for the runtime it owns, applied
+    #: to every arm (the plugin pipeline a full-factorial arm loads). A
+    #: combination's own runtime_env overrides it arm by arm.
+    runtime_env: dict[str, str] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -278,6 +282,9 @@ class ExperimentPlanner:
             agent_id=body.agent.id,
             mode=body.execution.mode,
             runtime_id=body.execution.runtime.id if body.execution.runtime else None,
+            runtime_env=dict(
+                body.execution.runtime.env if body.execution.runtime else {}
+            ),
         )
 
     # ------------------------------------------------------------ components
@@ -582,15 +589,20 @@ class ExperimentPlanner:
         and an environment sent nowhere is not a configuration, so the plan is
         refused rather than pretending an arm chose its plugins.
         """
-        if not any(item.get(RUNTIME_ENV_KEY) for item in combinations):
+        declared = dict(selection.env or {})
+        if not declared and not any(item.get(RUNTIME_ENV_KEY) for item in combinations):
             return
         if selection.lifecycle != Lifecycle.MANAGED.value or runtime.runtime.managed is None:
+            whose = (
+                "execution.runtime.env"
+                if declared and not any(item.get(RUNTIME_ENV_KEY) for item in combinations)
+                else f"a combination declares {RUNTIME_ENV_KEY}"
+            )
             report.error(
                 "runtime_environment_needs_managed",
-                f"a combination declares {RUNTIME_ENV_KEY}, which is applied to the "
-                f"instance a run starts; runtime {runtime.id} with lifecycle "
-                f"{selection.lifecycle or 'default'} has no managed launch block, so "
-                "there is no process to set it on",
+                f"{whose}, which is applied to the instance a run starts; runtime "
+                f"{runtime.id} with lifecycle {selection.lifecycle or 'default'} has no "
+                "managed launch block, so there is no process to set it on",
             )
 
     def _check_plugin_control(

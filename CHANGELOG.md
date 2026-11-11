@@ -16,6 +16,29 @@ release tagged as `v<version>`.
 
 ### Added
 
+- **`configs/experiments/auto-codex-on-off.yaml`** (plan 25, C): the routing
+  plugin alone, in its four configurations, with the model pinned to the
+  `auto_codex` trigger alias and the plugin loaded in every arm.
+- **`configs/experiments/full-matrix-12.yaml`** (plan 25, E): memory × routing ×
+  model as a real `full_factorial` — twelve configurations over two tasks, each
+  started on an instance the experiment owns with both plugins present. Its
+  header names the control rows (routing fires on the alias only) and states how
+  its off arms differ from `full-matrix.yaml`'s: a plugin switched off, not a
+  plugin absent.
+- **`execution.runtime.env`**: an experiment whose matrix is expanded by a
+  strategy rather than written out has no combination to carry a launch
+  environment, so it may declare one once, for every arm. Applied to the
+  instance the run starts, refused against an external runtime
+  (`runtime_environment_needs_managed`), and overridden arm by arm by a
+  combination's own `runtime_env`. The runtime descriptor maps the two routing
+  toggles onto the plugin's environment like it already mapped the knowledge
+  ones, so a routing factor is a fact about a process rather than a recorded
+  wish.
+- **`tests/unit/test_shipped_experiments.py`**: every YAML in
+  `configs/experiments/` is loaded and planned, declares an evaluator, a metric
+  and a timeout, and stays inside its own `limits.max_runs`; the two matrices
+  are checked against the numbers their acceptance criteria name. A new
+  experiment cannot join the directory without passing the same gate.
 - **`fake` agent** (the reference adapter, plan 6.5, F1): promoted from a
   contract-test helper to a real, registered agent —
   `src/akbench/agents/fake.py`, descriptor `descriptors/agents/fake.yaml`,
