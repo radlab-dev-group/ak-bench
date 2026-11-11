@@ -1,0 +1,8 @@
+[project]
+name = "forms"
+version = "1.0.0"
+description = "Registration form fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

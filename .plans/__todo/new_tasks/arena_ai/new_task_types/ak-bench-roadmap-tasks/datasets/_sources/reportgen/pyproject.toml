@@ -1,0 +1,8 @@
+[project]
+name = "reportgen"
+version = "1.0.0"
+description = "Sales report fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

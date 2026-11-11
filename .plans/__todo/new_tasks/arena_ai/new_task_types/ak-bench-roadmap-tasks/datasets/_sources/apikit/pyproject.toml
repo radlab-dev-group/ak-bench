@@ -1,0 +1,8 @@
+[project]
+name = "apikit"
+version = "1.0.0"
+description = "User service review fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,8 @@
+[project]
+name = "dates"
+version = "1.0.0"
+description = "Month arithmetic fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
