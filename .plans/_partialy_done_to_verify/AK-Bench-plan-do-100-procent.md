@@ -432,7 +432,7 @@ nawet bez flag. E2E: eksport z flagami przechodzi walidację schematu JSON.
 
 ---
 
-## FAZA J — Baza domyślna: SQLite (§5, §27) + porządek z `bench_ui`
+## FAZA J ✅ ZREALIZOWANA — Baza domyślna: SQLite (§5, §27) + porządek z `bench_ui`
 
 Audyt: plan mówi SQLite, repo domyślnie PostgreSQL (odstępstwo udokumentowane,
 ale niezgodne z §27 MVP). Decyzja: **wróć do SQLite jako domyślnej** (zgodność z planem),

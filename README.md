@@ -20,7 +20,6 @@ task execution through a chosen agent and verifies the outcome independently.
 uv venv --python 3.12 .venv
 uv pip install -e ".[dev]"
 
-scripts/run-postgres.sh start   # local PostgreSQL (data in a Docker volume)
 akbench init                    # directories + configuration + database (migrations to head)
 akbench doctor                  # environment readiness
 akbench config show             # effective configuration, paths, database
@@ -28,11 +27,12 @@ akbench descriptor validate     # component descriptors
 akbench dataset validate        # tasks (add --verify-mutations to prove defects)
 ```
 
-Recorded benchmarks go to **PostgreSQL** by default; the connection parameters
-live in the project `.env` (copy `.env.example` if you start from the
-repository). The engine and `scripts/run-postgres.sh` read the same
-`AKBENCH_PG_*` names, so one file drives both. To keep a run on a local
-SQLite file instead: `export AKBENCH_DB_BACKEND=sqlite`.
+Recorded benchmarks go to a **SQLite file** by default — `data/akbench.sqlite` —
+so a fresh clone runs with no server, no credential and no `.env`. The shared
+mode is **PostgreSQL**, chosen on purpose with
+`AKBENCH_DB_BACKEND=postgres` plus the `AKBENCH_PG_*` names; for a local
+instance `scripts/run-postgres.sh start` starts the container that reads them,
+and the engine and the script read the same names, so one `.env` drives both.
 
 The `data/` directory is local, untracked and safe to delete at any time:
 workspaces, artifacts, runtime instances and the SQLite file are all created
@@ -298,12 +298,13 @@ while it is not.
 
 Where a recorded benchmark lives is chosen by `database.backend`:
 
-- **`postgres` (default)** — the parameters of `database.postgres` are the
-  same `AKBENCH_PG_*` names `scripts/run-postgres.sh` reads, so the project
-  `.env` file configures the helper container and the engine at once. An
-  exported variable beats the file; `AKBENCH__DATABASE__POSTGRES__*` beats
-  both.
-- **`sqlite`** — the file named by `paths.database_file`.
+- **`sqlite` (default)** — the file named by `paths.database_file`; a fresh
+  clone records here without a server or a credential.
+- **`postgres`** — the shared mode, for a database several checkouts write to.
+  The parameters of `database.postgres` are the same `AKBENCH_PG_*` names
+  `scripts/run-postgres.sh` reads, so the project `.env` file configures the
+  helper container and the engine at once. An exported variable beats the
+  file; `AKBENCH__DATABASE__POSTGRES__*` beats both.
 - **`database.url`** overrides both and pins a full SQLAlchemy URL.
 
 The URL is shown with the password redacted (`akbench config show`, the UI

@@ -14,8 +14,23 @@ release tagged as `v<version>`.
 
 ## [Unreleased]
 
+### Changed
+
+- **The default database is SQLite.** A fresh clone records to
+  `data/akbench.sqlite` with no server, no credential and no `.env`:
+  `akbench init && akbench doctor` run on a checkout that has never seen a
+  database. PostgreSQL is now the shared mode, chosen on purpose with
+  `AKBENCH_DB_BACKEND=postgres` plus the `AKBENCH_PG_*` names; installations
+  already on it are unaffected, because the configuration says which engine a
+  run belongs to and there is no automatic migration between them. `README.md`,
+  `.env.example` and `docs/STORAGE.md` state which mode is the default and what
+  each one is for.
+
 ### Added
 
+- **`tests/unit/test_bench_ui_import.py`**: the dashboard is an add-on, and
+  importing it or building the app must reach for no database: `akbench ui`
+  starts the FastAPI app on request, and the benchmark never depends on it.
 - **`configs/experiments/auto-codex-on-off.yaml`** (plan 25, C): the routing
   plugin alone, in its four configurations, with the model pinned to the
   `auto_codex` trigger alias and the plugin loaded in every arm.

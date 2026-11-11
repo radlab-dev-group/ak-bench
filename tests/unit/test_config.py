@@ -80,15 +80,34 @@ def test_explicit_missing_config_file_fails(
         load_settings(project_dir / "missing.yaml", environ=empty_environ)
 
 
-def test_postgres_is_the_default_backend(project_dir: Path, empty_environ: dict[str, str]) -> None:
-    """Recorded benchmarks go to PostgreSQL unless the configuration says otherwise.
+def test_sqlite_is_the_default_backend(project_dir: Path, empty_environ: dict[str, str]) -> None:
+    """A fresh clone records to a file, with no server and no credential.
+
+    SQLite is the built-in backend so that ``akbench init`` and ``doctor`` work
+    on a checkout that has never seen a database; the shared mode is chosen
+    explicitly, and choosing it is what makes its credential required.
+    """
+    environ = {key: value for key, value in empty_environ.items() if key != "AKBENCH_DB_BACKEND"}
+    loaded = load_settings(None, project_root=project_dir, environ=environ)
+    assert loaded.settings.database.backend == "sqlite"
+    url = resolve_database_url(loaded.settings, environ=environ)
+    assert url == f"sqlite:///{project_dir / 'data' / 'akbench.sqlite'}"
+
+
+def test_postgres_is_the_opt_in_shared_backend(
+    project_dir: Path, empty_environ: dict[str, str]
+) -> None:
+    """Asking for the shared engine asks for its login with it.
 
     There is no password to fall back on, so resolving a connection out of the
     built-in defaults is refused rather than made up: the alternative is an
     installation that quietly shares a credential with everyone who has read the
     repository.
     """
-    environ = {key: value for key, value in empty_environ.items() if key != "AKBENCH_DB_BACKEND"}
+    environ = {
+        **{key: value for key, value in empty_environ.items() if key != "AKBENCH_DB_BACKEND"},
+        "AKBENCH_DB_BACKEND": "postgres",
+    }
     loaded = load_settings(None, project_root=project_dir, environ=environ)
     assert loaded.settings.database.backend == "postgres"
     assert loaded.settings.database.postgres.password is None

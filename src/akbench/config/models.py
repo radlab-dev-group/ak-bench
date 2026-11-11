@@ -66,11 +66,13 @@ class DatabaseSettings(_StrictModel):
 
     ``backend`` picks the engine; ``url`` overrides both and is how a
     fully-formed SQLAlchemy URL is pinned (a test database, a managed
-    instance). SQLite stays selectable because a benchmark has to run on a
-    laptop without a server.
+    instance). SQLite is the default because a benchmark has to run on a fresh
+    clone with no server, no credential and no ``.env``; PostgreSQL is the
+    shared mode, chosen on purpose with ``AKBENCH_DB_BACKEND=postgres`` and the
+    ``AKBENCH_PG_*`` names.
     """
 
-    backend: Literal["postgres", "sqlite"] = "postgres"
+    backend: Literal["postgres", "sqlite"] = "sqlite"
     url: str | None = None
     postgres: PostgresSettings = Field(default_factory=PostgresSettings)
     echo: bool = False
