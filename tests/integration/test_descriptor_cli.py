@@ -93,8 +93,10 @@ def test_descriptor_list_json_shape(project: Path) -> None:
 def test_descriptor_list_kind_filter(project: Path) -> None:
     result = runner.invoke(app, ["descriptor", "list", "--kind", "agent", "--json"])
     payload = _payload(result.output)
-    assert payload["count"] == 1
-    assert payload["descriptors"][0]["id"] == "codex"
+    # The three agents described in this installation: the two real ones and
+    # the reference adapter, all of them first-class agents of the registry.
+    assert payload["count"] == 3
+    assert {item["id"] for item in payload["descriptors"]} == {"codex", "fake", "http"}
 
 
 def test_descriptor_list_rejects_unknown_kind(project: Path) -> None:
@@ -144,8 +146,8 @@ def test_agent_list_and_inspect(project: Path) -> None:
     result = runner.invoke(app, ["agent", "list", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert payload["count"] == 1
-    assert payload["agents"][0]["id"] == "codex"
+    assert payload["count"] == 3
+    assert {item["id"] for item in payload["agents"]} == {"codex", "fake", "http"}
 
     result = runner.invoke(app, ["agent", "inspect", "codex", "--json"])
     assert result.exit_code == 0, result.output

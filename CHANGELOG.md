@@ -16,6 +16,35 @@ release tagged as `v<version>`.
 
 ### Added
 
+- **`fake` agent** (the reference adapter, plan 6.5, F1): promoted from a
+  contract-test helper to a real, registered agent —
+  `src/akbench/agents/fake.py`, descriptor `descriptors/agents/fake.yaml`,
+  one entry in `agents/catalog.py`. Deterministic, in-memory, and its behaviour
+  is a controllable per-run parameter (`complete`/`noop`/`hang`/`fail`/
+  `infrastructure_error`, with the aliases `solve` and `timeout`); the
+  contract suite in `tests/contract/test_fake_agent_contract.py` was extended
+  for the scripting, the aliases and the per-run override.
+- **`http` agent** (the "agent API" class, plan 6.5, F2):
+  `src/akbench/agents/http.py`, stdlib-only, speaking AK-Bench's own
+  agent-server protocol — `POST /tasks`, `GET /sessions/{id}`,
+  `POST /sessions/{id}/cancel`, `GET /sessions/{id}/result`, optional
+  `GET /version` — documented in `docs/AGENT_ADAPTERS.md` as the contract an
+  agent server must fulfil. The workspace is the server's, token usage is
+  passed through only when the server reports it, and an unreachable server,
+  an HTTP 5xx or a malformed body is an infrastructure error, never an agent
+  failure. The contract suite runs against a real loopback stub server
+  (`tests/contract/stubs/agent_server_stub.py`).
+- **Agent comparison** (plan 6.5, F3): `configs/experiments/agent-comparison.yaml`
+  varies the agent and nothing else — `codex` and `fake` on the same task, the
+  agent as a real factor. The planner now checks every arm of an
+  `agent_comparison` against the same rules as the primary and records the
+  capability differences between the arms (`agent_capability_difference`)
+  rather than smoothing them over; an experiment that declares itself a
+  comparison but holds a single arm is told so. The report of a comparison
+  gains an "Agent comparison" section: one row per agent, over every run that
+  experiment recorded for it, with a measure an agent never reported left
+  "not measured" instead of turned into a zero. A single-agent experiment
+  renders no such section.
 - **`configs/experiments/arena-roadmap-knowledge.yaml`**: the fifty new tasks in
   one arm — the managed local router, the `auto_codex` routing alias over the
   27B base model, and the knowledge plugin reading and writing (pipeline

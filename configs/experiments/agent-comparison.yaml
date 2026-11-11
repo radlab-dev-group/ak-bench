@@ -1,0 +1,80 @@
+# The second agent class becomes measurable: the same task, the same
+# evaluator, two agents (plan 6.5, F3).
+#
+# WHY THE AGENT IS THE FACTOR. An agent comparison asks what the agent is
+# worth, so exactly one thing may change between the arms: which agent runs.
+# The task, the evaluator, the dataset version and the repetitions are shared,
+# and the execution mode is direct because the comparison must not measure a
+# runtime as well. The agent dimension is a real factor, so the arms share the
+# variant machinery, the hashes and the report of every other experiment.
+#
+# WHY THE CONFIGURATION IS EMPTY. A configuration written here is sent to every
+# arm, and a parameter is declared by an agent, not by an experiment:
+# sandbox_mode belongs to Codex and to nothing else. Each arm therefore starts
+# from its own descriptor defaults, which the registry fills in, and the only
+# declared difference is the adapter that ran.
+#
+# WHY FAKE IS AN ARM. The reference agent completes deterministically and
+# reports a fixed token pair, so the comparison always has one arm whose result
+# is known in advance. When the real arm drifts, the difference is attributable
+# to the real agent rather than to the harness.
+#
+# THE CAPABILITIES DIFFER BY DECLARATION. Codex reports token usage and the
+# requested model alias; the fake reports neither a model nor a cost. The
+# planner records those differences from the descriptors, and the report shows
+# an unsupported field as unsupported rather than as a zero.
+schema_version: "1.0"
+id: agent-comparison
+version: "1.0.0"
+title: Two agents on the same task
+description: >-
+  The reference agent and the Codex CLI on the same single task, with the agent
+  as the only factor and the evaluator shared, so the comparison measures the
+  agent and nothing else. Each arm starts from its own descriptor defaults and
+  the capability differences are reported as declared by the descriptors.
+
+experiment:
+  type: agent_comparison
+
+  agent:
+    id: codex
+    version: "1.0.0"
+
+  execution:
+    mode: direct
+
+  dataset:
+    filters:
+      categories: [bug_fix]
+      task_ids: [wordcount-001]
+
+  factors:
+    strategy: full_factorial
+    dimensions:
+      - id: agent
+        values: [codex, fake]
+
+  execution_policy:
+    repetitions: 1
+    concurrency: 1
+    timeout_seconds: 600
+    evaluation_timeout_seconds: 300
+    retry_infrastructure_errors: 1
+
+  isolation:
+    workspace_per_run: true
+    fresh_agent_session: true
+    clean_agent_context: true
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    # 1 task x 2 arms x 1 repetition, with room for a rerun.
+    max_runs: 4

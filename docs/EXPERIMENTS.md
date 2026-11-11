@@ -139,6 +139,7 @@ run record as `runtime_environment` and named in the plan and run output.
 | `llm-router-selfhost-fast.yaml` | the same shape on an instance the run owns, with the knowledge plugin |
 | `knowledge-replay.yaml` | a memory experiment; the managed instance gives it its own namespace |
 | `arena-roadmap-knowledge.yaml` | the fifty arena and roadmap tasks, one arm: the routing alias over the 27B base model, knowledge on |
+| `agent-comparison.yaml` | the second agent class: `codex` and `fake` on the same task, the agent as the only factor (plan 6.5, F3) |
 
 The split between the two runtimes is a rule, not a choice per file: an
 experiment varies a *plugin* configuration only where the run owns the

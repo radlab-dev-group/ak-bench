@@ -17,6 +17,10 @@ import pytest
 from typer.testing import CliRunner
 
 from akbench.cli.main import app
+from akbench.config.loader import load_settings, resolve_database_url
+from akbench.reporting.data import build_experiment_report, collect_history
+from akbench.storage.db import create_db_engine
+from akbench.storage.history import HistoryStore
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUB = REPO_ROOT / "tests" / "contract" / "stubs" / "codex_fixer_stub.py"
@@ -43,6 +47,16 @@ def project(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
         if name.startswith("AKBENCH__") or name == "AKBENCH_CONFIG":
             monkeypatch.delenv(name, raising=False)
     return root
+
+
+def _history_of(project: Path, tail: str):
+    """The recorded history of this project, and one experiment uid in it."""
+    url = resolve_database_url(load_settings(project_root=project).settings)
+    history = collect_history(HistoryStore(create_db_engine(url)))
+    uids = [str(row["uid"]) for row in history.experiments]
+    match = next((uid for uid in uids if tail in uid), None)
+    assert match, f"no experiment ending in {tail!r} in {uids}"
+    return history, match
 
 
 def _json(output: str) -> object:
@@ -251,3 +265,58 @@ def test_a_failed_run_carries_its_reason_into_the_json_result(
     run = payload["runs"][0]
     assert run["state"] == "invalid_configuration"
     assert "AKBENCH_TEST_CREDENTIAL" in str(run["detail"])
+
+
+def test_an_agent_comparison_runs_every_arm(project: Path) -> None:
+    """The second agent class runs end to end, on the same task as the first.
+
+    The stub stands in for Codex and the fake adapter is deterministic, so the
+    whole comparison — plan, orchestrator, evaluator, history, report — runs
+    with two agents and nothing else.
+    """
+    experiment = EXPERIMENTS / "agent-comparison.yaml"
+
+    result = runner.invoke(app, ["experiment", "run", str(experiment), "--store", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = _json(result.output)
+    assert isinstance(payload, dict)
+    # 1 task x 2 arms (codex, fake) x 1 repetition
+    assert payload["planned"] == 2
+    assert payload["completed"] == 2
+    assert {run["state"] for run in payload["runs"]} == {"completed"}
+
+    # Both agents are recorded in the history, each under its own arm.
+    runs = _json(runner.invoke(app, ["history", "runs", "--json"]).output)
+    assert len(runs) == 2
+    agents = {str(run["agent"]).split("@", 1)[0] for run in runs}
+    assert agents == {"codex", "fake"}
+    # The same task in both arms: the comparison varies the agent only.
+    assert {run["task_uid"] for run in runs} == {"wordcount-001@1.0.0"}
+
+    # The report states the comparison side by side.
+    history, experiment_uid = _history_of(project, "agent-comparison")
+    report = build_experiment_report(history, experiment_uid)
+    agents = [str(arm["agent"]).split("@", 1)[0] for arm in report.arms]
+    assert agents == ["codex", "fake"]
+    for arm in report.arms:
+        # One task, one repetition: each arm is one run.
+        assert len(arm["arm_runs"]) == 1
+        assert arm["runs"] == 1
+        assert arm["evaluated"] == 1
+    # The fake arm states its own fixed token pair; the stub arm reports its own.
+    fake_arm = next(
+        arm for arm in report.arms if str(arm["agent"]).split("@", 1)[0] == "fake"
+    )
+    assert fake_arm["mean_total_tokens"] == 18.0
+
+
+def test_an_experiment_with_one_agent_has_no_comparison_section(project: Path) -> None:
+    """A single-agent experiment is not a comparison and does not pretend to be."""
+    experiment = EXPERIMENTS / "wordcount-direct-sanity.yaml"
+    result = runner.invoke(app, ["experiment", "run", str(experiment), "--store", "--json"])
+    assert result.exit_code == 0, result.output
+
+    history, experiment_uid = _history_of(project, "wordcount-direct-sanity")
+    report = build_experiment_report(history, experiment_uid)
+    assert report.arms == []

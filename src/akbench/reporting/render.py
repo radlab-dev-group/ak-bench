@@ -1215,6 +1215,80 @@ def _ranking(
     )
 
 
+
+def _agent_comparison(report: ExperimentReport) -> list[str]:
+    """The arms of an agent comparison, side by side (plan 6.5, F3).
+
+    The configuration ranking answers which configuration measured best; an
+    experiment that varied the agent wants the other reading of the same runs,
+    one row per agent. The numbers are the ones ``summarize_runs`` states
+    everywhere else, so the two views of an experiment cannot disagree, and a
+    measure an agent never reported stays "not measured" instead of becoming a
+    zero: the descriptor said it was unsupported, and the table says so too.
+
+    An experiment with one agent returns nothing at all: a comparison of one
+    row would repeat the ranking and call it new information.
+    """
+    arms = report.arms
+    if len(arms) < 2:
+        return []
+    rows = [
+        [
+            number(index + 1),
+            _link_to("agents", arm.get("agent")),
+            number(arm.get("runs") or 0),
+            number(arm.get("evaluated") or 0),
+            number(arm.get("passed") or 0),
+            percent(arm.get("success_rate")),
+            number(arm.get("mean_score"), digits=3),
+            duration(arm.get("mean_duration_seconds")),
+            *_mean_token_cells(arm),
+            _badges(arm.get("statuses") or []),
+        ]
+        for index, arm in enumerate(arms)
+    ]
+    chart_rows = [
+        {
+            "config": arm.get("agent"),
+            "success_rate": arm.get("success_rate"),
+            "mean_score": arm.get("mean_score"),
+            "mean_duration_seconds": arm.get("mean_duration_seconds"),
+        }
+        for arm in arms
+    ]
+    return [
+        "<h2>Agent comparison</h2>",
+        '<p class="muted">one row per agent, over every run this experiment recorded for '
+        "it, in the order the agents first ran. The measures are the same the ranking "
+        "above states per configuration, and a field the agent's descriptor declares "
+        f"unsupported stays \"{NOT_MEASURED}\" rather than turning into a zero.</p>",
+        table(
+            [
+                "order",
+                "agent",
+                "runs #",
+                "evaluated #",
+                "passed #",
+                "success rate",
+                "mean score #",
+                "mean time",
+                *MEAN_TOKEN_HEADERS,
+                "statuses",
+            ],
+            rows,
+        ),
+        "<h3>Success rate</h3>",
+        _chart(chart_rows, "success_rate"),
+        "<h3>Mean score</h3>",
+        _chart(chart_rows, "mean_score"),
+        "<h3>Mean wall-clock time</h3>",
+        _chart(chart_rows, "mean_duration_seconds", css="cost"),
+        '<p class="bar-note">each bar is drawn against the largest value in its own '
+        "column, over the runs of that arm only; tokens and tool calls are means per "
+        "run, so an arm that ran fewer times is not punished for it</p>",
+    ]
+
+
 def _leaderboard(data: HistoryData) -> str:
     """Every configuration ever recorded, best first: the front-page answer.
 
@@ -2095,6 +2169,7 @@ def render_experiment(
         ),
         "<h2>Configuration ranking</h2>",
         _ranking(report.runs, {str(experiment.get("uid")): report.variants}),
+        *_agent_comparison(report),
         "<h2>Descriptor and validity</h2>",
         table(
             ["field", "value"],

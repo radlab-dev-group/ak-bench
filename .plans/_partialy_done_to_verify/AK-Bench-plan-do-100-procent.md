@@ -284,7 +284,7 @@ eksperyment z nieistniejącym środowiskiem jest odrzucany na etapie `validate`.
 
 ---
 
-## FAZA F — Drugi agent i klasy agentów (§6.5, §25A)
+## FAZA F ✅ ZREALIZOWANA — Drugi agent i klasy agentów (§6.5, §25A)
 
 Audyt: tylko `codex` (process). Framework gotowy, ale `agent_comparison` nieużywalny.
 
