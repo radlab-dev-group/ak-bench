@@ -6,8 +6,9 @@ title: Code review
 description: Identify specified defects in a provided change.
 
 category:
-  enabled: false
+  enabled: true
   difficulties: [easy, medium, hard]
+  default_evaluators: [pytest_evaluator]
   task_requirements:
     - repository with a pinned commit
     - annotated review targets

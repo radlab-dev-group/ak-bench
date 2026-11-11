@@ -6,8 +6,9 @@ title: Security
 description: Locate and fix a specified security issue.
 
 category:
-  enabled: false
+  enabled: true
   difficulties: [medium, hard, expert]
+  default_evaluators: [pytest_evaluator]
   task_requirements:
     - repository with a pinned commit
     - hidden tests proving the vulnerability is closed

@@ -166,5 +166,5 @@ def test_category_list_marks_enabled_and_disabled(project: Path) -> None:
     payload = _payload(result.output)
     by_id = {item["id"]: item for item in payload["categories"]}
     assert by_id["bug_fix"]["enabled"] is True
-    assert by_id["refactoring"]["enabled"] is False
+    assert by_id["refactoring"]["enabled"] is True
     assert by_id["new_feature"]["difficulties"] == ["easy", "medium", "hard", "expert"]
