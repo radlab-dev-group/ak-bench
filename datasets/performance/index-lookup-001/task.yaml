@@ -1,0 +1,26 @@
+schema_version: "1.0"
+id: index-lookup-001
+version: "1.0.0"
+created_at: "2026-11-10T19:00:00+01:00"
+title: Add a dict-backed user index
+description: >-
+  find_user scans the whole list on every lookup. Add indexkit.index.UserIndex that builds a dict once and answers lookups without scanning.
+authors:
+  - "[arena] Arena AI agent"
+task:
+  category: performance
+  difficulty: medium
+  repository:
+    source: datasets/_sources/indexkit
+    ref: HEAD
+    notes: standard-library-only seed fixture directory
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 600
+  constraints:
+    - preserve the public API of the indexkit package (find_user keeps working)
+    - do not modify the repository test suite under tests/
+    - do not add third-party dependencies
+  notes: >-
+    The hidden tests count id comparisons on instrumented ids: a scan needs hundreds per lookup, a dict lookup almost none.
