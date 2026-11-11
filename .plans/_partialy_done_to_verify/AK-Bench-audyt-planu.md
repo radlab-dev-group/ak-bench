@@ -4,6 +4,12 @@
 **Data audytu:** 2026-11-10 · Metoda: klon repo, lektura planu (§1–30), mapowanie na kod,
 uruchomienie testów (`AKBENCH_DB_BACKEND=sqlite`).
 
+> **Aktualizacja 2026-11-11 (przegląd zgodności z kodem):** audyt opisuje stan `125535b`.
+> Od tego commitu weszła memory suite (`f7da55b`, 13 nowych zadań): `datasets/` ma 35 zadań
+> (20 bug_fix + 15 new_feature), `configs/experiments/` ma 10 YAML-i, `tests/unit+contract`
+> przechodzi 619 testów (0 błędów, 4 skipy live/postgres). Defekt 3 (`KeyError` w teście
+> atlasu) i 4 (test live bez skipa) **nie istnieją w bieżącym kodzie** — patrz §4.
+
 ## Werdykt w skrócie
 
 **Plan jest w praktyce zrealizowany — wszystkie fazy 0–13 mają działającą implementację,
@@ -21,14 +27,14 @@ błędy testów na świeżym klonie. Szczegóły poniżej.
 | 0 Spike | prototyp + `AGENT_INTEGRATION.md` + `ROUTER_INTEGRATION.md` | ✅ | `spike/` (runner, evidence), `docs/AGENT_INTEGRATION.md`, `docs/ROUTER_INTEGRATION.md` |
 | 1 Szkielet | `akbench doctor`, init, migracje | ✅ | `cli/main.py` (`init/doctor`), `bootstrap.py`, Alembic 0001–0010 |
 | 2 Deskryptory i registry | agent+plugin bez zmian w silniku | ✅ | `descriptors/` (8 kindów), `src/akbench/descriptors/`, `docs/DESCRIPTOR_SYSTEM.md` |
-| 3 Dataset i repozytoria | powtarzalne workspace | ✅ | `datasets/` (22 zadania), `datasets/workspace.py` (git worktree), `verification.py` |
+| 3 Dataset i repozytoria | powtarzalne workspace | ✅ | `datasets/` (35 zadań na `f7da55b`; 22 na `125535b`), `datasets/workspace.py` (git worktree), `verification.py` |
 | 4 Agent Adapter Framework | Codex przez adapter, runner bez kodu Codexa | ✅ | `agents/contract.py` (Protocol 1:1 z §6.2), `agents/codex.py` (736 linii, jedyne miejsce z logiką Codexa), `tests/contract/` |
 | 5 Runtime Manager | direct/runtime/router | ✅ | `runtime/contract.py` (`ExecutionMode`, `RuntimeManager` 1:1 z §7.2), `runtime/llm_router.py`, tryby `managed`+`external` |
 | 6 Evaluator Engine | niezależna ocena | ⚠️ częściowo | `pytest_evaluator` + `command_evaluator` działają; `diff`/`static_analysis`/`python` tylko deskryptory (patrz §3) |
 | 7 Orchestrator i Scheduler | stabilna seria runów | ⚠️ częściowo | lifecycle 1:1 z §15 (`orchestration/lifecycle.py`), retry infra, timeout/cancel sesji; **brak schedulera** (resume/cancel/concurrency) |
 | 8 Experiment + Planner | plan bez uruchamiania | ✅ | `experiments/planner.py` (924 linie), wszystkie 5 strategii, baseline, limity `max_runs` |
 | 9 Plugin + Observability | weryfikacja pluginów | ✅ | `plugins/`, `descriptors/env.py`, statusy `verified/unverified/mismatch/unsupported/not_configured/runtime_error` |
-| 10 Knowledge Replay | poprawny eksperyment pamięciowy | ✅ | `knowledge/` (modes, planning, readiness gate, fingerprint, isolation), 2 gotowe eksperymenty |
+| 10 Knowledge Replay | poprawny eksperyment pamięciowy | ✅ | `knowledge/` (modes, planning, readiness gate, fingerprint, isolation), eksperymenty knowledge-replay* (4 na `f7da55b`) |
 | 11 Storage i Metrics | pełna historia | ✅ | 19 tabel (wszystkie 16 z §19 + `agents/runtimes/task_files`), `metrics/aggregate.py` z formułami §18 |
 | 12 Reporting | statyczny HTML | ✅ | `reporting/render.py` (3059 linii) — index, eksperymenty, warianty, zadania, agenci, runtime'y, pluginy, modele, runy, artefakty |
 | 13 Export i stabilizacja | regularne eksperymenty | ✅ | `export/` (JSON/CSV/HTML + redakcja sekretów), testy E2E YAML→HTML, reproducibility |
@@ -45,7 +51,7 @@ błędy testów na świeżym klonie. Szczegóły poniżej.
 | §5.1 Struktura katalogów | ⚠️ | Zasadniczo zgodna; różnice jak w §3 + `bench_ui/` (FastAPI) spoza planu |
 | §6 Agenci (registry, adapter, wynik, capabilities, deskryptor, testy kontraktowe) | ✅ | Kontrakt, `AgentResult.as_dict()` i capabilities 1:1 z planem (bogatsze: `verified/partial/unsupported/unverified`). **Tylko 1 adapter: Codex CLI (process)** — klasy HTTP/API/service z §6.5 niezaimplementowane |
 | §7 Runtime/Router, tryby, modele | ✅ | `direct/runtime/router`, `managed`+`external` (external plan przewidywał „później” — jest od razu), rozdział model vs `routed_model` |
-| §8 Dataset, kategorie, trudność, mutacje, hidden tests | ✅ z nadwyżką | 9 kategorii (plan MVP: 2, docelowo: 9), trudności easy–expert, 22 zadania (12 bug_fix + 10 new_feature), mutacje weryfikowane (`--verify-mutations`), hidden tests poza workspace |
+| §8 Dataset, kategorie, trudność, mutacje, hidden tests | ✅ z nadwyżką | 9 kategorii (plan MVP: 2, docelowo: 9), trudności easy–expert, 35 zadań na `f7da55b` (20 bug_fix + 15 new_feature; 22 na `125535b`), mutacje weryfikowane (`--verify-mutations`), hidden tests poza workspace |
 | §9 Deskryptory (10 rodzajów) | ⚠️ | 8 kindów w rejestrze + Task + Experiment poza nim. **Brak Environment Descriptor** jako kind (jest `ObservedEnv` w pluginach) |
 | §10 Plugin Descriptor i ENV | ✅ | Allowlist `observed_env` z flagami `observed/dimension/controllable/sensitive`, sekrety jako `is_set`, triada + `value_source`, Plugin Adapter |
 | §11 Dimension Descriptor | ✅ | Wszystkie 9 typów z §11, gating controllability w plannerze |
@@ -61,7 +67,7 @@ błędy testów na świeżym klonie. Szczegóły poniżej.
 | §21 Export | ✅ | JSON/CSV/HTML, redakcja sekretów (`export/redact.py`). Brak flag wyłączania promptów/diffów z §21 (redakcja jest automatyczna, nie konfigurowalna) |
 | §22 CLI | ⚠️ | Prawie wszystko; rozjazdy w §3 poniżej |
 | §23 Bezpieczeństwo i validity | ✅ | `valid/valid_with_warnings/invalid/incomplete`, sekrety, hidden tests, manifesty. Ograniczenie sieci/filesystemu tylko przez `sandbox_mode` Codexa, nie przez AK-Bench |
-| §24 Testy | ⚠️ | Unit/contract/integration/E2E/reproducibility istnieją; **18 błędów na świeżym klonie** (patrz §4) |
+| §24 Testy | ⚠️→✅ | Unit/contract/integration/E2E/reproducibility istnieją; 18 błędów z `125535b` nie powtarzają się na `f7da55b` (patrz §4, aktualizacja) |
 | §25 Eksperymenty startowe A–F | ⚠️ | B ✅, D ✅, F ✅, C częściowo (alias `auto_codex` w macierzach, brak dedykowanego on/off), **A: typ `agent_comparison` istnieje, ale z 1 agentem nie da się go uruchomić**, **E: shipped `full-matrix` to Knowledge×Model (custom), oś Auto Codex świadomie pominięta** (komentarz w YAML) |
 | §27 MVP | ✅ z 2 wyjątkami | Docker ❌, SQLite jako domyślna baza ❌ (Postgres). Reszta ✅ |
 | §28 Dokumentacja | ⚠️ | 18 plików zamiast 23; brak 11 nazw z listy (treść częściowo scalona w `DATASETS.md`, `EXPERIMENTS.md`, `PLUGINS.md`, `RUNTIME_MANAGER.md`) |
@@ -84,7 +90,14 @@ błędy testów na świeżym klonie. Szczegóły poniżej.
 ## 4. Defekty wykryte testami na świeżym klonie
 
 Uruchomiono: `pytest tests/unit tests/contract tests/integration tests/e2e` (SQLite).
-Wynik: **~775 testów, 18 błędów** (1 unit + 17 integration). Przyczyny:
+Wynik na `125535b`: **~775 testów, 18 błędów** (1 unit + 17 integration). Przyczyny:
+
+> **Aktualizacja 2026-11-11:** na bieżącym HEAD (`f7da55b`) `tests/unit tests/contract`
+> przechodzi **619 testów, 0 błędów, 4 skipy** (markery `live`/`postgres`). Defekt 1
+> naprawiony w `6102769` (usuwanie `parts/` z `.gitignore` + commit parts). Defekty 3 i 4
+> nie istnieją: test z defektu 3 jest poprawnie napisany, test z defektu 4 nie wymaga
+> żywego routera (stub `codex_stub.py`). Defekt 2 (symlink `data`) naprawiony w Fazie A2
+> planu do 100%.
 
 | # | Błąd | Przyczyna | Klasyfikacja |
 |---|---|---|---|
@@ -104,5 +117,6 @@ Poza tymi 18 błędami cała reszta (unit, contract, E2E YAML→HTML, reproducib
   dokumentacja (18/23 plików), przykłady A/C/E, testy (18 błędów klonowych).
 - **Niezrealizowane:** izolacja Docker, scheduler/równoległość, drugi agent,
   Environment Descriptor, mierzenie metryk knowledge.
-- **Do naprawy w pierwszej kolejności:** `.gitignore` (`parts/`), symlink `data`,
-  test atlasu — to jedyne rzeczy blokujące zielony CI na świeżym klonie.
+- **Do naprawy w pierwszej kolejności:** `.gitignore` (`parts/`) — naprawione w `6102769`;
+  symlink `data` — naprawiony w Fazie A2 (2026-11-11); test atlasu — nie istniał w tej
+  postaci (patrz §4, aktualizacja). Zielony CI na świeżym klonie: osiągnięty.

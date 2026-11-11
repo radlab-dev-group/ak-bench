@@ -1,7 +1,7 @@
 # AK-Bench — plan realizacji do 100% zgodności z `AK-Bench-implementation-plan.md`
 
 > **Dokument dla agenta kodującego.** Wejście: audyt z 2026-11-10 (`AK-Bench-audyt-planu.md`,
-> repo @ `125535b`, v0.1.1) + plan źródłowy `.plans/AK-Bench-implementation-plan.md` (§1–30).
+> repo @ `125535b`, v0.1.1) + plan źródłowy `.plans/_partialy_done_to_verify/AK-Bench-implementation-plan.md` (§1–30).
 > Cel: zamknąć **wszystkie** braki i odstępstwa wykryte w audycie, tak aby każdy punkt
 > §1–30, MVP §27 i rezultat końcowy §30 był spełniony i udowodniony testami.
 > Po zakończeniu każdej fazy: testy + dokumentacja + CHANGELOG. Nie wolno zostawiać stubów.
@@ -25,7 +25,7 @@
    w raportach. Brak danych = `null` / `unavailable`, nigdy 0 i nigdy zgadywanie.
 6. Każdy run: manifest + hashe + snapshoty deskryptorów. Każdy deskryptor: wersjonowany
    (`schema_version`, `id`, `version`), walidowany Pydantic, digest-pinowany.
-7. Po każdej fazie: `AKBENCH_DB_BACKEND=sqlite python -m pytest tests/unit tests/contract
+7. Po każdej fazie: `AKBENCH_DB_BACKEND=sqlite .venv/bin/python -m pytest tests/unit tests/contract
    tests/integration tests/e2e -q` musi być zielony (poza testami oznaczonymi `live`/`postgres`,
    które mają się **skipować**, nie failować, bez swoich zależności).
 8. Aktualizuj `CHANGELOG.md` (sekcja Unreleased) i dokumentację dotkniętego obszaru
@@ -35,7 +35,8 @@
 10. Nie refaktoruj bez potrzeby: przemianowania modułów z §5.1 (np. `categories/`,
     `sandbox/`) rozwiązuj dokumentacją mapowania (Faza K), nie przenosinami plików.
 
-**Definicja „100%”:** wszystkie **obowiązkowe** punkty checklisty w §13 zaznaczone
+**Definicja „100%”:** wszystkie **obowiązkowe** punkty checklisty w §13 *tego dokumentu*
+(„Checklist końcowa”; §13 planu źródłowego to Router Manager — to nie ta sama liczba)
 (Faza B jest opcjonalna i nie wchodzi w definicję 100%), testy zielone na świeżym
 klonie (bez sibling repo `ak-bench-data`, bez PostgreSQL, bez kluczy API),
 wszystkie shipped YAML-e przechodzą `experiment validate` + `plan`.
@@ -52,7 +53,7 @@ nie blokuje release ani oznaczenia „100%”.
 
 Audyt: 18 błędów testów na świeżym klonie. Żadna kolejna faza nie ma sensu bez zielonego CI.
 
-### A1. `.gitignore` zjada `mutations/parts/*.patch` (13 błędów)
+### A1. `.gitignore` zjada `mutations/parts/*.patch` (13 błędów) — ✅ NAPRAWIONE w `6102769`, został strażnik
 
 **Objaw:** `can't open patch 'datasets/bug_fix/{atlas-drift-001,depweaver-backtracking-001}/mutations/parts/*.patch'`.
 `parts.json` referencjonuje pliki, których nie ma w git, bo `.gitignore:19` zawiera
@@ -98,7 +99,7 @@ częścią klona, więc świeży klon jest zepsuty.
 **Kryterium akceptacji:** świeży klon bez `../ak-bench-data` przechodzi
 `test_workspaces.py` (2) i `test_dataset_cli.py::test_dataset_validate_verifies_mutation`.
 
-### A3. Test atlasu: `KeyError: LLM_ROUTER_UTILS_PLUGINS_PIPELINE`
+### A3. Test atlasu: `KeyError: LLM_ROUTER_UTILS_PLUGINS_PIPELINE` — ✅ NIE ISTNIEJE (test napisany poprawnie)
 
 **Objaw:** `test_the_shipped_atlas_memory_experiment_declares_its_six_arms`
 (`tests/unit/test_experiment_planner.py:544`) robi `variant.runtime_env[pipeline]`
@@ -182,7 +183,8 @@ Audyt: `diff_evaluator` i `static_analysis_evaluator` mają deskryptory, ale
 
 ### C4. Rejestracja, testy, docs
 
-1. `default_registry()` rejestruje wszystkie 5. Usuń komentarz „no implementation”.
+1. `default_registry()` rejestruje wszystkie 5. Usuń komentarz „kinds have descriptors but
+   no implementation here” (`src/akbench/evaluators/registry.py:70`).
 2. Testy unit dla każdego (pass/partial/fail/timeout/evaluator_error) + test,
    że `diff` nigdy nie zwraca `passed`.
 3. `docs/EVALUATORS.md` — rozdział na każdy evaluator: wejścia, wyjścia, verdicty,
@@ -197,7 +199,7 @@ Audyt: `diff_evaluator` i `static_analysis_evaluator` mają deskryptory, ale
 ## FAZA D — Scheduler: concurrency, resume, cancel + brakujące komendy CLI (§15, §22)
 
 Audyt: `concurrency` w YAML ignorowane (runy sekwencyjnie w
-`cli/experiments.py::_run_experiment`), brak `experiment resume/cancel/show`,
+`src/akbench/cli/experiments.py::_run_experiment`), brak `experiment resume/cancel/show`,
 brak `runtime start/stop/verify`.
 
 ### D1. Concurrency
@@ -245,7 +247,7 @@ brak `runtime start/stop/verify`.
 | `experiment resume/cancel` | patrz D2/D3 |
 
 Zaktualizuj `docs/CLI.md` (tabela komend plan vs implementacja) i docstring
-`cli/main.py` (usuń „intentionally absent”).
+`src/akbench/cli/main.py` (usuń „intentionally absent”).
 
 **Kryterium akceptacji:** `concurrency: 2` działa E2E; resume po przerwaniu nie duplikuje;
 cancel zostawia artefakty i stan `cancelled`; wszystkie komendy z §22 istnieją
@@ -385,7 +387,8 @@ istnieją w `descriptors/dimensions/`), runtime managed, pipeline z
 
 ### H2. Pełna macierz 12 wariantów (przykład E)
 
-Nowy `configs/experiments/full-matrix-12.yaml` (obok istniejącego `full-matrix.yaml`):
+Nowy `configs/experiments/full-matrix-12.yaml` (obok istniejącego `full-matrix.yaml`,
+który jest dziś `strategy: custom_matrix`, nie full_factorial):
 Knowledge ON/OFF × Auto Codex ON/OFF × Model A/B/C = 12 wariantów,
 `strategy: full_factorial`. Modele A/B/C = 3 wartości z `descriptors/dimensions/model.yaml`
 (`qwen/Qwen3.8-27B`, `qwen/Qwen3.8-Flash-Next`, `auto_codex` jako alias routingu —
@@ -596,11 +599,11 @@ błąd jest jawny (`infrastructure_error`), nie cichy.
 ## 13. Checklist końcowa (do odhaczania przez agenta)
 
 ### Defekty (Faza A)
-- [ ] A1 `parts/*.patch` w git + strażnik integralności datasetu
-- [ ] A2 brak symlinka `data`, świeży klon działa bez sibling repo
-- [ ] A3 test atlasu naprawiony (off = brak pipeline)
-- [ ] A4 testy live skipują się bez kluczy
-- [ ] A5 `import bench_ui` bez bazy
+- [x] A1 `parts/*.patch` w git + strażnik integralności datasetu (parts w git od `6102769`; strażnik `tests/unit/test_dataset_integrity.py` — 9 passed)
+- [x] A2 brak symlinka `data`, świeży klon działa bez sibling repo (symlink `git rm`, katalogi `data/*` tworzone leniwie; README Quick start zaktualizowany)
+- [x] A3 test atlasu naprawiony (off = brak pipeline) — defekt nie istniał w bieżącym kodzie; `test_the_shipped_atlas_memory_experiment_declares_its_six_arms` asercjonuje `runtime_env.get(pipeline, "")` i przechodzi (39/39 w `tests/unit/test_experiment_planner.py`)
+- [x] A4 testy live skipują się bez kluczy — `tests/unit tests/contract` zielone bez env (0 failed, 4 skipped); `test_codex_live_contract.py` ma skipif na `AKBENCH_RUN_LIVE`, `test_agent_run_reports_the_execution_plan` używa `codex_stub.py` i nie wymaga `LLM_ROUTER_API_KEY`
+- [x] A5 `import bench_ui` bez bazy — `python -c "import bench_ui.app"` działa bez `AKBENCH_DB_BACKEND`/`AKBENCH_PG_PASSWORD`; `BenchDataService.__init__` łapie `ConfigError` do `self.config_error` (bench_ui/service.py:683-710); `create_app()` raportuje, nie rzuca
 
 ### Funkcjonalność (Fazy C–J)
 - [ ] C 5 evaluatorów zarejestrowanych i przetestowanych
@@ -614,7 +617,7 @@ błąd jest jawny (`infrastructure_error`), nie cichy.
 
 ### Dokumentacja i release (Fazy K–L)
 - [ ] K wszystkie 23 pliki z §28 + test przykładów z docs
-- [ ] L1 checklist §1–30 z dowodami w audycie
+- [ ] L1 checklist §1–30 planu źródłowego z dowodami w audycie
 - [ ] L2 pełna macierz testów zielona na świeżym klonie
 - [ ] L3 demonstracja 12 punktów §30
 - [ ] L4 wersja + CHANGELOG + tag
