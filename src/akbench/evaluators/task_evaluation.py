@@ -31,12 +31,19 @@ def evaluate_task(
     registry: EvaluatorRegistry | None = None,
     timeout: float | None = None,
     baseline: dict[str, str] | None = None,
+    **evaluator_inputs: object,
 ) -> EvaluationResult:
     """Judge what the agent produced in ``workspace`` for ``loaded``.
 
     ``evaluator_id`` overrides the task's own choice (useful to add a
     supplementary evaluator); by default the evaluator named in the task runs,
     so a verdict always belongs to the task definition.
+
+    ``evaluator_inputs`` carries the supplementary evaluator's own subject:
+    the ``reference_patch`` the diff evaluator measures against, the ``script``
+    the Python evaluator runs, the analyser ``command`` for static analysis.
+    Every evaluator accepts unknown keywords and ignores them, so one call
+    serves all five kinds without the caller knowing which one it is.
     """
     engine = EvaluatorEngine(registry or default_registry())
     tests = hidden_tests_dir(loaded)
@@ -47,6 +54,7 @@ def evaluate_task(
         timeout=timeout,
         hidden_tests=tests if tests.is_dir() else None,
         baseline=baseline,
+        **evaluator_inputs,
     )
 
 

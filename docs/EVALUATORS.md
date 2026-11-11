@@ -32,17 +32,57 @@ regression, `5` (no tests collected) and the usage/internal codes →
 
 ## Evaluators
 
-- **`pytest_evaluator`** — the primary evaluator. Runs the task's hidden tests
-  over a copy of the produced workspace.
+All five kinds of plan section 16 are implemented and registered in
+`akbench/evaluators/registry.py`. An id outside them is still an explicit
+`EvaluatorNotFound` error, never a silent approximation.
+
+- **`pytest_evaluator`** — the primary evaluator and the only one that decides
+  a task on its own. Runs the task's hidden tests over a copy of the produced
+  workspace.
 - **`command_evaluator`** — the generic escape hatch: any command that exits
   `0` on success, run in the same isolation.
+- **`diff_evaluator`** — supplementary. Scores the overlap between the
+  produced change and a `reference_patch`, line for line, in the base
+  coordinates both sides already carry. A diff is evidence about the change,
+  never proof of correctness, so the verdict is `partial` when there is
+  overlap and `failed` when there is none; it can never return `passed`. It
+  reads the workspace read-only instead of copying it, because a diff is a
+  relation to the base commit and the evaluation sandbox deliberately drops
+  `.git` (see `src/akbench/evaluators/diff.py`).
+- **`static_analysis_evaluator`** — supplementary. Runs the analyser the task
+  declares (`ruff --output-format=json .` by default) over a copy of the
+  workspace and reports its findings as a score: `passed` when the analyser
+  found nothing, `partial` when it found something (a reason to look, not proof
+  the task is unsolved), `infrastructure_error` when the analyser is not
+  installed, and `evaluator_error` when it reports something unreadable.
+- **`python_evaluator`** — custom. Runs a task-provided script in a separate
+  process against an isolated copy of the workspace; the script reports its
+  verdict by writing `evaluator-result.json` into `--out-dir`. Only the plan-16
+  vocabulary is accepted, and a script cannot claim `infrastructure_error` —
+  that verdict belongs to the evaluator, not to code it cannot verify. The
+  script is a host subprocess, not a security boundary (Docker isolation is
+  deferred; see `docs/ISOLATION_AND_SECURITY.md`), so a task must ship only a
+  script its operator would run by hand.
 
-The `diff`, `static_analysis` and `python` kinds have descriptors but no
-implementation in this installation; asking for one is an explicit
-`EvaluatorNotFound` error, never a silent approximation. Adding an evaluator
-means implementing the contract and registering it in
-`akbench/evaluators/registry.py` — the engine, the tasks and the CLI do not
-change.
+### Declaring the supplementary inputs
+
+The `diff` and `python` evaluators take their subject from the task, not from
+the workspace, so both inputs travel with the task:
+
+```yaml
+# a task judged by how close it gets to a reference change
+evaluator: diff_evaluator
+# and the reference, shipped with the task like a hidden test
+mutation:
+  patch: mutations/mutation-001.patch
+```
+
+In a task descriptor the reference patch and the evaluator script are supplied
+as evaluator inputs (`reference_patch`, `script`) when the evaluator is invoked,
+either by `akbench evaluate task … --evaluator diff_evaluator` or by code that
+calls `EvaluatorEngine.evaluate` with the same keyword arguments. The task's
+`evaluator` field always names a registered id; an unknown id is refused by the
+registry, which is what keeps a task from being judged by a stand-in.
 
 ## Using it
 

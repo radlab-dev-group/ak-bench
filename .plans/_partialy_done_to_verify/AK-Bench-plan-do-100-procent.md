@@ -153,7 +153,7 @@ Import pakietu nie może wymagać działającej bazy.
 
 ---
 
-## FAZA C — Brakujące evaluatory (§16)
+## FAZA C — Brakujące evaluatory (§16) — ✅ ZREALIZOWANA
 
 Audyt: `diff_evaluator` i `static_analysis_evaluator` mają deskryptory, ale
 `default_registry()` rejestruje tylko `pytest`+`command` i rzuca `EvaluatorNotFound`.
@@ -606,7 +606,7 @@ błąd jest jawny (`infrastructure_error`), nie cichy.
 - [x] A5 `import bench_ui` bez bazy — `python -c "import bench_ui.app"` działa bez `AKBENCH_DB_BACKEND`/`AKBENCH_PG_PASSWORD`; `BenchDataService.__init__` łapie `ConfigError` do `self.config_error` (bench_ui/service.py:683-710); `create_app()` raportuje, nie rzuca
 
 ### Funkcjonalność (Fazy C–J)
-- [ ] C 5 evaluatorów zarejestrowanych i przetestowanych
+- [x] C 5 evaluatorów zarejestrowanych i przetestowanych — `DiffEvaluator`, `StaticAnalysisEvaluator`, `PythonEvaluator` w `src/akbench/evaluators/`; `default_registry()` → 5 (`pytest`, `command`, `diff`, `static_analysis`, `python`); `tests/unit/test_evaluators_supplementary.py` (11) + `test_evaluators.py` (test równości kindów z rejestrem) + 3 testy E2E CLI w `tests/integration/test_evaluate_cli.py`; `akbench evaluate task` przyjmuje `--reference-patch/--script/--command`; docs `docs/EVALUATORS.md` z sekcją o każdym. Diff nigdy nie zwraca `passed` (test).
 - [ ] D concurrency, resume, cancel, `experiment show`, `runtime start/stop/verify/status`, `evaluator list`
 - [ ] E kind `environment` + deskryptory + walidacja w plannerze
 - [ ] F agenci `fake` + `http`, `agent-comparison.yaml` E2E

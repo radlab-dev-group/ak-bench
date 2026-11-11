@@ -63,19 +63,28 @@ class EvaluatorRegistry:
 
 
 def default_registry(extra: Iterable[Evaluator] | None = None) -> EvaluatorRegistry:
-    """The evaluators this installation ships with.
+    """The evaluators this installation ships with: all five kinds of plan 16.
 
-    ``pytest_evaluator`` is the primary one (plan 16); ``command_evaluator`` is
-    the declared escape hatch. The ``diff``, ``static_analysis`` and ``python``
-    kinds have descriptors but no implementation here — asking for one is an
-    explicit error, never a silent approximation.
+    ``pytest_evaluator`` is the primary one and the only one that decides a
+    task on its own. ``command_evaluator`` is the declared escape hatch;
+    ``diff_evaluator`` and ``static_analysis_evaluator`` are supplementary
+    signals that never claim a pass they cannot support; ``python_evaluator``
+    runs a task's own script under the same isolation and vocabulary. An id
+    outside these five is still an explicit :class:`EvaluatorNotFound` — never
+    a silent approximation by a lookalike.
     """
     from akbench.evaluators.command import CommandEvaluator
+    from akbench.evaluators.diff import DiffEvaluator
     from akbench.evaluators.pytest_evaluator import PytestEvaluator
+    from akbench.evaluators.python_evaluator import PythonEvaluator
+    from akbench.evaluators.static_analysis import StaticAnalysisEvaluator
 
     registry = EvaluatorRegistry()
     registry.register(PytestEvaluator())
     registry.register(CommandEvaluator())
+    registry.register(DiffEvaluator())
+    registry.register(StaticAnalysisEvaluator())
+    registry.register(PythonEvaluator())
     for evaluator in extra or ():
         registry.register(evaluator)
     return registry

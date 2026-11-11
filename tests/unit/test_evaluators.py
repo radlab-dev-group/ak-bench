@@ -181,12 +181,28 @@ def test_command_evaluator_reports_unrunnable_commands(
     assert "could not run" in result.details["reason"]
 
 
+def test_all_five_kinds_of_plan_16_are_implemented() -> None:
+    """The descriptors and the registry agree: no kind is a promise with no code."""
+    from akbench.descriptors import EvaluatorKind
+
+    registry = default_registry()
+    implemented = {evaluator_id for evaluator_id, _ in registry.entries()}
+    assert implemented == {
+        "pytest_evaluator",
+        "command_evaluator",
+        "diff_evaluator",
+        "static_analysis_evaluator",
+        "python_evaluator",
+    }
+    assert len(implemented) == len(EvaluatorKind)
+
+
 def test_unimplemented_evaluator_is_an_explicit_error(tmp_path: Path) -> None:
     engine = EvaluatorEngine(default_registry())
     from akbench.evaluators.errors import EvaluatorNotFound
 
     with pytest.raises(EvaluatorNotFound, match="not implemented"):
-        engine.evaluate("diff_evaluator", tmp_path, out_dir=tmp_path / "out")
+        engine.evaluate("no_such_evaluator", tmp_path, out_dir=tmp_path / "out")
 
 
 def test_isolation_copies_without_git_admin(tmp_path: Path) -> None:

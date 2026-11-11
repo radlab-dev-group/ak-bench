@@ -49,10 +49,33 @@ def evaluate_task_cmd(
     evaluator: str | None = typer.Option(
         None, "--evaluator", help="Override the evaluator declared by the task."
     ),
+    reference_patch: Path | None = typer.Option(
+        None,
+        "--reference-patch",
+        help="A reference change for diff_evaluator to measure the produced diff against.",
+    ),
+    script: Path | None = typer.Option(
+        None,
+        "--script",
+        help="A task-provided evaluator script for python_evaluator to run.",
+    ),
+    command: str | None = typer.Option(
+        None,
+        "--command",
+        help="The analyser (or evaluator command) to run, for the command and "
+        "static-analysis evaluators; the task's own default when omitted.",
+    ),
     timeout: float | None = typer.Option(None, "--timeout", help="Evaluator timeout in seconds."),
     as_json: bool = JSON_OPTION,
 ) -> None:
-    """Run the task's evaluator over a workspace and report the verdict."""
+    """Run the task's evaluator over a workspace and report the verdict.
+
+    The supplementary evaluators take their subject from the caller rather than
+    from the workspace: `--reference-patch` for `diff_evaluator`, `--script` for
+    `python_evaluator`, `--command` for `command_evaluator` and
+    `static_analysis_evaluator`. An evaluator ignores an input it has no use
+    for, so only the one that needs it can be satisfied by mistake.
+    """
     context: CliContext = ctx.obj
     paths = build_app_paths(context.loaded().settings)
     try:
@@ -67,6 +90,14 @@ def evaluate_task_cmd(
         raise typer.Exit(1)
 
     reports = out_dir or (paths.artifacts_dir / "evaluations" / loaded.uid)
+    inputs: dict[str, object] = {}
+    if reference_patch is not None:
+        inputs["reference_patch"] = reference_patch
+    if script is not None:
+        inputs["script"] = script
+    if command is not None:
+        inputs["command"] = command
+
     result = evaluate_task(
         loaded,
         workspace,
@@ -74,6 +105,7 @@ def evaluate_task_cmd(
         evaluator_id=evaluator,
         registry=default_registry(),
         timeout=timeout,
+        **inputs,
     )
 
     payload = result.as_dict()

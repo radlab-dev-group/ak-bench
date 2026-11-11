@@ -14,6 +14,33 @@ release tagged as `v<version>`.
 
 ## [Unreleased]
 
+### Added
+
+- **All five evaluators of plan section 16** (`docs/EVALUATORS.md`).
+  `pytest_evaluator` and `command_evaluator` were already there; the three that
+  had a descriptor and no code now do:
+  - `diff_evaluator` — scores the overlap between the produced change and a
+    reference patch, line for line, in the base coordinates both sides already
+    carry. It reads the workspace read-only (a diff is a relation to the base
+    commit, and the evaluation sandbox deliberately drops `.git`) and never
+    reports `passed`: a diff is evidence about the change, not proof of
+    correctness, so the verdict stops at `partial`.
+  - `static_analysis_evaluator` — runs the analyser the task declares (ruff by
+    default) over an isolated copy of the workspace and reports findings as a
+    score: `passed` when nothing was found, `partial` when something was (a
+    reason to look, not proof the task is unsolved), `infrastructure_error`
+    when the analyser is missing, `evaluator_error` when its report is
+    unreadable.
+  - `python_evaluator` — runs a task-provided script in a separate process
+    against an isolated copy of the workspace; the script reports through
+    `evaluator-result.json` in `--out-dir`, and only the plan-16 vocabulary is
+    accepted (a script cannot claim `infrastructure_error`). It is a host
+    subprocess, not a security boundary, so a task must ship only a script its
+    operator would run by hand.
+  `akbench evaluate task` gained the inputs these evaluators need —
+  `--reference-patch`, `--script`, `--command` — and an unknown evaluator id is
+  still an explicit `EvaluatorNotFound`, never a stand-in.
+
 ### Fixed
 
 - **Fresh-clone dataset integrity (Faza A planu do 100%).** The parts of a

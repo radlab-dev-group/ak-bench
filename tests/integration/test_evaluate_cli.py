@@ -84,3 +84,82 @@ def test_evaluate_missing_workspace_is_reported(project: Path, tmp_path: Path) -
     )
     assert result.exit_code == 1
     assert "workspace is not a directory" in result.output
+
+
+def test_evaluate_with_a_reference_patch_scores_the_overlap(project: Path) -> None:
+    """`--reference-patch` is how the diff evaluator gets its subject (plan 16)."""
+    workspace = _prepare(project, "ws-diff", mutation=True)
+    reference = (
+        REPO_ROOT / "datasets" / "bug_fix" / "wordcount-001" / "mutations" / "mutation-001.patch"
+    )
+    result = runner.invoke(
+        app,
+        [
+            "evaluate",
+            "task",
+            "wordcount-001",
+            "--workspace",
+            str(workspace),
+            "--evaluator",
+            "diff_evaluator",
+            "--reference-patch",
+            str(reference),
+            "--json",
+        ],
+    )
+    # A diff never passes, so the CLI leaves 1: the task was not proven solved,
+    # which is a normal outcome rather than a broken measurement (exit 2).
+    assert result.exit_code == 1, result.output
+    payload = _payload(result.output)
+    assert payload["evaluator_id"] == "diff_evaluator"
+    assert payload["verdict"] == "partial"
+    assert payload["score"] == 1.0
+    assert payload["details"]["files_matched"] == ["src/wordcount/text.py"]
+    assert Path(payload["artifacts"]["produced_diff"]).is_file()
+
+
+def test_evaluate_with_a_declared_analyser_command(project: Path) -> None:
+    """`--command` reaches the static analyser; a clean report is a pass."""
+    workspace = _prepare(project, "ws-static", mutation=False)
+    result = runner.invoke(
+        app,
+        [
+            "evaluate",
+            "task",
+            "wordcount-001",
+            "--workspace",
+            str(workspace),
+            "--evaluator",
+            "static_analysis_evaluator",
+            "--command",
+            "python3 -c \"import json; print(json.dumps([]))\"",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = _payload(result.output)
+    assert payload["evaluator_id"] == "static_analysis_evaluator"
+    assert payload["verdict"] == "passed"
+    assert payload["score"] == 1.0
+
+
+def test_evaluate_a_broken_measurement_exits_two(project: Path, tmp_path: Path) -> None:
+    """A supplementary evaluator with no subject is exit 2, never exit 1."""
+    workspace = _prepare(project, "ws-noref", mutation=False)
+    result = runner.invoke(
+        app,
+        [
+            "evaluate",
+            "task",
+            "wordcount-001",
+            "--workspace",
+            str(workspace),
+            "--evaluator",
+            "diff_evaluator",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    payload = _payload(result.output)
+    assert payload["verdict"] == "evaluator_error"
+    assert "reference patch" in payload["details"]["reason"]
