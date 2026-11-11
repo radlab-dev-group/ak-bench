@@ -16,6 +16,22 @@ release tagged as `v<version>`.
 
 ### Added
 
+- **Export filters: leave prompts, diffs or traces out on purpose** (plan
+  section 21). `akbench export experiment` gains `--no-prompts` (the agent's
+  own text: its final message, `last_message.txt`, and the prompt fields in
+  records, replaced by `[withheld]`), `--no-diffs` (the produced change:
+  `diff.patch` and siblings, `solution.zip`, and the diff fields in records)
+  and `--no-traces` (the step-by-step record: `agent_trace.jsonl`,
+  `tool_calls.jsonl`, `agent_traces.zip` and the stdout/stderr logs); the
+  verdict, score and metrics stay, because they are the result. A reduced
+  export says what it left out: `filters` names the closed switches and
+  `withheld` counts the material by kind, so a reader knows the document is a
+  subset. `--include-artifacts` copies what each run produced under
+  `artifacts/<run uid>/`, with the same switches deciding what may be copied —
+  a file filtered out of the document does not travel out as a file, and a
+  surviving JSON record is stripped of the fields the switches name. With no
+  flags the export is what it was: secrets screened, everything else as the
+  run was.
 - **The environment descriptor** (plan sections 9 and 14): a new `environment`
   kind (`descriptors/environments/`) stating where a run executes — OS,
   interpreter, tools, network, filesystem scope, sandbox kind, image and

@@ -410,7 +410,7 @@ wszystkich YAML-i w `configs/experiments/`; `full-matrix-12` planuje dokładnie 
 
 ---
 
-## FAZA I — Export: wyłączalne prompty/diffy/trace'y (§21)
+## FAZA I — Export: wyłączalne prompty/diffy/trace'y (§21) ✅ ZREALIZOWANA
 
 Audyt: redakcja sekretów automatyczna (`export/redact.py`), brak flag wyłączania.
 
@@ -612,7 +612,7 @@ błąd jest jawny (`infrastructure_error`), nie cichy.
 - [ ] F agenci `fake` + `http`, `agent-comparison.yaml` E2E
 - [ ] G metryki knowledge mierzone z logu managed (min. write/retrieval count), `unavailable` bez sygnałów
 - [ ] H `auto-codex-on-off.yaml`, `full-matrix-12.yaml` (12 wariantów), strażnik shipped YAML-i
-- [ ] I flagi eksportu `--no-prompts/--no-diffs/--no-traces`
+- [x] I flagi eksportu `--no-prompts/--no-diffs/--no-traces` (`src/akbench/export/filters.py`: `ExportFilters`, `filter_document`, `filter_payload`;
 - [ ] J SQLite domyślnie, Postgres opt-in, `init/doctor` bez `.env`
 
 ### Dokumentacja i release (Fazy K–L)

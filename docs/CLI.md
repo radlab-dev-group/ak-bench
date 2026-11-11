@@ -34,7 +34,8 @@ exit code is part of the interface.
 | `akbench knowledge plan/readiness` | the memory plan and the readiness gate |
 | `akbench history experiments/runs/show/metrics/verify` | read the recorded history back |
 | `akbench report all/experiment/task` | write the static HTML reports |
-| `akbench export experiment UID` | write one experiment out, screened |
+| `akbench export experiment UID [--no-prompts] [--no-diffs] [--no-traces]` | write one experiment out, screened; the switches leave prompts, the produced change or the traces out, and the export says what it left out |
+| `akbench export experiment UID --include-artifacts` | also copy the run's artifacts, the filters deciding what may be copied |
 
 ## Conventions that are part of the interface
 
