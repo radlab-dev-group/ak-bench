@@ -14,6 +14,7 @@ import typer
 from akbench.cli.common import CliContext, console, handle_errors, show_json
 from akbench.config.loader import build_app_paths, resolve_database_url
 from akbench.export.exporter import FORMATS, build_export, write_bundle
+from akbench.export.filters import ExportFilters
 from akbench.reporting.data import collect_history
 from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
@@ -33,6 +34,30 @@ FORMAT_OPTION = typer.Option(
 )
 OUTPUT_OPTION = typer.Option(
     None, "--output", "-o", help="Export directory (default: the configured reports directory)."
+)
+NO_PROMPTS_OPTION = typer.Option(
+    False,
+    "--no-prompts",
+    help="Leave out the agent's own text (its final message, prompt material in "
+    "records); verdicts, metrics and timings stay.",
+)
+NO_DIFFS_OPTION = typer.Option(
+    False,
+    "--no-diffs",
+    help="Leave out the change the agent produced (diff patches and diff fields); "
+    "the score it earned stays.",
+)
+NO_TRACES_OPTION = typer.Option(
+    False,
+    "--no-traces",
+    help="Leave out the step-by-step traces of the run (agent_trace.jsonl, "
+    "tool_calls.jsonl and their siblings); the metrics they support stay.",
+)
+INCLUDE_ARTIFACTS_OPTION = typer.Option(
+    False,
+    "--include-artifacts",
+    help="Also copy what each run produced, under artifacts/<run uid>/ in the "
+    "export directory. The filters above decide what may be copied.",
 )
 
 
@@ -55,6 +80,15 @@ def _output_dir(context: CliContext, output: str | None) -> Path:
     return paths.reports_dir / "exports"
 
 
+def _filters(no_prompts: bool, no_diffs: bool, no_traces: bool) -> ExportFilters:
+    """The three switches, named the way the command names them."""
+    return ExportFilters(
+        include_prompts=not no_prompts,
+        include_diffs=not no_diffs,
+        include_traces=not no_traces,
+    )
+
+
 def _formats(values: list[str] | None) -> tuple[str, ...]:
     if not values:
         return FORMATS
@@ -73,18 +107,37 @@ def export_experiment_cmd(
     experiment_uid: str = typer.Argument(..., help="Experiment uid to export."),
     fmt: list[str] = FORMAT_OPTION,
     output: str = OUTPUT_OPTION,
+    no_prompts: bool = NO_PROMPTS_OPTION,
+    no_diffs: bool = NO_DIFFS_OPTION,
+    no_traces: bool = NO_TRACES_OPTION,
+    include_artifacts: bool = INCLUDE_ARTIFACTS_OPTION,
     as_json: bool = JSON_OPTION,
 ) -> None:
-    """Export one experiment: descriptor, runs, metrics and artifacts."""
+    """Export one experiment: descriptor, runs, metrics and artifacts.
+
+    By default everything the run was goes out, with secrets screened. The
+    three switches narrow that on purpose, and the export then says what it
+    left out: a reduced document that looks complete would be worse than a
+    small one that admits what it is.
+    """
     context: CliContext = ctx.obj
-    data = collect_history(_store(context))
+    store = _store(context)
+    data = collect_history(store)
     if data.experiment(experiment_uid) is None:
         console.print(f"[red]unknown experiment[/red] {experiment_uid}")
         raise typer.Exit(1)
 
-    bundle = build_export(data, experiment_uid)
+    filters = _filters(no_prompts, no_diffs, no_traces)
+    bundle = build_export(data, experiment_uid, filters=filters)
     target = _output_dir(context, output)
-    written = write_bundle(bundle, data, output_dir=target, formats=_formats(fmt))
+    written = write_bundle(
+        bundle,
+        data,
+        output_dir=target,
+        formats=_formats(fmt),
+        include_artifacts=include_artifacts,
+        store=store,
+    )
 
     if as_json:
         show_json(
@@ -94,14 +147,20 @@ def export_experiment_cmd(
                 "files": [str(path) for path in written],
                 "runs": len(bundle.document.get("runs", [])),
                 "redactions": bundle.redactions,
+                "filters": list(bundle.filters),
+                "withheld": bundle.withheld,
             }
         )
         return
 
     console.print(f"[green]exported[/green] {experiment_uid} to {target}")
     for path in written:
-        console.print(f"  {path.name}")
+        console.print(f"  {path.relative_to(target) if include_artifacts else path.name}")
     console.print(f"  runs        {len(bundle.document.get('runs', []))}")
+    if bundle.filters:
+        console.print("  [yellow]left out[/yellow]    " + ", ".join(bundle.filters))
+        for row in bundle.withheld:
+            console.print(f"    {row['kind']} x {row['count']}")
     if bundle.redactions:
         summary = ", ".join(f"{row['kind']} x {row['count']}" for row in bundle.redactions)
         console.print(f"  [yellow]redacted[/yellow] {summary}")

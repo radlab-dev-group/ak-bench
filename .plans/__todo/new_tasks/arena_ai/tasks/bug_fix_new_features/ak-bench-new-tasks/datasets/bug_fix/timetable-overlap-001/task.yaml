@@ -1,0 +1,36 @@
+schema_version: "1.0"
+id: timetable-overlap-001
+version: "1.0.0"
+created_at: "2026-11-10T18:00:00+01:00"
+title: Back-to-back lessons are reported as overlapping
+description: >-
+  Lessons that end exactly when the next one starts are reported as
+  overlapping, so a timetable with lessons scheduled back-to-back is full
+  of phantom conflicts. Restore the documented half-open interval
+  behaviour.
+authors:
+  - "[arena] Arena AI agent"
+task:
+  category: bug_fix
+  difficulty: easy
+  repository:
+    source: datasets/_sources/timetable
+    ref: HEAD
+    notes: standard-library-only seed fixture directory; one regression in the overlap check
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      The half-open comparison became closed: an interval that ends exactly
+      when the other starts now counts as overlapping. The repository suite
+      never places lessons back-to-back, so only the hidden tests prove the
+      defect exists.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 300
+  constraints:
+    - preserve the public API of the timetable package
+    - do not modify the repository test suite under tests/
+    - do not add third-party dependencies

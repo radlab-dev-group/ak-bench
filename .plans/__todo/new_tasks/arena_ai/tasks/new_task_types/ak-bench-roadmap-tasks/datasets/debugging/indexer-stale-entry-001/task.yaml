@@ -1,0 +1,26 @@
+schema_version: "1.0"
+id: indexer-stale-entry-001
+version: "1.0.0"
+created_at: "2026-11-10T19:00:00+01:00"
+title: A deleted document is still found by search
+description: >-
+  After a document is deleted, search still returns it when it was the only document containing the term. Diagnose the failing scenario and repair the index so deleted documents are never found again.
+authors:
+  - "[arena] Arena AI agent"
+task:
+  category: debugging
+  difficulty: medium
+  repository:
+    source: datasets/_sources/indexer
+    ref: HEAD
+    notes: standard-library-only seed fixture directory
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 600
+  constraints:
+    - preserve the public API of the indexer package
+    - do not modify the repository test suite under tests/
+    - do not add third-party dependencies
+  notes: >-
+    The base state fails the hidden tests by design: the defect is in the base code, and the repository suite never searches after deleting the only document with a term.

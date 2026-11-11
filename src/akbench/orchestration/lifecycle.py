@@ -140,6 +140,10 @@ class RunContext:
     model_evidence: dict[str, Any] | None = None
     requested_model: str | None = None
     agent_parameters: dict[str, Any] | None = None
+    #: Where the run says it executed (plan 9): identity, sandbox, image,
+    #: digest. Declared by the experiment, resolved by the caller, never
+    #: guessed here.
+    environment: dict[str, Any] | None = None
     workspace_path: str | None = None
     session_id: str | None = None
     agent_version: str | None = None
@@ -193,6 +197,7 @@ class RunContext:
             "model_evidence": self.model_evidence,
             "requested_model": self.requested_model,
             "agent_parameters": dict(self.agent_parameters) if self.agent_parameters else None,
+            "environment": dict(self.environment) if self.environment else None,
             "workspace_path": self.workspace_path,
             "session_id": self.session_id,
             "agent_version": self.agent_version,

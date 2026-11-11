@@ -13,6 +13,7 @@ only ever read by the evaluator (plan 8.6).
 from __future__ import annotations
 
 import shutil
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,6 +56,15 @@ class PreparedWorkspace:
         }
 
 
+#: Preparing a workspace touches state every workspace shares: the bare cache
+#: (created on first use) and the ``worktrees`` administration of a repository
+#: two runs of the same task write into at once. Git locks some of that and
+#: races on the rest, so the shared part is serialized process-wide. Only the
+#: shared part: an experiment with ``concurrency: 4`` still runs four agents at
+#: once, which is the slow part and the reason the option exists.
+PREPARE_LOCK = threading.RLock()
+
+
 class WorkspaceManager:
     """Creates and removes per-run workspaces from the bare repository cache."""
 
@@ -77,29 +87,30 @@ class WorkspaceManager:
         of a workspace.
         """
         spec = task.task.repository
-        bare = self.repositories.ensure_cached(spec.source)
-        base_commit = self.repositories.resolve_commit(bare, spec.ref)
+        with PREPARE_LOCK:
+            bare = self.repositories.ensure_cached(spec.source)
+            base_commit = self.repositories.resolve_commit(bare, spec.ref)
 
-        target = self.workspaces_dir / workspace_id
-        if target.exists():
-            raise WorkspaceError(
-                f"workspace {workspace_id!r} already exists at {target}; "
-                "workspaces are per run and are never reused"
-            )
-        target.parent.mkdir(parents=True, exist_ok=True)
-        _run_git(["worktree", "add", "--detach", str(target), base_commit], cwd=bare)
-
-        mutation_applied = False
-        mutation_version: str | None = None
-        if apply_mutation and task.task.mutation is not None:
-            patch_path = self._patch_path(task, task_dir)
-            _run_git(["apply", "--whitespace=warn", str(patch_path)], cwd=target)
-            if not self._has_changes(target):
+            target = self.workspaces_dir / workspace_id
+            if target.exists():
                 raise WorkspaceError(
-                    f"mutation patch {patch_path.name} applied but changed nothing in {target}"
+                    f"workspace {workspace_id!r} already exists at {target}; "
+                    "workspaces are per run and are never reused"
                 )
-            mutation_applied = True
-            mutation_version = task.task.mutation.version
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _run_git(["worktree", "add", "--detach", str(target), base_commit], cwd=bare)
+
+            mutation_applied = False
+            mutation_version: str | None = None
+            if apply_mutation and task.task.mutation is not None:
+                patch_path = self._patch_path(task, task_dir)
+                _run_git(["apply", "--whitespace=warn", str(patch_path)], cwd=target)
+                if not self._has_changes(target):
+                    raise WorkspaceError(
+                        f"mutation patch {patch_path.name} applied but changed nothing in {target}"
+                    )
+                mutation_applied = True
+                mutation_version = task.task.mutation.version
 
         return PreparedWorkspace(
             workspace_id=workspace_id,

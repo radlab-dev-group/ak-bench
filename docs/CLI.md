@@ -18,16 +18,24 @@ exit code is part of the interface.
 | `akbench dataset list/validate/show/prepare` | tasks, repositories, repeatable workspaces |
 | `akbench agent list/inspect/run` | registered agents and one agent run |
 | `akbench runtime list/health/models/config/state` | runtimes and their configuration triad |
+| `akbench runtime status [REF]` | one runtime in full (as `state`), or the whole registry |
+| `akbench runtime start/stop REF` | managed instance outside a run; `external` refuses |
+| `akbench runtime verify REF [--expect k=v]` | health, configuration triad, expected-vs-effective |
 | `akbench evaluate task` | judge a produced workspace |
+| `akbench evaluator list` | the evaluators this installation implements |
 | `akbench run single TASK --agent A [--store]` | one orchestrated run |
 | `akbench experiment list/validate/plan` | validate and expand an experiment |
-| `akbench experiment run FILE [--store] [--only N]` | execute the matrix |
+| `akbench experiment run FILE [--store] [--only N] [--concurrency N]` | execute the matrix |
+| `akbench experiment show UID` | one recorded experiment: plan, variants, runs, metrics |
+| `akbench experiment resume UID` | run the cells the history has no verdict for |
+| `akbench experiment cancel UID` | ask a running matrix to stop |
 | `akbench plugin list/status/verify` | plugin descriptors and their observed state |
 | `akbench metrics catalog/run` | the metric catalog and the metrics of recorded runs |
 | `akbench knowledge plan/readiness` | the memory plan and the readiness gate |
 | `akbench history experiments/runs/show/metrics/verify` | read the recorded history back |
 | `akbench report all/experiment/task` | write the static HTML reports |
-| `akbench export experiment UID` | write one experiment out, screened |
+| `akbench export experiment UID [--no-prompts] [--no-diffs] [--no-traces]` | write one experiment out, screened; the switches leave prompts, the produced change or the traces out, and the export says what it left out |
+| `akbench export experiment UID --include-artifacts` | also copy the run's artifacts, the filters deciding what may be copied |
 
 ## Conventions that are part of the interface
 
@@ -41,8 +49,47 @@ exit code is part of the interface.
 - `--store` on the run and experiment commands records the run, its manifest
   and its artifacts in the history; without it, nothing is written there.
 
-## Intentionally absent
+## Plan (§22) versus implementation
 
-`experiment resume` and `experiment cancel` need a scheduler with a queue of
-runs in flight; there is none yet, so the commands are absent rather than
-accepting arguments and doing nothing.
+| Command from the plan | Here | Note |
+|---|---|---|
+| `init`, `doctor` | same | |
+| `agent list`, `agent inspect codex` | same | |
+| `descriptor list`, `descriptor validate` | same | |
+| `dataset list`, `dataset validate`, `category list` | same | |
+| `runtime status` | `runtime status` (and `state`) | `status` without an argument lists every runtime |
+| `runtime start` | `runtime start` / `runtime stop` | managed only; an instance outlives the command, `stop` takes it down |
+| `runtime verify` | `runtime verify` | health + configuration triad + `--expect` diff |
+| `experiment validate/plan/run` | same | `run` takes `--concurrency`, `--only`, `--store` |
+| `experiment list` | same | the definitions this project ships |
+| `experiment show exp-0001` | same | read from the history, including the file as it was run |
+| `experiment resume exp-0001` | same | fills the matrix cells without a verdict |
+| `experiment cancel exp-0001` | same | see below — there is no daemon to signal |
+| `report --experiment/--all` | `report experiment UID` / `report all` | subcommands rather than flags |
+| `export --experiment UID --format json` | `export experiment UID [--format json]` | as above |
+
+## How cancel works without a daemon
+
+The CLI is one-shot: `akbench experiment run` is the scheduler and lives only
+while it runs. Cancellation therefore has two honest shapes.
+
+- `Ctrl+C` in the running process asks the run in flight to stop through the
+  same token a cancel carries: the agent is interrupted, its run is recorded
+  `cancelled` with its artifacts, and no further cell starts. The second press
+  leaves the way it always did. `run single` and `agent run` behave the same.
+- `akbench experiment cancel UID` writes a marker under
+  `data/cancellations/`, which a running matrix of that uid watches; it stops
+  within a second. A matrix that starts later clears the marker first, so a
+  request that arrived after the fact cannot cancel the next experiment.
+
+Resume reads the plan back from the experiment file recorded with it and runs
+the cells the history has no verdict for. A cell is the triple (task, variant,
+repetition); every terminal state counts except `cancelled`, which is an
+operator asking rather than a result — so an interrupted cell is exactly what
+a resume re-runs, and resuming a finished experiment does nothing, twice.
+
+Concurrency comes from `execution_policy.concurrency` (or `--concurrency`):
+runs go through a thread pool — an agent is a subprocess — and results are
+collected in plan order, not in the order the runs finished. The plan warns
+about it, because N runs at once share the machine and the router, and
+per-run timings then measure a loaded system.

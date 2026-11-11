@@ -12,6 +12,110 @@ release tagged as `v<version>`.
 | 0.1.1   | **Security:** dashboard authentication and roles, protected task answers and artifacts, hardened PostgreSQL configuration, response headers and input validation. **Added:** model verification indicators, themes, keyboard navigation, run export, tool-call metrics, task downloads and score charts, recorded task files and descriptors, agent and runtime pages. **Changed:** configuration labels, sortable tables, code and YAML viewers, PostgreSQL as the default database, automatic `.env` loading and SQLite-to-PostgreSQL migration. **Datasets:** the atlas sharded-store family — five `expert` tasks over one standard-library fixture (a five-module learning task, three single-defect twins in other modules, one new-feature task from a declared stub), a memory-replay experiment over six model × knowledge configurations with a no-memory baseline, and the knowledge scope pin that lets a replay read what its learning run wrote (an off arm is a process without the plugin). **UI:** model comparison on the dashboard — a Pareto chart and a paired base-vs-memory comparison with a delta heatmap, Wilson confidence intervals and low-sample marking on the model charts — and a full-page loading spinner.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 0.1.0   | **Added:** the first release: the whole of AK-Bench, from the initial commit to now. A `typer` CLI (`akbench init/doctor/config`, experiments, datasets, runs, reports and exports); YAML/ENV configuration with an environment allowlist where secrets stay opaque (presence only, `src/akbench/config/`); a descriptor system with eight kinds — agents, runtimes, plugins, dimensions, models, categories, evaluators, metrics — versioned, digest-pinned and registered (`src/akbench/descriptors/`, `docs/DESCRIPTOR_SYSTEM.md`); tasks, datasets, repeatable workspaces, mutation verification and hidden tests (`src/akbench/datasets/`, `docs/DATASETS.md`); an agent-adapter framework with a Codex CLI adapter and capability gating (`src/akbench/agents/`, `docs/AGENT_ADAPTERS.md`); a runtime manager with direct/runtime/router execution, managed self-starting LLM Router instances with per-run port ownership and the instance log kept as a run artifact, plus model verification from that log (`src/akbench/runtime/`, `docs/RUNTIME_MANAGER.md`); a pytest/command evaluator engine with verdicts and hidden-test isolation (`src/akbench/evaluators/`, `docs/EVALUATORS.md`); a run orchestrator with a lifecycle state machine, isolation, retries and run records (`src/akbench/orchestration/`, `docs/RUN_ORCHESTRATOR.md`); an experiment descriptor and planner with matrix strategies, validation that refuses unmeasurable plans, factor routing by dimension source and environment bound to a combination (`src/akbench/experiments/`, `docs/EXPERIMENTS.md`); plugin observability — a run reports only the plugins it configured, with verification statuses (`src/akbench/plugins/`, `docs/PLUGINS.md`); knowledge replay for memory experiments (`docs/KNOWLEDGE_REPLAY.md`); SQLite storage, artifacts, a reproducibility manifest with digests, aggregates and baseline deltas (`src/akbench/storage/`, `src/akbench/metrics/`); a static HTML report — dashboard with a configuration ranking pooled across experiments, experiment/task/agent/runtime/plugin/model pages, a "Not verified" table and an in-report `docs/` subpage (`src/akbench/reporting/`, `docs/REPORTING.md`); JSON/CSV/HTML export with secret screening (`src/akbench/export/`, `docs/EXPORT.md`); shipped descriptors and eight experiment configs under `descriptors/` and `configs/experiments/`. |
 
+## [Unreleased]
+
+### Added
+
+- **Export filters: leave prompts, diffs or traces out on purpose** (plan
+  section 21). `akbench export experiment` gains `--no-prompts` (the agent's
+  own text: its final message, `last_message.txt`, and the prompt fields in
+  records, replaced by `[withheld]`), `--no-diffs` (the produced change:
+  `diff.patch` and siblings, `solution.zip`, and the diff fields in records)
+  and `--no-traces` (the step-by-step record: `agent_trace.jsonl`,
+  `tool_calls.jsonl`, `agent_traces.zip` and the stdout/stderr logs); the
+  verdict, score and metrics stay, because they are the result. A reduced
+  export says what it left out: `filters` names the closed switches and
+  `withheld` counts the material by kind, so a reader knows the document is a
+  subset. `--include-artifacts` copies what each run produced under
+  `artifacts/<run uid>/`, with the same switches deciding what may be copied —
+  a file filtered out of the document does not travel out as a file, and a
+  surviving JSON record is stripped of the fields the switches name. With no
+  flags the export is what it was: secrets screened, everything else as the
+  run was.
+- **The environment descriptor** (plan sections 9 and 14): a new `environment`
+  kind (`descriptors/environments/`) stating where a run executes — OS,
+  interpreter, tools, network, filesystem scope, sandbox kind, image and
+  resource limits. Two are shipped: `local-host` (the honest statement of where
+  AK-Bench runs today) and `docker-python312` (plan 14's container, declared
+  before it is enforced). An experiment may name `environment: <id>`; the
+  planner validates the reference, pins its digest in the plan's snapshots, and
+  refuses a docker sandbox with the reason, because phase B's container is not
+  implemented and a run that asks for one would otherwise happen on the host
+  and record a container it never had. Runs carry their environment into the
+  record and the reproducibility manifest, next to `sandbox_image`.
+- **The scheduler: concurrency, resume, cancel** (plan section 15).
+  `execution_policy.concurrency` is no longer ignored — `akbench experiment run`
+  executes the matrix through a thread pool (an agent is a subprocess) and
+  collects the results in plan order, not in the order the runs finished;
+  `--concurrency` overrides the policy, and the plan warns when it is above one
+  because N runs at once share the machine and the router.
+  `akbench experiment resume UID` reads the plan back from the experiment file
+  recorded with it and runs the matrix cells the history has no verdict for;
+  `cancelled` counts as an operator asking rather than a result, so an
+  interrupted cell is re-run and a finished experiment resumes to nothing.
+  `akbench experiment cancel UID`, `Ctrl+C` in a running matrix, and a cancel
+  in `run single`/`agent run` all stop the run in flight through one token: the
+  agent is interrupted, the run is recorded `cancelled` with its artifacts kept,
+  and no further cell starts. There is no daemon — the cross-process path is a
+  marker file under `data/cancellations/`, documented as such.
+  Preparing a workspace now holds a process-wide lock, because `git worktree
+  add` on a shared bare cache is the one thing parallel runs must not race.
+- **The commands of the plan's CLI sketch (§22) that were missing**:
+  `experiment show UID` (plan, variants, runs and metrics read back from the
+  history), `runtime start`/`runtime stop` (a managed instance outside a run,
+  with an explicit refusal for `external`), `runtime verify [--expect k=v]`
+  (health, the configuration triad, and the expected-versus-effective diff),
+  `runtime status` (one runtime as `state`, or the whole registry), and
+  `evaluator list` (the evaluators this installation actually implements).
+  `docs/CLI.md` now carries a plan-versus-implementation table.
+
+- **All five evaluators of plan section 16** (`docs/EVALUATORS.md`).
+  `pytest_evaluator` and `command_evaluator` were already there; the three that
+  had a descriptor and no code now do:
+  - `diff_evaluator` — scores the overlap between the produced change and a
+    reference patch, line for line, in the base coordinates both sides already
+    carry. It reads the workspace read-only (a diff is a relation to the base
+    commit, and the evaluation sandbox deliberately drops `.git`) and never
+    reports `passed`: a diff is evidence about the change, not proof of
+    correctness, so the verdict stops at `partial`.
+  - `static_analysis_evaluator` — runs the analyser the task declares (ruff by
+    default) over an isolated copy of the workspace and reports findings as a
+    score: `passed` when nothing was found, `partial` when something was (a
+    reason to look, not proof the task is unsolved), `infrastructure_error`
+    when the analyser is missing, `evaluator_error` when its report is
+    unreadable.
+  - `python_evaluator` — runs a task-provided script in a separate process
+    against an isolated copy of the workspace; the script reports through
+    `evaluator-result.json` in `--out-dir`, and only the plan-16 vocabulary is
+    accepted (a script cannot claim `infrastructure_error`). It is a host
+    subprocess, not a security boundary, so a task must ship only a script its
+    operator would run by hand.
+  `akbench evaluate task` gained the inputs these evaluators need —
+  `--reference-patch`, `--script`, `--command` — and an unknown evaluator id is
+  still an explicit `EvaluatorNotFound`, never a stand-in.
+
+### Fixed
+
+- **Fresh-clone dataset integrity (Faza A planu do 100%).** The parts of a
+  multi-defect mutation (`mutations/parts/*.patch`) are referenced by
+  `parts.json`, so they are now a first-class part of a task: `6102769`
+  removed the generic `parts/` `.gitignore` pattern and committed all 29
+  patch files; `tests/unit/test_dataset_integrity.py` fails a checkout where
+  a referenced part is missing from disk or from git.
+- **The `data` directory is no longer a symlink** to the sibling
+  `ak-bench-data` repository, which a fresh clone does not have (a dangling
+  symlink broke `RepositoryManager` on a clean checkout). `data/` is now a
+  plain, untracked directory created on demand by `akbench init` /
+  `doctor`; historical data from the old location is imported with
+  `akbench migrate sqlite …` (README Quick start documents this).
+- **Audit and the 100% plan corrected against the code** (`.plans/`): the
+  audit now carries a 2026-11-11 verification note — task and test counts,
+  the commit it describes, and the two defects that do not exist in the
+  current code (the atlas arm test and the live-router test are both green
+  as written); the plan's source-plan path, §13 checklist reference, CLI
+  paths, `default_registry` comment wording, and `full-matrix.yaml` strategy
+  are fixed, and Phase A (A1–A5) is checked off with the evidence for each.
+
 ## [0.1.2] - 2026-11-10
 
 ### Added

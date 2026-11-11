@@ -127,3 +127,123 @@ def test_export_redacts_a_secret_environment_value(
     payload = _json(result.output)
     body = (Path(payload["output"]) / f"{uid}.json").read_text(encoding="utf-8")
     assert "ROUTERSECRETVALUE42" not in body
+
+
+# ------------------------------------------------------------------ filters
+
+
+def _export(project: Path, *args: str) -> dict:
+    uid = str(_store_run(project)["experiment_uid"])
+    result = runner.invoke(app, ["export", "experiment", uid, "--json", *args])
+    assert result.exit_code == 0, result.output
+    return _json(result.output)  # type: ignore[return-value]
+
+
+def _run_artifacts(document: dict) -> set[str]:
+    return {
+        str(item.get("filename") or item.get("path"))
+        for run in document["runs"]
+        for item in run.get("artifacts") or []
+    }
+
+
+def test_no_prompts_leaves_the_agent_owns_words_out(project: Path) -> None:
+    payload = _export(project, "--no-prompts")
+
+    document = json.loads(
+        (Path(payload["output"]) / f"{payload['experiment']}.json").read_text(encoding="utf-8")
+    )
+    assert payload["filters"] == ["prompts"]
+    row = document["runs"][0]
+    # The verdict, the score and the metrics are the result and stay.
+    assert row["evaluation"]["verdict"] == "passed"
+    assert row["evaluation"]["total"] is not None
+    # The agent's own text is not in what was exported.
+    rendered = json.dumps(document)
+    assert "final_message" not in rendered or "final_message\": null" in rendered
+
+
+def test_no_traces_and_no_diffs_drop_the_named_files_and_keep_the_rest(
+    project: Path,
+) -> None:
+    payload = _export(project, "--no-traces", "--no-diffs")
+    document = json.loads(
+        (Path(payload["output"]) / f"{payload['experiment']}.json").read_text(encoding="utf-8")
+    )
+    kept = _run_artifacts(document)
+    # The produced change and the step-by-step record do not travel out.
+    for name in (
+        "diff.patch",
+        "solution.zip",
+        "agent_traces.zip",
+        "agent_trace.jsonl",
+        "agent_stdout.jsonl",
+        "tool_calls.jsonl",
+        "agent_stderr.log",
+    ):
+        assert name not in kept, name
+    # The record and the evaluation are not traces and not diffs.
+    for name in (
+        "run_record.json", "manifest.json", "evaluation.zip", "junit.xml", "pytest-output.txt",
+    ):
+        assert name in kept, name
+    assert sorted(payload["filters"]) == ["diffs", "traces"]
+    assert payload["withheld"]
+
+
+def test_no_prompts_takes_the_agents_own_words_from_the_artifacts(project: Path) -> None:
+    payload = _export(project, "--no-prompts")
+    document = json.loads(
+        (Path(payload["output"]) / f"{payload['experiment']}.json").read_text(encoding="utf-8")
+    )
+    kept = _run_artifacts(document)
+    assert "last_message.txt" not in kept
+    # The trace and the patch are not prompts and stay.
+    assert "agent_trace.jsonl" in kept
+    assert "diff.patch" in kept
+    assert {"kind": "prompts", "count": 1} in payload["withheld"]
+
+
+def test_include_artifacts_copies_files_and_the_filters_hold_the_door(
+    project: Path,
+) -> None:
+    uid = str(_store_run(project)["experiment_uid"])
+    full = runner.invoke(
+        app, ["export", "experiment", uid, "--format", "json", "--include-artifacts", "--json"]
+    )
+    assert full.exit_code == 0, full.output
+    full_target = Path(_json(full.output)["output"])  # type: ignore[arg-type]
+    full_artifacts = sorted(p.name for p in (full_target / "artifacts").rglob("*") if p.is_file())
+    assert full_artifacts, "the run produced artifacts that the export can carry"
+    assert any(name.endswith(".patch") for name in full_artifacts)
+
+    reduced = runner.invoke(
+        app,
+        [
+            "export", "experiment", uid, "--format", "json",
+            "--no-diffs", "--no-traces", "--include-artifacts",
+            "--output", str(project / "exports-reduced"), "--json",
+        ],
+    )
+    assert reduced.exit_code == 0, reduced.output
+    reduced_target = Path(_json(reduced.output)["output"])  # type: ignore[arg-type]
+    reduced_artifacts = sorted(
+        p.name for p in (reduced_target / "artifacts").rglob("*") if p.is_file()
+    )
+    # Nothing that was filtered out of the document travels out as a file.
+    assert not any(name.endswith(".patch") for name in reduced_artifacts)
+    assert not any(name.endswith(".jsonl") for name in reduced_artifacts)
+    assert "run_record.json" in reduced_artifacts
+
+
+def test_an_unfiltered_export_is_the_export_it_was_before(project: Path) -> None:
+    payload = _export(project)
+
+    document = json.loads(
+        (Path(payload["output"]) / f"{payload['experiment']}.json").read_text(encoding="utf-8")
+    )
+    assert payload["filters"] == []
+    assert payload["withheld"] == []
+    # Default behaviour: the run's artifacts are listed, the verdict is there.
+    assert _run_artifacts(document)
+    assert document["runs"][0]["evaluation"]

@@ -1,0 +1,35 @@
+# Where AK-Bench runs today: the operator's machine, no container.
+#
+# This is a declaration, not a promise of enforcement. The run's process is
+# the agent's process and the evaluator's subprocess; nothing confines them
+# beyond the workspace discipline the orchestrator already keeps (a worktree
+# per run, hidden tests outside it). The docker sandbox of plan 14 would make
+# `network: false` and the limits real; until it exists, saying what the run
+# really gets is the most this descriptor can honestly do.
+schema_version: "1.0"
+id: local-host
+version: "1.0.0"
+title: Local host environment
+description: >-
+  The operator's own machine: whatever operating system, interpreter and tools
+  are installed, with the network reachable and the only isolation being the
+  per-run workspace. Declaring it makes the assumption visible in the run's
+  snapshot instead of leaving it implicit.
+
+environment:
+  os: linux
+  python: "3.12"
+  tools:
+    - git
+    - python
+    - pytest
+    - ruff
+  network: true
+  filesystem: workspace
+  sandbox: host
+  limits:
+    # Informational ceilings: nothing enforces them on the host. They are
+    # recorded so two runs on different machines are not silently compared.
+    cpus: 8
+    memory_mb: 16384
+    disk_mb: 20480

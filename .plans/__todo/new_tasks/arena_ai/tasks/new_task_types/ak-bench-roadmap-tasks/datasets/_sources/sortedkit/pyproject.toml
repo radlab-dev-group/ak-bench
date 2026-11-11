@@ -1,0 +1,8 @@
+[project]
+name = "sortedkit"
+version = "1.0.0"
+description = "Sorted search fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

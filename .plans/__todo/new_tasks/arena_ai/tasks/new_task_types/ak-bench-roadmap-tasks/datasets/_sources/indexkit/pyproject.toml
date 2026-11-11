@@ -1,0 +1,8 @@
+[project]
+name = "indexkit"
+version = "1.0.0"
+description = "User index fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

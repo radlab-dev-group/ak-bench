@@ -24,6 +24,7 @@ from akbench.core.errors import DescriptorError
 from akbench.descriptors.agent import AgentDescriptor
 from akbench.descriptors.category import CategoryDescriptor
 from akbench.descriptors.dimension import DimensionDescriptor
+from akbench.descriptors.environment import EnvironmentDescriptor
 from akbench.descriptors.evaluator import EvaluatorDescriptor
 from akbench.descriptors.metric import MetricDescriptor
 from akbench.descriptors.model import ModelDescriptor
@@ -42,6 +43,7 @@ class DescriptorKind(StrEnum):
     EVALUATOR = "evaluator"
     DIMENSION = "dimension"
     METRIC = "metric"
+    ENVIRONMENT = "environment"
 
 
 DESCRIPTOR_MODELS: dict[DescriptorKind, type[BaseModel]] = {
@@ -53,6 +55,7 @@ DESCRIPTOR_MODELS: dict[DescriptorKind, type[BaseModel]] = {
     DescriptorKind.EVALUATOR: EvaluatorDescriptor,
     DescriptorKind.DIMENSION: DimensionDescriptor,
     DescriptorKind.METRIC: MetricDescriptor,
+    DescriptorKind.ENVIRONMENT: EnvironmentDescriptor,
 }
 
 

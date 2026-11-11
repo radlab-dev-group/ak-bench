@@ -34,6 +34,12 @@ repository). The engine and `scripts/run-postgres.sh` read the same
 `AKBENCH_PG_*` names, so one file drives both. To keep a run on a local
 SQLite file instead: `export AKBENCH_DB_BACKEND=sqlite`.
 
+The `data/` directory is local, untracked and safe to delete at any time:
+workspaces, artifacts, runtime instances and the SQLite file are all created
+on demand by `akbench init` and `doctor`. Historical data that used to live
+in the sibling `ak-bench-data` repository is imported per namespace with
+`akbench migrate sqlite …` (see ``akbench migrate --help``).
+
 Several working directories can share one server: each SQLite history is
 imported into its own namespace and read back by naming it
 (``akbench migrate sqlite …`` / ``akbench migrate list``).

@@ -1,0 +1,8 @@
+[project]
+name = "rules"
+version = "1.0.0"
+description = "Entry rules fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

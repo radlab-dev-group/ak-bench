@@ -132,6 +132,83 @@ def test_the_estimate_comes_from_the_declared_timeout(planner: ExperimentPlanner
 # ---------------------------------------------------------------- validation
 
 
+def test_an_environment_is_validated_and_pinned(planner: ExperimentPlanner) -> None:
+    """An experiment may name where its runs execute; the plan pins that choice."""
+    payload = document("wordcount-direct-sanity")
+    payload["experiment"]["environment"] = {"id": "local-host"}
+
+    plan = planner.plan(experiment(payload))
+
+    assert plan.ok
+    pinned = [key for key in plan.descriptor_snapshots if key.startswith("environment:local-host@")]
+    assert pinned, plan.descriptor_snapshots
+    assert plan.descriptor_snapshots[pinned[0]].startswith("sha256:")
+
+
+def test_an_unknown_environment_blocks_the_plan(planner: ExperimentPlanner) -> None:
+    payload = document("wordcount-direct-sanity")
+    payload["experiment"]["environment"] = {"id": "no-such-environment"}
+
+    report = planner.validate(experiment(payload))
+
+    assert "environment_unknown" in codes(report)
+
+
+def test_a_docker_environment_is_refused_until_the_sandbox_exists(
+    planner: ExperimentPlanner,
+) -> None:
+    """Plan 14's container sandbox is not implemented (phase B), so saying so beats lying.
+
+    A run that asked for a container and quietly got the host would record an
+    isolation it never had, which is the kind of gap plan rule 11 exists to
+    keep out of a result.
+    """
+    payload = document("wordcount-direct-sanity")
+    payload["experiment"]["environment"] = {"id": "docker-python312"}
+
+    report = planner.validate(experiment(payload))
+
+    assert "environment_sandbox_unavailable" in codes(report)
+
+
+def test_the_shipped_environments_are_consistent(planner: ExperimentPlanner) -> None:
+    """The environment directory ships a host environment the plan can use today."""
+    from akbench.descriptors import DescriptorKind
+
+    entries = planner.descriptors.entries(DescriptorKind.ENVIRONMENT)
+    by_id = {entry.snapshot.id: entry.descriptor for entry in entries}
+
+    assert "local-host" in by_id
+    assert by_id["local-host"].environment.sandbox.value == "host"
+    assert by_id["local-host"].environment.image is None
+    # The docker one states its image: a manifest that names a container has
+    # to say which one, and an environment without it cannot be built.
+    docker = by_id["docker-python312"]
+    assert docker.environment.sandbox.value == "docker"
+    assert docker.environment.image
+
+
+def test_the_concurrency_of_a_policy_is_a_warning_in_the_plan(
+    planner: ExperimentPlanner,
+) -> None:
+    """Running cells at once shares the machine; the plan says so before it runs."""
+    payload = document("wordcount-direct-sanity")
+    payload["experiment"]["execution_policy"]["concurrency"] = 4
+
+    report = planner.validate(experiment(payload))
+
+    assert "concurrency_above_one" in warnings(report)
+    assert report.ok
+
+
+def test_a_serial_plan_carries_no_concurrency_warning(planner: ExperimentPlanner) -> None:
+    payload = document("wordcount-direct-sanity")
+
+    report = planner.validate(experiment(payload))
+
+    assert "concurrency_above_one" not in warnings(report)
+
+
 def test_an_unknown_agent_blocks_the_plan(planner: ExperimentPlanner) -> None:
     payload = document()
     payload["experiment"]["agent"] = {"id": "no-such-agent"}

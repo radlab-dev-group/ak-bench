@@ -1,0 +1,8 @@
+[project]
+name = "fetcher"
+version = "1.0.0"
+description = "HTTP fetcher fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

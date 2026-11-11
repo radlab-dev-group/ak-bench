@@ -53,6 +53,10 @@ class ReproducibilityManifest:
     descriptor_digests: dict[str, str] = field(default_factory=dict)
     config_hash: str | None = None
     sandbox_image: str | None = None
+    #: The environment the run declared (plan 9): ``id@version``, its sandbox
+    #: kind and the descriptor's digest. Where a run happened is part of what
+    #: it was; leaving it out is how a host run gets read as a container run.
+    environment: dict[str, Any] = field(default_factory=dict)
     execution_parameters: dict[str, Any] = field(default_factory=dict)
     notes: str | None = None
 
@@ -101,6 +105,7 @@ class ReproducibilityManifest:
             "descriptor_digests": dict(sorted(self.descriptor_digests.items())),
             "config_hash": self.config_hash,
             "sandbox_image": self.sandbox_image,
+            "environment": dict(self.environment),
             "execution_parameters": self.execution_parameters,
         }
 
@@ -128,6 +133,7 @@ class ReproducibilityManifest:
             "descriptor_digests": dict(sorted(self.descriptor_digests.items())),
             "config_hash": self.config_hash,
             "sandbox_image": self.sandbox_image,
+            "environment": dict(self.environment),
             "execution_parameters": dict(self.execution_parameters),
             "notes": self.notes,
         }
@@ -145,6 +151,7 @@ def build_manifest(
     descriptor_digests: dict[str, str] | None = None,
     config_hash: str | None = None,
     sandbox_image: str | None = None,
+    environment: dict[str, Any] | None = None,
     execution_parameters: dict[str, Any] | None = None,
     notes: str | None = None,
 ) -> ReproducibilityManifest:
@@ -174,6 +181,15 @@ def build_manifest(
                 repository_source = getattr(repository, "source", None)
                 repository_commit = getattr(repository, "ref", None)
 
+    declared = (
+        dict(run_record.get("environment") or {}) if environment is None else dict(environment)
+    )
+    # An environment descriptor that names an image says what the run was
+    # containerised in; a host run has no image, and inventing one is what the
+    # manifest's `unknown_fields` list exists to avoid.
+    if sandbox_image is None and declared:
+        sandbox_image = declared.get("image")
+
     return ReproducibilityManifest(
         experiment_uid=experiment_uid,
         variant_uid=variant_uid,
@@ -192,6 +208,7 @@ def build_manifest(
         descriptor_digests=dict(descriptor_digests or {}),
         config_hash=config_hash or run_record.get("config_hash"),
         sandbox_image=sandbox_image,
+        environment=declared,
         execution_parameters=dict(execution_parameters or {}),
         notes=notes,
     )

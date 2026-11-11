@@ -35,6 +35,8 @@ The checks of plan 12.1, each with the code it reports:
 | the agent is described and its adapter is implemented | `agent_unknown`, `agent_parameter_unknown`, `agent_parameter_uncontrollable`, `agent_parameter_value` |
 | required capabilities are usable (verified or partial) | `capability_unavailable` |
 | the runtime exists, supports the mode and the lifecycle | `runtime_unknown`, `runtime_mode_unsupported`, `runtime_lifecycle_unsupported` |
+| the declared environment exists and its sandbox is available | `environment_unknown`, `environment_sandbox_unavailable` |
+| concurrency above one is visible before the run | `concurrency_above_one` (warning) |
 | plugin factors can be owned by this experiment | `plugin_factor_without_runtime`, `per_run_plugin_control_unsupported` |
 | factors are resolvable dimensions with controllable, declared values | `factor_unusable` |
 | evaluators are described and implemented | `evaluator_undeclared`, `evaluator_not_implemented` |
@@ -49,6 +51,28 @@ plugins per run is rejected rather than assumed applied (plan 13, rule 14).
 A managed runtime is the exception, and the plan says so with a warning: the
 value is applied at start, but verification still needs the plugin's own
 signal.
+
+## Where the runs happen
+
+An experiment may name the environment its runs execute in:
+
+```yaml
+experiment:
+  environment:
+    id: local-host      # descriptors/environments/local-host.yaml
+```
+
+The reference is checked like any other component reference (it has to exist,
+and its digest is pinned in the plan's snapshots), and the run records the
+environment identity, its sandbox kind and the descriptor's digest — in the run
+record and in the reproducibility manifest, next to `sandbox_image`.
+
+Two environments ship today. `local-host` is the honest statement of where
+AK-Bench runs: the operator's machine, network reachable, the only isolation
+being the per-run workspace. `docker-python312` is plan 14's container,
+declared before it is enforced: selecting it is refused with
+`environment_sandbox_unavailable`, because a run that asked for a container and
+quietly got the host would record an isolation it never had.
 
 ## Strategies
 

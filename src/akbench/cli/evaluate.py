@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from rich.table import Table
 
 from akbench.cli.common import CliContext, console, handle_errors, show_json
 from akbench.config.loader import build_app_paths
@@ -21,6 +22,23 @@ evaluate_app = typer.Typer(
     help="Evaluate a produced workspace against a task.",
     no_args_is_help=True,
 )
+
+evaluator_app = typer.Typer(
+    help="Inspect the evaluators this installation implements.",
+    no_args_is_help=True,
+)
+
+#: One line per kind, in the vocabulary of ``docs/EVALUATORS.md``. A task that
+#: asks for an evaluator outside this registry gets an explicit
+#: ``EvaluatorNotFound``, never a lookalike, so what is listed here is what a
+#: task can actually be judged by.
+EVALUATOR_PURPOSES = {
+    "pytest": "runs the task's hidden tests; the primary verdict",
+    "command": "runs a declared command; its exit status and report decide",
+    "diff": "measures the produced change against a reference patch; never claims a pass",
+    "static_analysis": "runs the declared analyser over an isolated copy; findings, not proof",
+    "python": "runs a task-provided script in a subprocess reporting the plan-16 vocabulary",
+}
 
 JSON_OPTION = typer.Option(False, "--json", help="Emit the result as JSON.")
 
@@ -49,10 +67,33 @@ def evaluate_task_cmd(
     evaluator: str | None = typer.Option(
         None, "--evaluator", help="Override the evaluator declared by the task."
     ),
+    reference_patch: Path | None = typer.Option(
+        None,
+        "--reference-patch",
+        help="A reference change for diff_evaluator to measure the produced diff against.",
+    ),
+    script: Path | None = typer.Option(
+        None,
+        "--script",
+        help="A task-provided evaluator script for python_evaluator to run.",
+    ),
+    command: str | None = typer.Option(
+        None,
+        "--command",
+        help="The analyser (or evaluator command) to run, for the command and "
+        "static-analysis evaluators; the task's own default when omitted.",
+    ),
     timeout: float | None = typer.Option(None, "--timeout", help="Evaluator timeout in seconds."),
     as_json: bool = JSON_OPTION,
 ) -> None:
-    """Run the task's evaluator over a workspace and report the verdict."""
+    """Run the task's evaluator over a workspace and report the verdict.
+
+    The supplementary evaluators take their subject from the caller rather than
+    from the workspace: `--reference-patch` for `diff_evaluator`, `--script` for
+    `python_evaluator`, `--command` for `command_evaluator` and
+    `static_analysis_evaluator`. An evaluator ignores an input it has no use
+    for, so only the one that needs it can be satisfied by mistake.
+    """
     context: CliContext = ctx.obj
     paths = build_app_paths(context.loaded().settings)
     try:
@@ -67,6 +108,14 @@ def evaluate_task_cmd(
         raise typer.Exit(1)
 
     reports = out_dir or (paths.artifacts_dir / "evaluations" / loaded.uid)
+    inputs: dict[str, object] = {}
+    if reference_patch is not None:
+        inputs["reference_patch"] = reference_patch
+    if script is not None:
+        inputs["script"] = script
+    if command is not None:
+        inputs["command"] = command
+
     result = evaluate_task(
         loaded,
         workspace,
@@ -74,6 +123,7 @@ def evaluate_task_cmd(
         evaluator_id=evaluator,
         registry=default_registry(),
         timeout=timeout,
+        **inputs,
     )
 
     payload = result.as_dict()
@@ -104,3 +154,45 @@ def evaluate_task_cmd(
     if result.verdict.value in {"evaluator_error", "infrastructure_error"}:
         raise typer.Exit(2)
     raise typer.Exit(0 if result.ok else 1)
+
+
+@evaluator_app.command("list")
+@handle_errors
+def evaluator_list_cmd(
+    ctx: typer.Context,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """List the evaluators this installation ships, with what each one decides.
+
+    The registry is the whole truth: an evaluator not listed here cannot be
+    used by a task, and asking for one fails loudly rather than quietly
+    substituting a lookalike (plan section 16).
+    """
+    registry = default_registry()
+    entries = registry.entries()
+    rows = []
+    for evaluator_id, version in entries:
+        evaluator = registry.resolve(evaluator_id, version)
+        rows.append(
+            {
+                "id": evaluator_id,
+                "version": version,
+                "kind": str(evaluator.kind),
+                "purpose": EVALUATOR_PURPOSES.get(str(evaluator.kind), "—"),
+            }
+        )
+    if as_json:
+        show_json({"count": len(rows), "evaluators": rows})
+        return
+    table = Table(title="evaluators")
+    table.add_column("id", style="cyan")
+    table.add_column("version")
+    table.add_column("kind")
+    table.add_column("decides")
+    for row in rows:
+        table.add_row(row["id"], row["version"], row["kind"], row["purpose"])
+    console.print(table)
+    console.print(
+        "  [dim]a task that names an evaluator outside this list is an explicit error, "
+        "never an approximation[/dim]"
+    )

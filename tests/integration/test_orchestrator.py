@@ -10,6 +10,8 @@ orchestrator, knows what a real agent is.
 from __future__ import annotations
 
 import shutil
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -499,3 +501,48 @@ def test_a_silent_instance_is_recorded_as_silent(harness: dict) -> None:
     assert record["served_models"] is None
     assert record["model_evidence"]["available"] is False
     assert record["model_evidence"]["note"] == "the inventory did not answer"
+
+
+def test_a_cancel_before_the_agent_starts_is_a_cancelled_run(harness: dict) -> None:
+    """The operator's decision, taken before the run, is recorded as such."""
+    use_stub(harness, copy_stub(harness, "codex-cancelled", CODEX_STUB))
+    from akbench.orchestration.cancellation import CancelToken
+
+    token = CancelToken()
+    token.cancel("the operator did not want this run")
+
+    outcome = harness["orchestrator"].run(config(harness, cancel_token=token))
+
+    assert outcome.state is RunState.CANCELLED
+    assert outcome.ok is False
+    assert "the operator" in (outcome.detail or "")
+    assert invocations(harness) == 0, "the agent is never started for a cancelled run"
+
+
+def test_a_cancel_while_the_agent_works_interrupts_it(harness: dict) -> None:
+    """A run in flight becomes a cancelled outcome, not a timeout or a crash."""
+    use_stub(harness, copy_stub(harness, "codex-cancel-hang", CODEX_STUB), behaviour="hang")
+    from akbench.orchestration.cancellation import CancelToken
+
+    token = CancelToken()
+
+    def _cancel_later() -> None:
+        time.sleep(1.0)
+        token.cancel("interrupted from outside")
+
+    threading.Thread(target=_cancel_later, daemon=True).start()
+    started = time.monotonic()
+    outcome = harness["orchestrator"].run(config(harness, cancel_token=token, agent_timeout=60))
+    elapsed = time.monotonic() - started
+
+    assert outcome.state is RunState.CANCELLED
+    assert outcome.ok is False
+    assert elapsed < 30, "the agent is interrupted, not waited out"
+    assert invocations(harness) == 1
+
+
+def test_a_run_without_a_cancel_token_is_unaffected(harness: dict) -> None:
+    """The token is optional: today's runs do not change shape."""
+    use_stub(harness, copy_stub(harness, "codex-plain", CODEX_STUB))
+    outcome = harness["orchestrator"].run(config(harness))
+    assert outcome.state is RunState.COMPLETED

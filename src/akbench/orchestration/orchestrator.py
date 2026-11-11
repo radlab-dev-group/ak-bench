@@ -17,6 +17,7 @@ Two rules from the plan are enforced structurally, not by convention:
 
 from __future__ import annotations
 
+import threading
 import uuid
 from collections.abc import Callable
 from contextlib import suppress
@@ -36,6 +37,7 @@ from akbench.core.time import utc_now
 from akbench.datasets.workspace import WorkspaceManager
 from akbench.evaluators.registry import EvaluatorRegistry
 from akbench.evaluators.task_evaluation import evaluate_task
+from akbench.orchestration.cancellation import CancelToken
 from akbench.orchestration.errors import RunPreparationError
 from akbench.orchestration.lifecycle import RunContext, RunOutcome, RunState
 from akbench.orchestration.packaging import collect_and_package_artifacts
@@ -67,6 +69,11 @@ class OrchestrationConfig:
     #: fixed when it starts, so this is how a variant says which plugins it has.
     runtime_env: dict[str, str] = field(default_factory=dict)
     workspace_id: str | None = None
+    #: The environment this run declares it executes in (plan 9, 14): its
+    #: identity, sandbox kind and image, resolved from the descriptor by the
+    #: caller. Recorded in the run so a month later the manifest can say where
+    #: the run happened instead of leaving the reader to assume the host.
+    environment: dict[str, Any] | None = None
     artifacts_dir: Path | None = None
     evaluation_dir: Path | None = None
     agent_timeout: float | None = None
@@ -79,6 +86,11 @@ class OrchestrationConfig:
     #: shows the phase behind its elapsed-time counter; it observes the run and
     #: changes nothing about it, and it is not recorded.
     on_transition: Callable[[str], None] | None = None
+    #: A request to stop this run. Checked between phases, and while the agent
+    #: works it interrupts the agent process (``adapter.cancel``) rather than
+    #: waiting out the timeout. A cancelled run ends in ``cancelled``, which is
+    #: an outcome, not an error: the artifacts stay and the record says why.
+    cancel_token: CancelToken | None = None
 
 
 #: Environment variables whose value is worth a line in the run's history: they
@@ -116,6 +128,7 @@ class RunOrchestrator:
             mode=config.mode,
             runtime_id=config.runtime_id,
             requested_model=_requested_model(config.agent_parameters),
+            environment=config.environment,
             started_at=utc_now(),
             on_transition=config.on_transition,
         )
@@ -154,7 +167,12 @@ class RunOrchestrator:
 
         session = None
         adapter = None
+        watcher = None
         try:
+            cancelled = self._cancelled(config, context, "before the agent was started")
+            if cancelled is not None:
+                return cancelled
+
             adapter = entry.adapter()
             workspace = self._creating_workspace(config, context)
             if isinstance(workspace, RunOutcome):
@@ -163,10 +181,17 @@ class RunOrchestrator:
             session = adapter.start_session(agent_config, workspace)
             context.transition(RunState.STARTING_AGENT, "agent session opened")
 
+            cancelled = self._cancelled(config, context, "before the task was submitted")
+            if cancelled is not None:
+                return cancelled
+
             context.transition(RunState.EXECUTING, "task submitted")
             adapter.submit_task(session, self._task_text(config))
+            watcher = _watch_cancel(config, adapter, session)
             adapter.wait_for_completion(session, timeout=config.agent_timeout)
             result = adapter.close_session(session)
+            if config.cancel_token is not None and config.cancel_token.cancelled:
+                return self._finish_cancelled(config, context, result.final_message)
 
             context.session_id = result.session_id
             context.agent_version = result.agent_version
@@ -205,6 +230,8 @@ class RunOrchestrator:
         except Exception as exc:  # unexpected: record it, never lose the run
             return self._fail(config, context, exc, adapter=adapter, session=session)
         finally:
+            if watcher is not None:
+                watcher.cancel.set()
             self._recording_model_evidence(runtime, context)
             self._stopping_runtime(runtime, context)
             self._cleanup(config, context)
@@ -435,6 +462,37 @@ class RunOrchestrator:
             detail=f"evaluation {result.verdict.value}",
         )
 
+    # ------------------------------------------------------------ cancellation
+
+    def _cancelled(
+        self, config: OrchestrationConfig, context: RunContext, stage: str
+    ) -> RunOutcome | None:
+        """The run between two phases: stop here if the operator asked to."""
+        token = config.cancel_token
+        if token is None or not token.cancelled:
+            return None
+        reason = token.reason or "cancelled"
+        context.finish(RunState.CANCELLED, f"cancelled {stage}: {reason}")
+        return RunOutcome(context.run_uid, RunState.CANCELLED, ok=False, detail=reason)
+
+    def _finish_cancelled(
+        self, config: OrchestrationConfig, context: RunContext, final_message: str | None
+    ) -> RunOutcome:
+        """A run interrupted while the agent worked: an outcome, not a failure.
+
+        The agent was asked to stop and did, so what it produced is kept and
+        the run is recorded cancelled with the reason. Judging half an answer
+        with the hidden tests would turn an operator's decision into the
+        agent's failure, which plan rule 11 forbids in the same breath as
+        counting an infrastructure error against the agent.
+        """
+        token = config.cancel_token
+        reason = (token.reason if token is not None else None) or "cancelled while executing"
+        context.error_message = reason
+        context.finish(RunState.CANCELLED, f"interrupted: {reason}")
+        detail = final_message or reason
+        return RunOutcome(context.run_uid, RunState.CANCELLED, ok=False, detail=detail)
+
     # ------------------------------------------------------------ failures
 
     def _fail(
@@ -526,6 +584,46 @@ def _first_line(text: str | None) -> str | None:
     if not text:
         return None
     return text.strip().splitlines()[0] if text.strip() else None
+
+
+class _CancelWatcher:
+    """Interrupts the agent when the token fires, and stops watching after.
+
+    The agent's own wait is blocking, so cancellation needs a second thread:
+    it waits for either the token or the run finishing, and only asks the
+    agent to stop in the first case. ``stop`` is called from the run's
+    ``finally``, so a normal end never leaves a thread behind.
+    """
+
+    def __init__(self) -> None:
+        self.cancel = threading.Event()
+        self.triggered = False
+        self.thread: threading.Thread | None = None
+
+
+def _watch_cancel(config: OrchestrationConfig, adapter: Any, session: Any) -> _CancelWatcher | None:
+    """Watch the run's cancel token against one agent session."""
+    token = config.cancel_token
+    watcher = _CancelWatcher()
+    if token is None:
+        return watcher
+
+    def _loop() -> None:
+        # Two events race on purpose: the token interrupts the agent, the
+        # watcher's own event ends the thread when the run finishes normally.
+        # A run that finishes without a cancellation must leave the agent
+        # alone, so the token is only ever consulted while watching.
+        while not watcher.cancel.is_set():
+            if token.wait(0.25):
+                if not watcher.cancel.is_set():
+                    watcher.triggered = True
+                    with suppress(Exception):
+                        adapter.cancel(session)
+                return
+
+    watcher.thread = threading.Thread(target=_loop, daemon=True, name="akbench-run-cancel")
+    watcher.thread.start()
+    return watcher
 
 
 def _run_uid() -> str:
