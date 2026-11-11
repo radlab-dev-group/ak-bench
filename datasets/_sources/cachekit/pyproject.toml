@@ -1,0 +1,8 @@
+[project]
+name = "cachekit"
+version = "1.0.0"
+description = "LRU and TTL cache fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
