@@ -16,6 +16,12 @@ release tagged as `v<version>`.
 
 ### Added
 
+- **`configs/experiments/arena-roadmap-knowledge.yaml`**: the fifty new tasks in
+  one arm — the managed local router, the `auto_codex` routing alias over the
+  27B base model, and the knowledge plugin reading and writing (pipeline
+  `agentic_routing_codex,agentic_knowledge`, `knowledge_enabled: true` applied
+  to the process the run owns). `experiment validate` and `plan` are green:
+  1 variant over the 50 tasks.
 - **Fifty new tasks: the easy/medium/hard family and the roadmap task types.**
   The first ten are one `bug_fix` and one `new_feature` each over five new
   standard-library fixtures (`timetable`, `quiz`, `garden`, `playlist`,

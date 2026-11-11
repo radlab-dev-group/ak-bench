@@ -1,0 +1,156 @@
+# The fifty arena/roadmap tasks, one arm: the managed (local) router, the
+# auto_codex routing alias over the Qwen3.27B base model, and the knowledge
+# plugin on.
+#
+# WHY ONE ARM. The question this experiment asks is not "which configuration
+# wins" but "what does the memory layer do to the roadmap task types": the
+# debugging, security, refactoring, testing, code_review, performance and
+# architecture tasks are the first of their kind in the dataset, and an arm
+# with knowledge on, routing on and the base model pinned is the arm that
+# writes the memory the later comparisons (knowledge on/off, model A/B) will
+# read. Everything else about the arm is held fixed by the descriptors: the
+# agent (codex), the runtime (the instance AK-Bench starts and stops per run)
+# and the evaluator (pytest).
+#
+# WHY THE BASE MODEL IS THE 27B. auto_codex is an alias: what serves a request
+# is decided by the routing plugin, and the model it decides to is part of the
+# arm, not of the request. The instance this experiment starts serves one 27B
+# entry, qwen/Qwen3.8-27B, whose provider is the qwen3.8:27b base checkpoint
+# on the local host (the runtime's own models config, active_models); the
+# alias resolves against it, and routed_model records per run what was really
+# served, because the agent itself only ever reports the alias.
+#
+# THE PIPELINE IS THE ARM'S. Loading a plugin is read once, when the process
+# starts, so the arm that measures knowledge names both plugins in its own
+# runtime_env: the routing plugin that resolves auto_codex, and the knowledge
+# plugin that reads and writes. The managed runtime ships no pipeline of its
+# own, so an arm that wants neither loads neither.
+#
+# KNOWLEDGE IS ON. knowledge_enabled is the runtime's factor_env toggle; the
+# pipeline above is what makes it act. The plugin's Redis and the vector
+# engine login are the runtime descriptor's business, and the engine password
+# is the operator's: export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD
+# before the run, or the arm runs enabled-and-unauthenticated, which the
+# plugin survives rather than failing the run.
+schema_version: "1.0"
+id: arena-roadmap-knowledge
+version: "1.0.0"
+title: Arena and roadmap tasks with auto Codex and knowledge on
+description: >-
+  The fifty arena and roadmap tasks (one bug_fix and one new_feature per fixture of the easy/medium/hard family, plus the seven roadmap task types) against one arm: the managed local router, the auto_codex routing alias over the Qwen3.27B base model, and the knowledge plugin reading and writing. One arm on purpose: the question is what the memory layer does to these task types, not which configuration wins, and the runs it writes are the memory the later on/off and model comparisons read.
+
+experiment:
+  type: configuration
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router-ak-bench
+      lifecycle: managed
+
+  dataset:
+    filters:
+      categories:
+        [bug_fix, new_feature, debugging, security, refactoring, testing, code_review, performance, architecture]
+      task_ids:
+        # easy/medium/hard family, one bug_fix and one new_feature per fixture
+        - timetable-overlap-001
+        - quiz-streak-001
+        - garden-watering-001
+        - playlist-queue-001
+        - cachekit-eviction-001
+        - timetable-slots-001
+        - quiz-ranking-001
+        - garden-plan-001
+        - playlist-mix-001
+        - cachekit-ttl-001
+        # debugging
+        - csvkit-quoted-field-001
+        - dates-month-boundary-001
+        - indexer-stale-entry-001
+        - pipeline-stage-order-001
+        - retryq-retry-order-001
+        - syncer-conflict-001
+        # security
+        - shopdb-sql-injection-001
+        - authkit-token-timing-001
+        - filebox-path-traversal-001
+        - fetcher-open-redirect-001
+        - configkit-unsafe-load-001
+        - authkit-token-reuse-001
+        # performance
+        - fib-memo-001
+        - dedup-linear-001
+        - index-lookup-001
+        - sorted-search-001
+        - config-cache-001
+        - inverted-index-001
+        # refactoring
+        - rules-early-return-001
+        - forms-extract-validator-001
+        - session-explicit-state-001
+        - billing-split-function-001
+        - queuekit-deque-migration-001
+        - reportgen-split-module-001
+        # code_review
+        - review-leak-001
+        - review-api-break-001
+        - review-race-001
+        - review-pr-small-001
+        - review-pr-large-001
+        - review-pr-multi-001
+        # testing
+        - cachekit-lru-001
+        - quiz-streak-tests-001
+        - garden-watering-tests-001
+        - playlist-queue-tests-001
+        - timetable-overlap-tests-001
+        - wordcount-top-words-001
+        # architecture
+        - plugcore-registry-001
+        - inventory-repository-001
+        - shopcore-layered-001
+        - eventbus-decoupling-001
+
+  factors:
+    strategy: custom_matrix
+    dimensions:
+      - id: knowledge_enabled
+      - id: model
+    baseline:
+      model: auto_codex
+      knowledge_enabled: true
+    # The single arm: the alias resolves through the routing plugin to the
+    # 27B base model, and the pipeline names the two plugins the instance
+    # loads when it starts (routing, then knowledge).
+    combinations:
+      - model: auto_codex
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+
+  execution_policy:
+    repetitions: 1
+    concurrency: 1
+    timeout_seconds: 10800
+    retry_infrastructure_errors: 1
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    # 50 tasks x 1 arm x 1 repetition; the ceiling leaves room for a resumed
+    # run without letting an accidental dimension multiply the bill.
+    max_runs: 64
