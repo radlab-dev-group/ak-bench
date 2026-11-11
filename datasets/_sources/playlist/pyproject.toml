@@ -1,0 +1,8 @@
+[project]
+name = "playlist"
+version = "1.0.0"
+description = "Playlist queue fixture for AK-Bench"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
