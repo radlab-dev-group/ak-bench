@@ -44,7 +44,7 @@ def test_dataset_list_json_shape(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert payload["count"] == 35
+    assert payload["count"] == 85
     assert {task["id"] for task in payload["tasks"]} == {
         "wordcount-001",
         "bookshop-tiers-001",
@@ -81,17 +81,77 @@ def test_dataset_list_json_shape(project: Path) -> None:
         "tidewater-snapshot-002",
         "depweaver-lockfile-001",
         "walqueue-compaction-002",
+        "timetable-overlap-001",
+        "quiz-streak-001",
+        "garden-watering-001",
+        "playlist-queue-001",
+        "cachekit-eviction-001",
+        "timetable-slots-001",
+        "quiz-ranking-001",
+        "garden-plan-001",
+        "playlist-mix-001",
+        "cachekit-ttl-001",
+        "csvkit-quoted-field-001",
+        "dates-month-boundary-001",
+        "indexer-stale-entry-001",
+        "pipeline-stage-order-001",
+        "retryq-retry-order-001",
+        "syncer-conflict-001",
+        "authkit-token-reuse-001",
+        "authkit-token-timing-001",
+        "configkit-unsafe-load-001",
+        "fetcher-open-redirect-001",
+        "filebox-path-traversal-001",
+        "shopdb-sql-injection-001",
+        "billing-split-function-001",
+        "forms-extract-validator-001",
+        "queuekit-deque-migration-001",
+        "reportgen-split-module-001",
+        "rules-early-return-001",
+        "session-explicit-state-001",
+        "cachekit-lru-001",
+        "garden-watering-tests-001",
+        "playlist-queue-tests-001",
+        "quiz-streak-tests-001",
+        "timetable-overlap-tests-001",
+        "wordcount-top-words-001",
+        "review-api-break-001",
+        "review-leak-001",
+        "review-pr-large-001",
+        "review-pr-multi-001",
+        "review-pr-small-001",
+        "review-race-001",
+        "config-cache-001",
+        "dedup-linear-001",
+        "fib-memo-001",
+        "index-lookup-001",
+        "inverted-index-001",
+        "sorted-search-001",
+        "eventbus-decoupling-001",
+        "inventory-repository-001",
+        "plugcore-registry-001",
+        "shopcore-layered-001",
     }
-    assert {task["category"] for task in payload["tasks"]} == {"bug_fix", "new_feature"}
+    assert {task["category"] for task in payload["tasks"]} == {
+        "bug_fix",
+        "new_feature",
+        "debugging",
+        "security",
+        "refactoring",
+        "testing",
+        "code_review",
+        "performance",
+        "architecture",
+    }
     for task in payload["tasks"]:
         assert task["digest"].startswith("sha256:")
 
 
 def test_dataset_list_category_filter(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--category", "bug_fix", "--json"])
-    assert _payload(result.output)["count"] == 20
+    assert _payload(result.output)["count"] == 25
     result = runner.invoke(app, ["dataset", "list", "--category", "new_feature", "--json"])
-    assert _payload(result.output)["count"] == 15
+    assert _payload(result.output)["count"] == 20
     result = runner.invoke(app, ["dataset", "list", "--category", "nope", "--json"])
     assert _payload(result.output)["count"] == 0
 
@@ -101,7 +161,7 @@ def test_dataset_validate_reports_ok(project: Path) -> None:
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     assert payload["ok"] is True
-    assert payload["tasks"] == 35
+    assert payload["tasks"] == 85
 
 
 def test_dataset_validate_fails_on_broken_task(project: Path) -> None:
