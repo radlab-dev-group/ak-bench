@@ -26,6 +26,7 @@ from akbench.cli.descriptors import agent_app
 from akbench.config.loader import build_app_paths
 from akbench.datasets import Dataset, RepositoryManager, TaskLoadError, WorkspaceManager
 from akbench.descriptors import AgentDescriptor, DescriptorKind, load_registry
+from akbench.orchestration.cancellation import CancelToken, install_cancellation_handlers
 
 JSON_OPTION = typer.Option(False, "--json", help="Emit the result as JSON.")
 
@@ -278,6 +279,11 @@ def agent_run_cmd(
 
     session = adapter.start_session(config, workspace_path)
     adapter.submit_task(session, task_text)
+    # Ctrl+C asks the agent to stop instead of killing this process next to a
+    # running one: the first press cancels the session (the same path a timeout
+    # takes), the second leaves. The normalized result still comes back.
+    token = CancelToken()
+    install_cancellation_handlers(token, on_cancel=lambda: adapter.cancel(session))
     adapter.wait_for_completion(session, timeout=timeout)
     result = adapter.close_session(session)
 

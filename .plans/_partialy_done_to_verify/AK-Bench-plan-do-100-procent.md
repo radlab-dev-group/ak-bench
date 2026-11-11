@@ -196,7 +196,7 @@ Audyt: `diff_evaluator` i `static_analysis_evaluator` mają deskryptory, ale
 
 ---
 
-## FAZA D — Scheduler: concurrency, resume, cancel + brakujące komendy CLI (§15, §22)
+## FAZA D ✅ ZREALIZOWANA — Scheduler: concurrency, resume, cancel + brakujące komendy CLI (§15, §22)
 
 Audyt: `concurrency` w YAML ignorowane (runy sekwencyjnie w
 `src/akbench/cli/experiments.py::_run_experiment`), brak `experiment resume/cancel/show`,
@@ -607,7 +607,7 @@ błąd jest jawny (`infrastructure_error`), nie cichy.
 
 ### Funkcjonalność (Fazy C–J)
 - [x] C 5 evaluatorów zarejestrowanych i przetestowanych — `DiffEvaluator`, `StaticAnalysisEvaluator`, `PythonEvaluator` w `src/akbench/evaluators/`; `default_registry()` → 5 (`pytest`, `command`, `diff`, `static_analysis`, `python`); `tests/unit/test_evaluators_supplementary.py` (11) + `test_evaluators.py` (test równości kindów z rejestrem) + 3 testy E2E CLI w `tests/integration/test_evaluate_cli.py`; `akbench evaluate task` przyjmuje `--reference-patch/--script/--command`; docs `docs/EVALUATORS.md` z sekcją o każdym. Diff nigdy nie zwraca `passed` (test).
-- [ ] D concurrency, resume, cancel, `experiment show`, `runtime start/stop/verify/status`, `evaluator list`
+- [x] D concurrency, resume, cancel, `experiment show`, `runtime start/stop/verify/status`, `evaluator list` — `concurrency` z `execution_policy` realizowany przez `ThreadPoolExecutor` w `src/akbench/cli/experiments.py::_run_experiment` (wyniki w kolejności planu, `--concurrency` nadpisuje, ostrzeżenie `concurrency_above_one` w planie); `experiment resume UID` (klucz komórki: task+variant+repetition z historii, `cancelled` się ponawia, drugi resume = zero runów); `experiment cancel UID` + SIGINT/SIGTERM w `run single`/`agent run` przez `CancelToken`/`FileCancelSource` (`src/akbench/orchestration/cancellation.py`), run kończy się `cancelled` z zachowanymi artefaktami; `PREPARE_LOCK` w `datasets/workspace.py` (git worktree na współdzielonym bare cache); nowe komendy `experiment show`, `runtime start/stop/verify/status`, `evaluator list`; testy: `tests/unit/test_cancellation.py` (7), 3 testy cancel w `tests/integration/test_orchestrator.py`, `tests/integration/test_experiment_scheduler_cli.py` (5, w tym cancel procesu przez marker); `docs/CLI.md` z tabelą plan vs implementacja
 - [ ] E kind `environment` + deskryptory + walidacja w plannerze
 - [ ] F agenci `fake` + `http`, `agent-comparison.yaml` E2E
 - [ ] G metryki knowledge mierzone z logu managed (min. write/retrieval count), `unavailable` bez sygnałów

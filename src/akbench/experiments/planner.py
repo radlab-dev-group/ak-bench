@@ -376,6 +376,18 @@ class ExperimentPlanner:
         mode = body.execution.mode
         selection = body.execution.runtime
 
+        # Concurrency is a fact the operator should see before the run, not
+        # discover from interleaved output: N runs at once share the machine,
+        # the router and its rate limits, so per-run timings stretch. The plan
+        # says so once, here, rather than a reader learning it from a report.
+        if body.execution_policy.concurrency > 1:
+            report.warn(
+                "concurrency_above_one",
+                f"concurrency is {body.execution_policy.concurrency}: runs share the "
+                "machine and the runtime, so per-run timings measure a loaded system; "
+                "results are still collected in plan order",
+            )
+
         plugin_factors = [
             reference.id
             for reference in body.factors.dimensions

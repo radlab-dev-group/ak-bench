@@ -2,9 +2,9 @@
 
 Implemented here: version, init, doctor, config, descriptor, agent, category,
 dataset, runtime, experiment, run, plugin, metrics, knowledge, history, report,
-migrate and export commands. Every command from the plan's CLI sketch is implemented
-except the scheduler-facing ones (``resume``/``cancel``), which need a
-scheduler and are intentionally absent rather than stubbed.
+migrate and export commands. Every command of the plan's CLI sketch exists;
+``experiment resume``/``cancel`` schedule against the recorded history and a
+marker file rather than a daemon, because this CLI is one-shot and says so.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from akbench.cli.common import (
 )
 from akbench.cli.dataset import dataset_app
 from akbench.cli.descriptors import agent_app, category_app, descriptor_app
-from akbench.cli.evaluate import evaluate_app
+from akbench.cli.evaluate import evaluate_app, evaluator_app
 from akbench.cli.experiments import experiment_app
 from akbench.cli.export import export_app
 from akbench.cli.history import history_app
@@ -62,6 +62,7 @@ app.add_typer(agent_app, name="agent")
 app.add_typer(category_app, name="category")
 app.add_typer(runtime_app, name="runtime")
 app.add_typer(evaluate_app, name="evaluate")
+app.add_typer(evaluator_app, name="evaluator")
 app.add_typer(experiment_app, name="experiment")
 app.add_typer(run_app, name="run")
 app.add_typer(plugin_app, name="plugin")

@@ -16,6 +16,32 @@ release tagged as `v<version>`.
 
 ### Added
 
+- **The scheduler: concurrency, resume, cancel** (plan section 15).
+  `execution_policy.concurrency` is no longer ignored — `akbench experiment run`
+  executes the matrix through a thread pool (an agent is a subprocess) and
+  collects the results in plan order, not in the order the runs finished;
+  `--concurrency` overrides the policy, and the plan warns when it is above one
+  because N runs at once share the machine and the router.
+  `akbench experiment resume UID` reads the plan back from the experiment file
+  recorded with it and runs the matrix cells the history has no verdict for;
+  `cancelled` counts as an operator asking rather than a result, so an
+  interrupted cell is re-run and a finished experiment resumes to nothing.
+  `akbench experiment cancel UID`, `Ctrl+C` in a running matrix, and a cancel
+  in `run single`/`agent run` all stop the run in flight through one token: the
+  agent is interrupted, the run is recorded `cancelled` with its artifacts kept,
+  and no further cell starts. There is no daemon — the cross-process path is a
+  marker file under `data/cancellations/`, documented as such.
+  Preparing a workspace now holds a process-wide lock, because `git worktree
+  add` on a shared bare cache is the one thing parallel runs must not race.
+- **The commands of the plan's CLI sketch (§22) that were missing**:
+  `experiment show UID` (plan, variants, runs and metrics read back from the
+  history), `runtime start`/`runtime stop` (a managed instance outside a run,
+  with an explicit refusal for `external`), `runtime verify [--expect k=v]`
+  (health, the configuration triad, and the expected-versus-effective diff),
+  `runtime status` (one runtime as `state`, or the whole registry), and
+  `evaluator list` (the evaluators this installation actually implements).
+  `docs/CLI.md` now carries a plan-versus-implementation table.
+
 - **All five evaluators of plan section 16** (`docs/EVALUATORS.md`).
   `pytest_evaluator` and `command_evaluator` were already there; the three that
   had a descriptor and no code now do:

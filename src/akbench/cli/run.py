@@ -27,6 +27,7 @@ from akbench.datasets import Dataset, RepositoryManager, TaskLoadError, Workspac
 from akbench.descriptors import AgentDescriptor, DescriptorKind, RuntimeDescriptor, load_registry
 from akbench.evaluators.registry import default_registry
 from akbench.orchestration import OrchestrationConfig, RunOrchestrator, RunState
+from akbench.orchestration.cancellation import CancelToken, install_cancellation_handlers
 from akbench.runtime import build_runtime_registry
 
 run_app = typer.Typer(
@@ -192,6 +193,12 @@ def run_single_cmd(
     evaluation_dir = artifacts_dir / "evaluation"
     task_text = task_file.read_text(encoding="utf-8").strip() if task_file else None
 
+    # Ctrl+C is a request to stop this run, not an exception on the way out:
+    # the first press interrupts the agent and records the run ``cancelled``
+    # with its artifacts, the second one leaves as it always did.
+    token = CancelToken()
+    install_cancellation_handlers(token)
+
     config = OrchestrationConfig(
         task=materialized,
         agent_id=agent_id,
@@ -207,6 +214,7 @@ def run_single_cmd(
         apply_mutation=not no_mutation,
         cleanup_workspace=cleanup,
         task_text=task_text,
+        cancel_token=token,
     )
 
     orchestrator = RunOrchestrator(

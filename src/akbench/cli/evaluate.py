@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from rich.table import Table
 
 from akbench.cli.common import CliContext, console, handle_errors, show_json
 from akbench.config.loader import build_app_paths
@@ -21,6 +22,23 @@ evaluate_app = typer.Typer(
     help="Evaluate a produced workspace against a task.",
     no_args_is_help=True,
 )
+
+evaluator_app = typer.Typer(
+    help="Inspect the evaluators this installation implements.",
+    no_args_is_help=True,
+)
+
+#: One line per kind, in the vocabulary of ``docs/EVALUATORS.md``. A task that
+#: asks for an evaluator outside this registry gets an explicit
+#: ``EvaluatorNotFound``, never a lookalike, so what is listed here is what a
+#: task can actually be judged by.
+EVALUATOR_PURPOSES = {
+    "pytest": "runs the task's hidden tests; the primary verdict",
+    "command": "runs a declared command; its exit status and report decide",
+    "diff": "measures the produced change against a reference patch; never claims a pass",
+    "static_analysis": "runs the declared analyser over an isolated copy; findings, not proof",
+    "python": "runs a task-provided script in a subprocess reporting the plan-16 vocabulary",
+}
 
 JSON_OPTION = typer.Option(False, "--json", help="Emit the result as JSON.")
 
@@ -136,3 +154,45 @@ def evaluate_task_cmd(
     if result.verdict.value in {"evaluator_error", "infrastructure_error"}:
         raise typer.Exit(2)
     raise typer.Exit(0 if result.ok else 1)
+
+
+@evaluator_app.command("list")
+@handle_errors
+def evaluator_list_cmd(
+    ctx: typer.Context,
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """List the evaluators this installation ships, with what each one decides.
+
+    The registry is the whole truth: an evaluator not listed here cannot be
+    used by a task, and asking for one fails loudly rather than quietly
+    substituting a lookalike (plan section 16).
+    """
+    registry = default_registry()
+    entries = registry.entries()
+    rows = []
+    for evaluator_id, version in entries:
+        evaluator = registry.resolve(evaluator_id, version)
+        rows.append(
+            {
+                "id": evaluator_id,
+                "version": version,
+                "kind": str(evaluator.kind),
+                "purpose": EVALUATOR_PURPOSES.get(str(evaluator.kind), "—"),
+            }
+        )
+    if as_json:
+        show_json({"count": len(rows), "evaluators": rows})
+        return
+    table = Table(title="evaluators")
+    table.add_column("id", style="cyan")
+    table.add_column("version")
+    table.add_column("kind")
+    table.add_column("decides")
+    for row in rows:
+        table.add_row(row["id"], row["version"], row["kind"], row["purpose"])
+    console.print(table)
+    console.print(
+        "  [dim]a task that names an evaluator outside this list is an explicit error, "
+        "never an approximation[/dim]"
+    )

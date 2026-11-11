@@ -10,7 +10,10 @@ dataset, and they report.
 from __future__ import annotations
 
 import hashlib
+import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -49,6 +52,13 @@ from akbench.experiments import (
 from akbench.experiments.validation import ValidationReport
 from akbench.metrics.catalog import MetricCatalog
 from akbench.orchestration import OrchestrationConfig, RunOrchestrator, RunState
+from akbench.orchestration.cancellation import (
+    CancelToken,
+    FileCancelSource,
+    cancel_marker_path,
+    install_cancellation_handlers,
+)
+from akbench.orchestration.lifecycle import TERMINAL_STATES
 from akbench.runtime import build_runtime_registry
 from akbench.storage.db import create_db_engine
 from akbench.storage.history import HistoryStore
@@ -329,6 +339,55 @@ def _knowledge_workspace_id(
     return f"{slug}/{name}"
 
 
+def _plan_slots(
+    plan: ExperimentPlan, tasks_by_id: dict[str, object], policy: object
+) -> list[dict[str, object]]:
+    """The matrix expanded into ordered slots, with the policy checked once.
+
+    A slot is everything one run needs except the things that only exist while
+    the run is in flight: the task as loaded from the dataset, the variant,
+    the repetition and its position in the plan. The order is the plan's order
+    — a reader of the results must not have to reconstruct it.
+    """
+    slots: list[dict[str, object]] = []
+    for task in plan.tasks:
+        loaded = tasks_by_id[task.uid]
+        if policy.timeout_seconds is not None:
+            task_timeout = loaded.task.task.timeout_seconds
+            if task_timeout is not None and task_timeout > policy.timeout_seconds:
+                raise ExperimentValidationError(
+                    f"task {task.uid} declares timeout of {task_timeout}s, which exceeds "
+                    f"the experiment execution policy timeout of {policy.timeout_seconds}s",
+                    details={
+                        "task_uid": task.uid,
+                        "task_timeout_seconds": task_timeout,
+                        "experiment_timeout_seconds": policy.timeout_seconds,
+                    },
+                )
+        for variant in plan.variants:
+            for repetition in range(plan.counts.repetitions):
+                slots.append(
+                    {
+                        "index": len(slots) + 1,
+                        "task": task,
+                        "loaded": loaded,
+                        "variant": variant,
+                        "repetition": repetition,
+                    }
+                )
+    return slots
+
+
+def _slot_key(task_uid: str, variant_uid: str, repetition: int) -> tuple[str, str, int]:
+    """The identity of one matrix cell, as the history records it.
+
+    ``repetition`` is one-based here because that is how the history stores it:
+    a resume asks the database which cells are done, and the answer has to be
+    in the same vocabulary the database speaks.
+    """
+    return (task_uid, variant_uid, repetition)
+
+
 def _run_experiment(
     context: CliContext,
     experiment: LoadedExperiment,
@@ -337,17 +396,21 @@ def _run_experiment(
     store: bool,
     only: int | None = None,
     silent: bool = False,
+    cancel_token: CancelToken | None = None,
+    skip: set[tuple[str, str, int]] | None = None,
 ) -> dict[str, object]:
-    """Execute the runs of a plan through the orchestrator, one after another.
+    """Execute the runs of a plan through the orchestrator.
 
     The runs share the descriptors and the dataset the plan pinned. When
     ``store`` is set, every run is also recorded in the history under the
     experiment's own identity and its variant, which is what makes the report
     and the export traceable back to the plan that produced them.
+
+    With ``execution_policy.concurrency`` greater than one the runs go through
+    a thread pool: an agent is a subprocess, so threads are the whole story
+    (plan 15.2). The results come back in the plan's order, not the order in
+    which the runs finished.
     """
-    # The matrix's own wall clock: an experiment of managed runs pays instance
-    # startup per run, so "how long is this taking overall" is not answerable
-    # from the per-run numbers a reader has seen so far.
     wall_start = time.monotonic()
     settings = context.loaded().settings
     paths = build_app_paths(settings)
@@ -395,170 +458,239 @@ def _run_experiment(
             snapshots=[_snapshot_payload(entry) for entry in _pinned_descriptors(registry, plan)],
         )
 
-    results: list[dict[str, object]] = []
-    index = 0
     policy = experiment.descriptor.experiment.execution_policy
-    for task in plan.tasks:
-        loaded = tasks_by_id[task.uid]
-        if policy.timeout_seconds is not None:
-            task_timeout = loaded.task.task.timeout_seconds
-            if task_timeout is not None and task_timeout > policy.timeout_seconds:
-                raise ExperimentValidationError(
-                    f"task {task.uid} declares timeout of {task_timeout}s, "
-                    f"which exceeds experiment execution policy timeout of {policy.timeout_seconds}s",
-                    details={
-                        "task_uid": task.uid,
-                        "task_timeout_seconds": task_timeout,
-                        "experiment_timeout_seconds": policy.timeout_seconds,
-                    },
-                )
-        for variant in plan.variants:
-            for repetition in range(plan.counts.repetitions):
-                index += 1
-                if only is not None and index > only:
-                    return {
-                        "runs": results,
-                        "completed": len(results),
-                        "planned": plan.counts.runs,
-                        "wall_seconds": round(time.monotonic() - wall_start, 1),
-                    }
+    slots = _plan_slots(plan, tasks_by_id, policy)
+    skipped = 0
+    if skip:
+        pending = [
+            slot
+            for slot in slots
+            if _slot_key(
+                str(slot["task"].uid), str(slot["variant"].variant_id), int(slot["repetition"]) + 1
+            )
+            not in skip
+        ]
+        skipped = len(slots) - len(pending)
+        slots = pending
+    if only is not None:
+        slots = slots[:only]
+    concurrency = min(policy.concurrency, len(slots)) if slots else 1
+    token = cancel_token if cancel_token is not None else CancelToken()
 
-                task_desc = loaded.task
-                task_title = task_desc.title or task.uid
-                task_details = f"[bold cyan]{task.uid}[/bold cyan] ({task.category}, {task.difficulty})"
-                variant_summary = variant.variant_id
-                if variant.values:
-                    values_str = ", ".join(f"{k}={v}" for k, v in variant.values.items())
-                    variant_summary = f"{variant.variant_id} [{values_str}]"
+    print_lock = threading.Lock()
 
-                rep_info = f"rep {repetition + 1}/{plan.counts.repetitions}"
-                if not silent:
-                    console.print(
-                        f"\n[dim][{index}/{plan.counts.runs}][/dim] Running task: {task_details}"
-                    )
-                    if task_desc.title:
-                        console.print(f"  [dim]title:[/dim]       {task_title}")
-                    console.print(f"  [dim]variant:[/dim]     {variant_summary}")
-                    console.print(
-                        f"  [dim]agent:[/dim]       {variant.agent_id} ({plan.mode}"
-                        f"{', runtime ' + plan.runtime_id if plan.runtime_id else ''})"
-                    )
-                    if variant.agent_config:
-                        console.print(f"  [dim]agent config:[/dim]{variant.agent_config}")
-                    if variant.runtime_env:
-                        declared = ", ".join(
-                            f"{name}={value}"
-                            for name, value in sorted(variant.runtime_env.items())
-                        )
-                        console.print(f"  [dim]runtime env:[/dim]  {declared}")
-                    console.print(f"  [dim]progress:[/dim]     {rep_info}")
+    def execute_slot(slot: dict[str, object]) -> dict[str, object] | None:
+        # A queued slot never starts once the experiment is cancelled: the
+        # operator asked for the matrix to stop, not for the rest of it to be
+        # recorded as cancelled one run at a time.
+        if token.cancelled:
+            return None
+        return _execute_one(
+            context=context,
+            orchestrator=orchestrator,
+            dataset=dataset,
+            paths=paths,
+            plan=plan,
+            experiment=experiment,
+            policy=policy,
+            slot=slot,
+            store=store,
+            silent=silent,
+            cancel_token=token,
+            print_lock=print_lock,
+        )
 
-                # Only the agent's own declared parameters go here: the mode and
-                # the runtime are the orchestrator's, not agent configuration.
-                agent_parameters = dict(variant.agent_config)
-                artifacts_dir = paths.artifacts_dir / "runs" / _run_slug(
-                    plan.agent_id, task.uid, variant.variant_id, repetition
-                )
-                # The clock starts here, before the run: the wait it counts
-                # includes launching a managed instance, which is the part with
-                # no other output to watch.
-                clock = StepClock(f"[{index}/{plan.counts.runs}]")
-                started_at = datetime.now(UTC)
-                # A memory run's checkout has to declare the repository its
-                # knowledge belongs to; the pin is empty for every other
-                # experiment type, which leaves their run names as they were.
-                pinned_workspace = _knowledge_workspace_id(
-                    experiment,
-                    agent_id=variant.agent_id,
-                    task_uid=task.uid,
-                    variant_id=variant.variant_id,
-                    repetition=repetition,
-                    repository_source=loaded.task.task.repository.source,
-                )
-                config = OrchestrationConfig(
-                    task=dataset.materialize(loaded),
-                    agent_id=variant.agent_id,
-                    agent_version=None,
-                    mode=plan.mode,
-                    runtime_id=plan.runtime_id,
-                    agent_parameters=agent_parameters,
-                    workspace_id=pinned_workspace,
-                    # Plugin factors are the runtime's own configuration: a
-                    # managed instance applies them as process environment, so
-                    # the variant value becomes the state of a process this run
-                    # started instead of a hope aimed at a shared router.
-                    runtime_environment=dict(variant.environment_requests),
-                    runtime_env=dict(variant.runtime_env),
-                    artifacts_dir=artifacts_dir,
-                    evaluation_dir=artifacts_dir / "evaluation",
-                    agent_timeout=policy.timeout_seconds,
-                    evaluation_timeout=policy.evaluation_timeout_seconds,
-                    infrastructure_retries=policy.retry_infrastructure_errors,
-                    apply_mutation=True,
-                    cleanup_workspace=False,
-                    task_text=None,
-                    on_transition=clock.report_phase,
-                )
-                with clock.running(console, enabled=not silent):
-                    outcome = orchestrator.run(config)
-                record = outcome.record or {}
-                write_record(artifacts_dir / "run_record.json", record)
-                if store:
-                    store_run(
-                        context,
-                        record,
-                        loaded=loaded,
-                        artifacts_dir=artifacts_dir,
-                        experiment_uid=experiment.identity,
-                        agent_id=variant.agent_id,
-                        agent_parameters=agent_parameters,
-                        variant_uid=variant.variant_id,
-                        repetition=repetition + 1,
-                    )
+    results: list[dict[str, object] | None] = [None] * len(slots)
+    if concurrency <= 1:
+        for position, slot in enumerate(slots):
+            if token.cancelled:
+                break
+            results[position] = execute_slot(slot)
+    else:
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futures = {
+                pool.submit(execute_slot, slot): position for position, slot in enumerate(slots)
+            }
+            for future, position in futures.items():
+                results[position] = future.result()
 
-                state_color = STATE_COLORS.get(outcome.state.value, "white")
-                score = (record.get("evaluation") or {}).get("score")
-                score_str = f" score: {score:.2f}" if score is not None else ""
-                detail = outcome.detail or record.get("error_message")
-                if not silent:
-                    console.print(
-                        f"  [dim]outcome:[/dim]      [{state_color}]{outcome.state.value}[/{state_color}]{score_str}"
-                    )
-                    # A state alone does not say why, and a run that ends
-                    # before the agent starts has no other output to read: the
-                    # reason is printed here rather than left in the record.
-                    if detail and outcome.state is not RunState.COMPLETED:
-                        for line in str(detail).splitlines():
-                            console.print(f"  [dim]detail:[/dim]       {line}")
-                    console.print(
-                        f"  [dim]time:[/dim]         started {format_clock(started_at)}, took "
-                        f"[bold]{format_duration(clock.elapsed)}[/bold]"
-                    )
-                    # Where the time went is the run's own account, read back from
-                    # its transition log: a run that took four minutes and two of
-                    # them were the router starting is not a slow agent.
-                    phases = phase_durations(record)
-                    if len(phases) > 1:
-                        console.print(f"  [dim]phases:[/dim]       {format_phases(phases)}")
-
-                results.append(
-                    {
-                        "task_uid": task.uid,
-                        "variant": variant.variant_id,
-                        "repetition": repetition + 1,
-                        "state": outcome.state.value,
-                        "detail": detail,
-                        "run_uid": record.get("run_uid"),
-                        "score": score,
-                        "started_at": started_at.isoformat(),
-                        "elapsed_seconds": round(clock.elapsed, 1),
-                    }
-                )
-    return {
-        "runs": results,
-        "completed": len(results),
+    runs = [result for result in results if result is not None]
+    payload: dict[str, object] = {
+        "runs": runs,
+        "completed": len(runs),
         "planned": plan.counts.runs,
         "wall_seconds": round(time.monotonic() - wall_start, 1),
+    }
+    if token.cancelled:
+        payload["cancelled"] = True
+        payload["cancel_reason"] = token.reason
+    if skipped:
+        payload["already_done"] = skipped
+    return payload
+
+
+def _execute_one(
+    *,
+    context: CliContext,
+    orchestrator: RunOrchestrator,
+    dataset: Dataset,
+    paths: object,
+    plan: ExperimentPlan,
+    experiment: LoadedExperiment,
+    policy: object,
+    slot: dict[str, object],
+    store: bool,
+    silent: bool,
+    cancel_token: CancelToken,
+    print_lock: threading.Lock,
+) -> dict[str, object]:
+    """One slot of the matrix: prepare, run, record, report.
+
+    The run carries the experiment's cancel token. A token that never fires
+    costs a check between phases and one watcher thread that asks the agent to
+    stop when it does; the run then ends ``cancelled`` with its artifacts kept
+    and its record saying why.
+    """
+    index = int(slot["index"])
+    task = slot["task"]
+    loaded = slot["loaded"]
+    variant = slot["variant"]
+    repetition = int(slot["repetition"])
+
+    token = cancel_token
+
+    task_desc = loaded.task
+    task_title = task_desc.title or task.uid
+    task_details = f"[bold cyan]{task.uid}[/bold cyan] ({task.category}, {task.difficulty})"
+    variant_summary = variant.variant_id
+    if variant.values:
+        values_str = ", ".join(f"{k}={v}" for k, v in variant.values.items())
+        variant_summary = f"{variant.variant_id} [{values_str}]"
+
+    rep_info = f"rep {repetition + 1}/{plan.counts.repetitions}"
+    if not silent:
+        with print_lock:
+            console.print(
+                f"\n[dim][{index}/{plan.counts.runs}][/dim] Running task: {task_details}"
+            )
+            if task_desc.title:
+                console.print(f"  [dim]title:[/dim]       {task_title}")
+            console.print(f"  [dim]variant:[/dim]     {variant_summary}")
+            console.print(
+                f"  [dim]agent:[/dim]       {variant.agent_id} ({plan.mode}"
+                f"{', runtime ' + plan.runtime_id if plan.runtime_id else ''})"
+            )
+            if variant.agent_config:
+                console.print(f"  [dim]agent config:[/dim]{variant.agent_config}")
+            if variant.runtime_env:
+                declared = ", ".join(
+                    f"{name}={value}"
+                    for name, value in sorted(variant.runtime_env.items())
+                )
+                console.print(f"  [dim]runtime env:[/dim]  {declared}")
+            console.print(f"  [dim]progress:[/dim]     {rep_info}")
+
+    # Only the agent's own declared parameters go here: the mode and the
+    # runtime are the orchestrator's, not agent configuration.
+    agent_parameters = dict(variant.agent_config)
+    artifacts_dir = paths.artifacts_dir / "runs" / _run_slug(  # type: ignore[union-attr]
+        plan.agent_id, task.uid, variant.variant_id, repetition
+    )
+    # The clock starts here, before the run: the wait it counts
+    # includes launching a managed instance, which is the part with
+    # no other output to watch.
+    clock = StepClock(f"[{index}/{plan.counts.runs}]")
+    started_at = datetime.now(UTC)
+    # A memory run's checkout has to declare the repository its
+    # knowledge belongs to; the pin is empty for every other
+    # experiment type, which leaves their run names as they were.
+    pinned_workspace = _knowledge_workspace_id(
+        experiment,
+        agent_id=variant.agent_id,
+        task_uid=task.uid,
+        variant_id=variant.variant_id,
+        repetition=repetition,
+        repository_source=loaded.task.task.repository.source,
+    )
+    config = OrchestrationConfig(
+        task=dataset.materialize(loaded),
+        agent_id=variant.agent_id,
+        agent_version=None,
+        mode=plan.mode,
+        runtime_id=plan.runtime_id,
+        agent_parameters=agent_parameters,
+        workspace_id=pinned_workspace,
+        # Plugin factors are the runtime's own configuration: a
+        # managed instance applies them as process environment, so
+        # the variant value becomes the state of a process this run
+        # started instead of a hope aimed at a shared router.
+        runtime_environment=dict(variant.environment_requests),
+        runtime_env=dict(variant.runtime_env),
+        artifacts_dir=artifacts_dir,
+        evaluation_dir=artifacts_dir / "evaluation",
+        agent_timeout=policy.timeout_seconds,
+        evaluation_timeout=policy.evaluation_timeout_seconds,
+        infrastructure_retries=policy.retry_infrastructure_errors,
+        apply_mutation=True,
+        cleanup_workspace=False,
+        task_text=None,
+        on_transition=clock.report_phase,
+        cancel_token=token,
+    )
+    with clock.running(console, enabled=not silent):
+        outcome = orchestrator.run(config)
+    record = outcome.record or {}
+    write_record(artifacts_dir / "run_record.json", record)
+    if store:
+        store_run(
+            context,
+            record,
+            loaded=loaded,
+            artifacts_dir=artifacts_dir,
+            experiment_uid=experiment.identity,
+            agent_id=variant.agent_id,
+            agent_parameters=agent_parameters,
+            variant_uid=variant.variant_id,
+            repetition=repetition + 1,
+        )
+
+    state_color = STATE_COLORS.get(outcome.state.value, "white")
+    score = (record.get("evaluation") or {}).get("score")
+    score_str = f" score: {score:.2f}" if score is not None else ""
+    detail = outcome.detail or record.get("error_message")
+    if not silent:
+        with print_lock:
+            console.print(
+                f"  [dim]outcome:[/dim]      "
+                f"[{state_color}]{outcome.state.value}[/{state_color}]{score_str}"
+            )
+            # A state alone does not say why, and a run that ends
+            # before the agent starts has no other output to read: the
+            # reason is printed here rather than left in the record.
+            if detail and outcome.state is not RunState.COMPLETED:
+                for line in str(detail).splitlines():
+                    console.print(f"  [dim]detail:[/dim]       {line}")
+            console.print(
+                f"  [dim]time:[/dim]         started {format_clock(started_at)}, took "
+                f"[bold]{format_duration(clock.elapsed)}[/bold]"
+            )
+            # Where the time went is the run's own account, read back from
+            # its transition log: a run that took four minutes and two of
+            # them were the router starting is not a slow agent.
+            phases = phase_durations(record)
+            if len(phases) > 1:
+                console.print(f"  [dim]phases:[/dim]       {format_phases(phases)}")
+
+    return {
+        "task_uid": task.uid,
+        "variant": variant.variant_id,
+        "repetition": repetition + 1,
+        "state": outcome.state.value,
+        "detail": detail,
+        "run_uid": record.get("run_uid"),
+        "score": score,
+        "started_at": started_at.isoformat(),
+        "elapsed_seconds": round(clock.elapsed, 1),
     }
 
 
@@ -579,12 +711,19 @@ def experiment_run_cmd(
     only: int | None = typer.Option(
         None, "--only", help="Run at most this many runs of the matrix (for smoke tests).",
     ),
+    concurrency: int | None = typer.Option(
+        None,
+        "--concurrency",
+        help="Run this many runs at once; overrides execution_policy.concurrency.",
+    ),
     as_json: bool = JSON_OPTION,
 ) -> None:
-    """Run every run of the experiment's matrix, one after another."""
+    """Run the experiment's matrix, concurrently when the policy says so."""
     context: CliContext = ctx.obj
     planner = _planner(context)
     experiment = load_experiment_file(Path(path))
+    if concurrency is not None:
+        experiment = _with_concurrency(experiment, concurrency)
 
     try:
         plan = planner.plan(experiment)
@@ -595,14 +734,19 @@ def experiment_run_cmd(
         raise typer.Exit(1) from exc
 
     counts = plan.counts
+    effective = experiment.descriptor.experiment.execution_policy.concurrency
     if not as_json:
         console.print(
             f"[cyan]running[/] {experiment.identity}: {counts.tasks} tasks x "
             f"{counts.variants} variants x {counts.repetitions} repetitions = "
-            f"[bold]{counts.runs} runs[/bold]\n"
+            f"[bold]{counts.runs} runs[/bold]"
+            + (f" [dim]concurrency {effective}[/dim]" if effective > 1 else "")
+            + "\n"
         )
 
-    result = _run_experiment(context, experiment, plan, store=store_runs, only=only, silent=as_json)
+    result = _execute_matrix(
+        context, experiment, plan, store=store_runs, only=only, silent=as_json
+    )
 
     if as_json:
         show_json({"experiment": experiment.identity, **result})
@@ -622,6 +766,271 @@ def experiment_run_cmd(
     )
     if store_runs:
         console.print("  [dim]recorded in the history; `akbench report all` renders it[/dim]")
+    if result.get("cancelled"):
+        console.print(f"  [yellow]cancelled[/yellow] {result.get('cancel_reason') or ''}")
+        console.print(
+            "  [dim]`akbench experiment resume "
+            f"{result.get('experiment') or '<uid>'}` runs what is left[/dim]"
+        )
+
+
+def _with_concurrency(experiment: LoadedExperiment, concurrency: int) -> LoadedExperiment:
+    """The same experiment with its concurrency overridden on the command line.
+
+    A CLI override is not a new descriptor: it is the parsed one with one
+    number changed, so every other validation of the plan still applies. The
+    descriptor is frozen, hence the copy of its body's policy.
+    """
+    import copy
+
+    clone = copy.deepcopy(experiment)
+    policy = clone.descriptor.experiment.execution_policy
+    policy.concurrency = concurrency
+    return clone
+
+
+def _execute_matrix(
+    context: CliContext,
+    experiment: LoadedExperiment,
+    plan: ExperimentPlan,
+    *,
+    store: bool,
+    only: int | None = None,
+    silent: bool = False,
+    skip: set[tuple[str, str, int]] | None = None,
+) -> dict[str, object]:
+    """Run a plan with cancellation wired up: Ctrl+C and ``experiment cancel``.
+
+    The token is the one decision both cancel paths share: ``SIGINT`` fires it
+    in this process, ``experiment cancel <uid>`` fires it through a marker file
+    this process polls. The first Ctrl+C stops the matrix — the agent in flight
+    is interrupted and recorded ``cancelled``, nothing new is started; the
+    second one leaves the way it always did.
+    """
+    paths = build_app_paths(context.loaded().settings)
+    token = CancelToken()
+    marker = cancel_marker_path(paths.data_dir, experiment.identity)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    # A marker left by a cancel that arrived after the matrix was already done
+    # must not cancel the next run of the same experiment before it starts.
+    marker.unlink(missing_ok=True)
+    source = FileCancelSource(marker)
+    install_cancellation_handlers(token)
+    source.watch(on_cancel=lambda: token.cancel(source.reason))
+    try:
+        result = _run_experiment(
+            context,
+            experiment,
+            plan,
+            store=store,
+            only=only,
+            silent=silent,
+            cancel_token=token,
+            skip=skip,
+        )
+    finally:
+        source.stop()
+        marker.unlink(missing_ok=True)
+    result["experiment"] = experiment.identity
+    return result
+
+
+@experiment_app.command("resume")
+@handle_errors
+def experiment_resume_cmd(
+    ctx: typer.Context,
+    uid: str = typer.Argument(..., help="Experiment uid to resume (from the history)."),
+    concurrency: int | None = typer.Option(
+        None, "--concurrency", help="Override the experiment's concurrency for this resume."
+    ),
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Run the matrix cells of a stored experiment that never reached a verdict.
+
+    The plan is read back from the experiment file recorded with it, so a
+    resume runs the plan that was run, not whatever the configuration directory
+    says today. A cell is done when the history has a run of it in a terminal
+    state — every terminal state except ``cancelled``, which is an operator
+    asking, not a result: interrupted cells are exactly what a resume re-runs.
+    A second resume of a finished experiment therefore does nothing, twice.
+    """
+    context: CliContext = ctx.obj
+    settings = context.loaded().settings
+    url = resolve_database_url(settings)
+    store = HistoryStore(create_db_engine(url))
+
+    experiment_row = next(
+        (row for row in store.experiments() if row["uid"] == uid), None
+    )
+    if experiment_row is None:
+        console.print(f"[red]unknown experiment[/red] {uid}")
+        raise typer.Exit(1)
+    if not experiment_row.get("experiment_yaml"):
+        console.print(
+            f"[red]experiment {uid} was recorded without its file[/red] "
+            "there is no plan to resume; run it from its YAML again"
+        )
+        raise typer.Exit(1)
+
+    done: set[tuple[str, str, int]] = set()
+    rerun_cancelled = 0
+    for run in store.runs(uid):
+        key = _slot_key(
+            str(run.get("task_uid")), str(run.get("variant_uid")), int(run.get("repetition") or 1)
+        )
+        status = run.get("status")
+        if status == RunState.CANCELLED.value:
+            rerun_cancelled += 1
+            continue
+        if status in {state.value for state in TERMINAL_STATES}:
+            done.add(key)
+
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".yaml", encoding="utf-8", delete=False
+    ) as handle:
+        handle.write(experiment_row["experiment_yaml"])
+        path = Path(handle.name)
+    try:
+        experiment = load_experiment_file(path)
+        if concurrency is not None:
+            experiment = _with_concurrency(experiment, concurrency)
+        plan = _planner(context).plan(experiment)
+        if not as_json:
+            counts = plan.counts
+            console.print(
+                f"[cyan]resuming[/] {uid}: {counts.runs} planned, "
+                f"{len(done)} already decided"
+                + (f", {rerun_cancelled} cancelled re-run" if rerun_cancelled else "")
+                + "\n"
+            )
+        result = _execute_matrix(
+            context, experiment, plan, store=True, skip=done, silent=as_json
+        )
+    finally:
+        path.unlink(missing_ok=True)
+
+    if as_json:
+        show_json({"experiment": uid, "resumed": True, **result})
+        return
+    states: dict[str, int] = {}
+    for run in result["runs"]:
+        states[str(run["state"])] = states.get(str(run["state"]), 0) + 1
+    summary = ", ".join(f"{count} {state}" for state, count in sorted(states.items())) or "nothing"
+    console.print(
+        f"  [green]done[/green] {result['completed']}/{result['planned']} runs: {summary}"
+    )
+
+
+@experiment_app.command("cancel")
+@handle_errors
+def experiment_cancel_cmd(
+    ctx: typer.Context,
+    uid: str = typer.Argument(..., help="Experiment uid to cancel."),
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """Ask a running ``experiment run``/``resume`` of this uid to stop.
+
+    There is no daemon to signal — the CLI is one-shot — so the request is a
+    marker file the running process watches, and it takes effect within a
+    second: the agent in flight is interrupted and recorded ``cancelled``, the
+    rest of the matrix is not started. Artifacts of what already ran stay.
+    When no experiment is running the marker is consumed by the next run of
+    this uid starting (it clears it before the first run), which is why this
+    command says what it did rather than promising more.
+    """
+    context: CliContext = ctx.obj
+    paths = build_app_paths(context.loaded().settings)
+    marker = cancel_marker_path(paths.data_dir, uid)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(f"cancelled at {datetime.now(UTC).isoformat()}\n", encoding="utf-8")
+    if as_json:
+        show_json({"experiment": uid, "cancelled": True, "marker": str(marker)})
+        return
+    console.print(f"[yellow]cancellation requested[/yellow] for {uid}")
+    console.print(
+        "  [dim]a running `akbench experiment run`/`resume` of this uid stops "
+        "within a second; a run that starts later clears the request[/dim]"
+    )
+
+
+@experiment_app.command("show")
+@handle_errors
+def experiment_show_cmd(
+    ctx: typer.Context,
+    uid: str = typer.Argument(..., help="Experiment uid (from the history)."),
+    as_json: bool = JSON_OPTION,
+) -> None:
+    """One recorded experiment: its plan, its variants, its runs, its metrics.
+
+    Everything is read from the history, including the experiment file as it
+    was run: a page that explains itself months later, with no checkout of the
+    configuration directory and no trust in what the descriptors claim today.
+    """
+    context: CliContext = ctx.obj
+    settings = context.loaded().settings
+    store = HistoryStore(create_db_engine(resolve_database_url(settings)))
+
+    row = next((item for item in store.experiments() if item["uid"] == uid), None)
+    if row is None:
+        console.print(f"[red]unknown experiment[/red] {uid}")
+        raise typer.Exit(1)
+    variants = store.variants(uid)
+    runs = store.runs(uid)
+    metrics = store.metrics(uid)
+
+    if as_json:
+        show_json(
+            {**row, "variants": variants, "runs": runs, "metrics": metrics}
+        )
+        return
+
+    console.print(f"[bold]{row['uid']}[/]  {row['title'] or ''}")
+    if row.get("description"):
+        console.print(f"  [dim]{row['description']}[/dim]")
+    console.print(f"  type       {row.get('type') or '—'}")
+    if row.get("descriptor"):
+        console.print(f"  descriptor {row['descriptor']}")
+    if row.get("validity"):
+        console.print(f"  validity   {row['validity']}")
+    if row.get("config_hash"):
+        console.print(f"  digest     {row['config_hash']}")
+
+    if variants:
+        console.print(f"\n  [bold]{len(variants)} variant(s)[/bold]")
+        for variant in variants:
+            values = variant.get("values") or {}
+            rendered = ", ".join(f"{k}={v}" for k, v in values.items()) or "—"
+            baseline = " [bold]baseline[/bold]" if variant.get("is_baseline") else ""
+            console.print(f"    {variant.get('uid')}  {rendered}{baseline}")
+
+    if runs:
+        console.print(f"\n  [bold]{len(runs)} run(s)[/bold]")
+        for run in runs:
+            status = run.get("status") or "—"
+            evaluation = run.get("evaluation") or {}
+            score = evaluation.get("score")
+            score_str = f" score {score:.2f}" if isinstance(score, int | float) else ""
+            verdict = evaluation.get("verdict")
+            verdict_str = f" {verdict}" if verdict else ""
+            color = STATE_COLORS.get(str(status), "white")
+            console.print(
+                f"    {run.get('uid')}  {run.get('task_uid')} "
+                f"{run.get('variant_uid')} rep{run.get('repetition')} "
+                f"[{color}]{status}[/{color}]{verdict_str}{score_str}"
+            )
+    if metrics:
+        console.print(f"\n  [bold]{len(metrics)} metric(s)[/bold]")
+        for metric in metrics:
+            value = metric.get("value")
+            rendered = (
+                f"{value:.4f}".rstrip("0").rstrip(".") if isinstance(value, int | float) else "—"
+            )
+            availability = metric.get("availability") or metric.get("status") or ""
+            console.print(
+                f"    {metric.get('metric_id')}  {rendered}  [dim]{availability}[/dim]"
+            )
+    if not runs:
+        console.print("\n  [dim]no runs recorded yet[/dim]")
 
 
 def _experiment_yaml(experiment: LoadedExperiment) -> str | None:
