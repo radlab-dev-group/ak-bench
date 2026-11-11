@@ -67,6 +67,13 @@ class RuntimeSelection(_StrictModel):
     lifecycle: str | None = None
 
 
+class EnvironmentSelection(_StrictModel):
+    """The environment the runs execute in, by descriptor id (plan 9)."""
+
+    id: str = Field(..., min_length=1, max_length=128)
+    version: str | None = None
+
+
 class ExecutionSelection(_StrictModel):
     mode: str = "direct"
     runtime: RuntimeSelection | None = None
@@ -330,6 +337,7 @@ class ExperimentBody(_StrictModel):
     factors: Factors = Field(default_factory=Factors)
     execution_policy: ExecutionPolicy = Field(default_factory=ExecutionPolicy)
     isolation: Isolation = Field(default_factory=Isolation)
+    environment: EnvironmentSelection | None = None
     evaluation: Evaluation = Field(default_factory=Evaluation)
     metrics: list[str] = Field(default_factory=list)
     limits: Limits = Field(default_factory=Limits)

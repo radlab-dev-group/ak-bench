@@ -8,8 +8,8 @@ that is missing.
 ## Principles
 
 1. **Addition without engine changes.** A new agent, runtime, plugin, model,
-   category, evaluator, dimension or metric is a new file in the descriptor
-   directory. Nothing in `src/akbench` needs to change.
+   category, evaluator, dimension, metric or environment is a new file in the
+   descriptor directory. Nothing in `src/akbench` needs to change.
 2. **Versioned identity.** Every descriptor carries `schema_version`, `id` and
    `version`. The same `id` may exist in several versions; an experiment pins
    the exact digests of the descriptors it used, so editing a descriptor can
@@ -35,6 +35,7 @@ The directory name selects the kind; the file name is free.
 | evaluator | `descriptors/evaluators/` | `pytest_evaluator.yaml` |
 | dimension | `descriptors/dimensions/` | `model.yaml` |
 | metric | `descriptors/metrics/` | `quality.yaml` |
+| environment | `descriptors/environments/` | `local-host.yaml` |
 
 Each file may contain a single mapping, a list of mappings, or a multi-document
 YAML stream. Unknown keys are rejected: a descriptor that is silently ignored

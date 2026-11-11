@@ -16,6 +16,17 @@ release tagged as `v<version>`.
 
 ### Added
 
+- **The environment descriptor** (plan sections 9 and 14): a new `environment`
+  kind (`descriptors/environments/`) stating where a run executes — OS,
+  interpreter, tools, network, filesystem scope, sandbox kind, image and
+  resource limits. Two are shipped: `local-host` (the honest statement of where
+  AK-Bench runs today) and `docker-python312` (plan 14's container, declared
+  before it is enforced). An experiment may name `environment: <id>`; the
+  planner validates the reference, pins its digest in the plan's snapshots, and
+  refuses a docker sandbox with the reason, because phase B's container is not
+  implemented and a run that asks for one would otherwise happen on the host
+  and record a container it never had. Runs carry their environment into the
+  record and the reproducibility manifest, next to `sandbox_image`.
 - **The scheduler: concurrency, resume, cancel** (plan section 15).
   `execution_policy.concurrency` is no longer ignored — `akbench experiment run`
   executes the matrix through a thread pool (an agent is a subprocess) and

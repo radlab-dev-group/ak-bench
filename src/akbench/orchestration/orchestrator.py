@@ -69,6 +69,11 @@ class OrchestrationConfig:
     #: fixed when it starts, so this is how a variant says which plugins it has.
     runtime_env: dict[str, str] = field(default_factory=dict)
     workspace_id: str | None = None
+    #: The environment this run declares it executes in (plan 9, 14): its
+    #: identity, sandbox kind and image, resolved from the descriptor by the
+    #: caller. Recorded in the run so a month later the manifest can say where
+    #: the run happened instead of leaving the reader to assume the host.
+    environment: dict[str, Any] | None = None
     artifacts_dir: Path | None = None
     evaluation_dir: Path | None = None
     agent_timeout: float | None = None
@@ -123,6 +128,7 @@ class RunOrchestrator:
             mode=config.mode,
             runtime_id=config.runtime_id,
             requested_model=_requested_model(config.agent_parameters),
+            environment=config.environment,
             started_at=utc_now(),
             on_transition=config.on_transition,
         )

@@ -18,6 +18,11 @@ from akbench.descriptors.base import SCHEMA_VERSION, DescriptorBase
 from akbench.descriptors.category import CategoryBody, CategoryDescriptor
 from akbench.descriptors.dimension import DimensionBody, DimensionDescriptor, DimensionType
 from akbench.descriptors.env import assert_allowlisted, observe_env, redact
+from akbench.descriptors.environment import (
+    EnvironmentBody,
+    EnvironmentDescriptor,
+    SandboxKind,
+)
 from akbench.descriptors.evaluator import EvaluatorBody, EvaluatorDescriptor, EvaluatorKind
 from akbench.descriptors.metric import (
     Availability,
@@ -89,6 +94,8 @@ __all__ = [
     "Direction",
     "EnvRole",
     "EnvType",
+    "EnvironmentBody",
+    "EnvironmentDescriptor",
     "EvaluatorBody",
     "EvaluatorDescriptor",
     "EvaluatorKind",
@@ -111,6 +118,7 @@ __all__ = [
     "RouterCapabilities",
     "RuntimeBody",
     "RuntimeDescriptor",
+    "SandboxKind",
     "SupportLevel",
     "ValueSource",
     "VerificationStatus",

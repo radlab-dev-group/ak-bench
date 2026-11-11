@@ -74,8 +74,9 @@ directory.
 
 `akbench/storage/manifest.py` builds, per run, the identity of what it was:
 experiment and variant, task version and repository commit, agent version,
-adapter, runtime, plugin versions, descriptor digests and the configuration
-hash. A field that was never observed is `None` and is listed in
+adapter, runtime, plugin versions, descriptor digests, the declared environment
+(identity, sandbox kind and the descriptor's digest, alongside `sandbox_image`
+when the environment names an image) and the configuration hash. A field that was never observed is `None` and is listed in
 `unknown_fields`; `complete` is true only when every required field is stated.
 The manifest's digest is derived from those facts alone, so a run can cite it
 and a later reader can check that the cited run was what it claimed to be.

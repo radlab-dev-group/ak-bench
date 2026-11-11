@@ -339,6 +339,33 @@ def _knowledge_workspace_id(
     return f"{slug}/{name}"
 
 
+def _environment_snapshot(experiment: LoadedExperiment, registry: DescriptorRegistry) -> dict:
+    """The environment a run declares it executed in, as the record states it.
+
+    The experiment names an environment by id; the run records its identity,
+    its sandbox kind and the digest of the descriptor behind it. A run with no
+    declared environment records nothing rather than guessing the host, because
+    a manifest that invents a fact is worse than one that admits the gap.
+    """
+    selection = experiment.descriptor.experiment.environment
+    if selection is None:
+        return {}
+    entry = registry.get(DescriptorKind.ENVIRONMENT, selection.id, selection.version)
+    if entry is None:  # the planner rejects it; a run never gets this far
+        return {}
+    body = entry.descriptor.environment
+    return {
+        "id": entry.snapshot.id,
+        "version": entry.snapshot.version,
+        "digest": entry.snapshot.digest,
+        "sandbox": body.sandbox.value,
+        "image": body.image,
+        "python": body.python,
+        "os": body.os,
+        "network": body.network,
+    }
+
+
 def _plan_slots(
     plan: ExperimentPlan, tasks_by_id: dict[str, object], policy: object
 ) -> list[dict[str, object]]:
@@ -459,6 +486,7 @@ def _run_experiment(
         )
 
     policy = experiment.descriptor.experiment.execution_policy
+    environment = _environment_snapshot(experiment, registry)
     slots = _plan_slots(plan, tasks_by_id, policy)
     skipped = 0
     if skip:
@@ -493,6 +521,7 @@ def _run_experiment(
             plan=plan,
             experiment=experiment,
             policy=policy,
+            environment=environment,
             slot=slot,
             store=store,
             silent=silent,
@@ -538,6 +567,7 @@ def _execute_one(
     plan: ExperimentPlan,
     experiment: LoadedExperiment,
     policy: object,
+    environment: dict,
     slot: dict[str, object],
     store: bool,
     silent: bool,
@@ -620,6 +650,7 @@ def _execute_one(
         runtime_id=plan.runtime_id,
         agent_parameters=agent_parameters,
         workspace_id=pinned_workspace,
+        environment=environment or None,
         # Plugin factors are the runtime's own configuration: a
         # managed instance applies them as process environment, so
         # the variant value becomes the state of a process this run

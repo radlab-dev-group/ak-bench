@@ -34,6 +34,7 @@ from akbench.descriptors import (
     MetricDescriptor,
     RuntimeDescriptor,
 )
+from akbench.descriptors.environment import EnvironmentDescriptor, SandboxKind
 from akbench.descriptors.registry import compute_digest
 from akbench.descriptors.runtime import Lifecycle
 from akbench.experiments.descriptor import (
@@ -225,6 +226,7 @@ class ExperimentPlanner:
         factors = self._check_factors(descriptor, report)
         self._check_agent(descriptor, factors, report)
         self._check_execution(descriptor, report)
+        self._check_environment(descriptor, report)
         self._check_evaluation(descriptor, report)
         self._check_metrics(descriptor, report)
 
@@ -370,6 +372,49 @@ class ExperimentPlanner:
                         f"factor {factor.id!r} values {outside} are not in agent "
                         f"{agent.id} allowed set {parameter.allowed}",
                     )
+
+    def _check_environment(
+        self, descriptor: ExperimentDescriptor, report: ValidationReport
+    ) -> None:
+        """An experiment may name the environment its runs execute in (plan 9).
+
+        The reference is checked the way every other component reference is:
+        it has to exist, and what it declares has to be something this
+        installation can provide. A docker sandbox is declared but not
+        implemented (plan 14, phase B), so asking for one is an error here
+        rather than a run that silently happens on the host and records a
+        container it never had.
+        """
+        body = descriptor.experiment
+        selection = body.environment
+        if selection is None:
+            return
+        entry = self.descriptors.get(DescriptorKind.ENVIRONMENT, selection.id, selection.version)
+        if entry is None:
+            known = ", ".join(
+                sorted(
+                    {
+                        loaded.snapshot.id
+                        for loaded in self.descriptors.entries(DescriptorKind.ENVIRONMENT)
+                    }
+                )
+            )
+            report.error(
+                "environment_unknown",
+                f"environment {selection.id!r} is not described; known environments: "
+                f"{known or 'none'}",
+            )
+            return
+        environment = entry.descriptor
+        if not isinstance(environment, EnvironmentDescriptor):  # pragma: no cover
+            return
+        if environment.environment.sandbox is SandboxKind.DOCKER:
+            report.error(
+                "environment_sandbox_unavailable",
+                f"environment {environment.id} asks for a docker sandbox, which this "
+                "installation does not implement (plan 14, phase B); the run would "
+                "happen on the host and record a container it never had",
+            )
 
     def _check_execution(self, descriptor: ExperimentDescriptor, report: ValidationReport) -> None:
         body = descriptor.experiment
@@ -816,6 +861,8 @@ class ExperimentPlanner:
         ]
         if body.execution.runtime:
             wanted.append((DescriptorKind.RUNTIME, body.execution.runtime.id))
+        if body.environment is not None:
+            wanted.append((DescriptorKind.ENVIRONMENT, body.environment.id))
         for reference in body.factors.dimensions:
             wanted.append((DescriptorKind.DIMENSION, reference.id))
         for evaluator_id in body.evaluation.evaluators:

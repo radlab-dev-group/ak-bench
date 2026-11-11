@@ -255,7 +255,7 @@ cancel zostawia artefakty i stan `cancelled`; wszystkie komendy z §22 istnieją
 
 ---
 
-## FAZA E — Environment Descriptor (§9) + mapowanie struktury (§5.1)
+## FAZA E ✅ ZREALIZOWANA — Environment Descriptor (§9) + mapowanie struktury (§5.1)
 
 ### E1. Nowy kind `environment`
 
@@ -608,7 +608,7 @@ błąd jest jawny (`infrastructure_error`), nie cichy.
 ### Funkcjonalność (Fazy C–J)
 - [x] C 5 evaluatorów zarejestrowanych i przetestowanych — `DiffEvaluator`, `StaticAnalysisEvaluator`, `PythonEvaluator` w `src/akbench/evaluators/`; `default_registry()` → 5 (`pytest`, `command`, `diff`, `static_analysis`, `python`); `tests/unit/test_evaluators_supplementary.py` (11) + `test_evaluators.py` (test równości kindów z rejestrem) + 3 testy E2E CLI w `tests/integration/test_evaluate_cli.py`; `akbench evaluate task` przyjmuje `--reference-patch/--script/--command`; docs `docs/EVALUATORS.md` z sekcją o każdym. Diff nigdy nie zwraca `passed` (test).
 - [x] D concurrency, resume, cancel, `experiment show`, `runtime start/stop/verify/status`, `evaluator list` — `concurrency` z `execution_policy` realizowany przez `ThreadPoolExecutor` w `src/akbench/cli/experiments.py::_run_experiment` (wyniki w kolejności planu, `--concurrency` nadpisuje, ostrzeżenie `concurrency_above_one` w planie); `experiment resume UID` (klucz komórki: task+variant+repetition z historii, `cancelled` się ponawia, drugi resume = zero runów); `experiment cancel UID` + SIGINT/SIGTERM w `run single`/`agent run` przez `CancelToken`/`FileCancelSource` (`src/akbench/orchestration/cancellation.py`), run kończy się `cancelled` z zachowanymi artefaktami; `PREPARE_LOCK` w `datasets/workspace.py` (git worktree na współdzielonym bare cache); nowe komendy `experiment show`, `runtime start/stop/verify/status`, `evaluator list`; testy: `tests/unit/test_cancellation.py` (7), 3 testy cancel w `tests/integration/test_orchestrator.py`, `tests/integration/test_experiment_scheduler_cli.py` (5, w tym cancel procesu przez marker); `docs/CLI.md` z tabelą plan vs implementacja
-- [ ] E kind `environment` + deskryptory + walidacja w plannerze
+- [x] E kind `environment` + deskryptory + walidacja w plannerze — `src/akbench/descriptors/environment.py` (`EnvironmentBody`: os/python/tools/network/filesystem/sandbox/image/limits; docker wymaga image, host go odrzuca), `DescriptorKind.ENVIRONMENT` + rejestracja w `DESCRIPTOR_MODELS`, katalog `descriptors/environments/` (`local-host.yaml`, `docker-python312.yaml`); `experiment.environment: <id>` w `experiments/descriptor.py`, walidacja `_check_environment` w plannerze (`environment_unknown`, `environment_sandbox_unavailable` — Faza B nie istnieje, więc docker jest odrzucany, a nie udawany), digest w `descriptor_snapshots`, snapshot środowiska w rekordzie runu i w manifeście obok `sandbox_image` (`orchestration/lifecycle.py`, `storage/manifest.py`); E2 = tabela mapowania §5.1 w `docs/ARCHITECTURE.md` → Faza K (tu bez przenosin plików); testy: `tests/unit/test_environment_descriptor.py` (5) + 6 testów plannera (walidacja, nieznane środowisko, docker, concurrency warning) + E2E manifestu w `tests/integration/test_experiment_scheduler_cli.py`; docs: `docs/DESCRIPTOR_SYSTEM.md`, `docs/EXPERIMENTS.md`, `docs/STORAGE.md`
 - [ ] F agenci `fake` + `http`, `agent-comparison.yaml` E2E
 - [ ] G metryki knowledge mierzone z logu managed (min. write/retrieval count), `unavailable` bez sygnałów
 - [ ] H `auto-codex-on-off.yaml`, `full-matrix-12.yaml` (12 wariantów), strażnik shipped YAML-i

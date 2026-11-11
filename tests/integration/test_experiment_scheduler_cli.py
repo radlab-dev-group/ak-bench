@@ -265,3 +265,38 @@ def _agent_is_running(root: Path) -> bool:
     except Exception:
         pass
     return any((root / "data" / "workspaces").rglob("*")) if (root / "data").exists() else False
+
+
+def test_a_run_of_a_declared_environment_records_it_in_the_manifest(project: Path) -> None:
+    """A run that declared an environment says so in its manifest, next to sandbox_image.
+
+    The manifest is what a month later answers "where did this run happen";
+    an experiment that named the environment has the run carry that name, its
+    digest and its sandbox, and the host run states host rather than leaving
+    the field to be read as whatever the reader assumes.
+    """
+    text = (EXPERIMENTS / "wordcount-direct-sanity.yaml").read_text(encoding="utf-8")
+    text = text.replace(
+        "  execution_policy:",
+        "  environment:\n    id: local-host\n\n  execution_policy:",
+    )
+    experiment = project / "env.yaml"
+    experiment.write_text(text, encoding="utf-8")
+
+    result = runner.invoke(app, ["experiment", "run", str(experiment), "--store", "--json"])
+
+    assert result.exit_code == 0, result.output
+    artifacts = project / "data" / "artifacts"
+    record = json.loads(next(artifacts.rglob("run_record.json")).read_text(encoding="utf-8"))
+    manifest = json.loads(next(artifacts.rglob("manifest.json")).read_text(encoding="utf-8"))
+
+    payload = _json(result.output)
+    assert payload["completed"] == 2
+    assert record["environment"]["id"] == "local-host"
+    assert record["environment"]["sandbox"] == "host"
+    assert record["environment"]["digest"].startswith("sha256:")
+    assert manifest["environment"]["id"] == "local-host"
+    assert manifest["environment"]["digest"].startswith("sha256:")
+    # A host run has no image; the manifest states the environment instead of
+    # inventing a sandbox_image it did not have.
+    assert manifest["sandbox_image"] is None
