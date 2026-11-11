@@ -1,8 +1,0 @@
-[project]
-name = "dedupkit"
-version = "1.0.0"
-description = "Deduplication fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

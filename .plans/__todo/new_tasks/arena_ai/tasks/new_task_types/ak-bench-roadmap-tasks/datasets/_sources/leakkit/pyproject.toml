@@ -1,8 +1,0 @@
-[project]
-name = "leakkit"
-version = "1.0.0"
-description = "File loader review fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

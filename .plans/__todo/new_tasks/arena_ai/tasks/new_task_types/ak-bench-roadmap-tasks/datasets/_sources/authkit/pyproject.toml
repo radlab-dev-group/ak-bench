@@ -1,8 +1,0 @@
-[project]
-name = "authkit"
-version = "1.0.0"
-description = "Auth helper fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

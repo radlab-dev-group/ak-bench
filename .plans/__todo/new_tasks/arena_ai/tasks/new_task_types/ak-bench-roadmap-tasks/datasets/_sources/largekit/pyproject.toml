@@ -1,8 +1,0 @@
-[project]
-name = "largekit"
-version = "1.0.0"
-description = "API client review fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

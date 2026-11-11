@@ -1,8 +1,0 @@
-[project]
-name = "syncer"
-version = "1.0.0"
-description = "Sync resolver fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

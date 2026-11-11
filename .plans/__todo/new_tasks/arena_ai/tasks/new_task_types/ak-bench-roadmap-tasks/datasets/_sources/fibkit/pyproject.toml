@@ -1,8 +1,0 @@
-[project]
-name = "fibkit"
-version = "1.0.0"
-description = "Fibonacci fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

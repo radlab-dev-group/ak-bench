@@ -1,8 +1,0 @@
-[project]
-name = "quiz"
-version = "1.0.0"
-description = "Quiz scoring fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

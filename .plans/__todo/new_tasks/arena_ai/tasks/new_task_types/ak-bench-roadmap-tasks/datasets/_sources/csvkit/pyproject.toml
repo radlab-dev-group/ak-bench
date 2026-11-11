@@ -1,8 +1,0 @@
-[project]
-name = "csvkit"
-version = "1.0.0"
-description = "CSV parser fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

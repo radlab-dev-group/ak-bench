@@ -1,8 +1,0 @@
-[project]
-name = "pipeline"
-version = "1.0.0"
-description = "Data pipeline fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

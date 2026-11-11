@@ -1,8 +1,0 @@
-[project]
-name = "configkit"
-version = "1.0.0"
-description = "Config loader fixture for AK-Bench"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
