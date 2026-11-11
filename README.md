@@ -394,11 +394,21 @@ spike/          # Phase 0 code (flow validation)
 
 ## Documentation
 
+- `docs/ARCHITECTURE.md` — the modules, the plan-to-code mapping, and the place
+  of the optional dashboard
 - `docs/AGENT_INTEGRATION.md` — verified Codex CLI capabilities, including what
   its interface does **not** provide (cost, cancellation, session reset)
 - `docs/ROUTER_INTEGRATION.md` — LLM Router: healthcheck, models, plugins,
   metrics and verification limits
 - `docs/DESCRIPTOR_SYSTEM.md` — descriptor kinds, registries, ENV allowlist, dimension rules
+- `docs/EXPERIMENT_DESCRIPTORS.md` — every block of an experiment file, field by field
+- `docs/DIMENSION_DESCRIPTORS.md` — the nine dimension types, `source` routing, controllability
+- `docs/EXPERIMENT_TYPES.md` — configuration / agent comparison / model comparison / knowledge replay
+- `docs/FACTORIAL_DESIGN.md` — the five matrix strategies, baseline, deduplication, cost limits
+- `docs/TASK_FORMAT.md` — `task.yaml` in full, mutations and `parts.json`, hidden tests
+- `docs/CATEGORY_SYSTEM.md` — the nine categories, their difficulty gates, adding one
+- `docs/RUNTIME_ADAPTERS.md` — the manager contract, the two lifecycles, `factor_env`, model evidence
+- `docs/ISOLATION_AND_SECURITY.md` — what is isolated, how, and what AK-Bench does **not** guarantee
 - `docs/DATASETS.md` — tasks, repositories, repeatable workspaces, mutation verification
 - `docs/AGENT_ADAPTERS.md` — the adapter contract, agent registry, capability gating, contract tests
 - `docs/RUNTIME_MANAGER.md` — execution modes, the runtime manager, the LLM Router adapter, the configuration triad
@@ -415,6 +425,25 @@ spike/          # Phase 0 code (flow validation)
 - `docs/CLI.md` — every implemented command and the interface facts that go with it
 - `docs/DEVELOPMENT.md` — development environment, tests, migrations
 - `CHANGELOG.md` — release notes per version, with a short summary table at the top
+
+## Plan conformance
+
+The platform was built from `.plans/_partialy_done_to_verify/AK-Bench-implementation-plan.md`
+(§1–30). An audit of that plan against this code, and the closed list of what
+was missing, live next to it:
+
+- `.plans/_partialy_done_to_verify/AK-Bench-audyt-planu.md` — the audit: phase by
+  phase, section by section, with the evidence in the repository.
+- `.plans/_partialy_done_to_verify/AK-Bench-plan-do-100-procent.md` — the plan of
+  the gaps (phases A, C–K) and the state of each.
+
+Two deviations are permanent and documented rather than fixed, and both are
+stated where they apply: the Docker sandbox of plan §5/§14 is `deferred` —
+host isolation is a worktree per run, a private `CODEX_HOME`, the agent's own
+`sandbox_mode` and the copy-based evaluation sandbox
+(`docs/ISOLATION_AND_SECURITY.md`) — and the plan's proposed directory sketch
+is mapped to the real modules in `docs/ARCHITECTURE.md` instead of the code
+being reshaped to match it.
 
 ## Conventions
 

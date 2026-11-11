@@ -183,6 +183,37 @@ release tagged as `v<version>`.
   `akbench evaluate task` gained the inputs these evaluators need —
   `--reference-patch`, `--script`, `--command` — and an unknown evaluator id is
   still an explicit `EvaluatorNotFound`, never a stand-in.
+- **The eleven missing documentation files (plan phase K, §28).** Every one of
+  the plan's §28 list now exists and describes only what the code does:
+  `docs/ARCHITECTURE.md` (the plan-to-code module mapping, the §2 rules, and
+  the role of the optional `bench_ui`), `docs/RUNTIME_ADAPTERS.md` (the
+  `RuntimeManager` contract, the managed/external lifecycles, how a factor
+  value becomes a process configuration through `factor_env` and the launch
+  environment, and model verification from the instance log),
+  `docs/TASK_FORMAT.md` (`task.yaml` field by field, `parts.json`, hidden and
+  public tests, the two rules that keep the defect honest),
+  `docs/CATEGORY_SYSTEM.md` (the nine categories, their difficulty gates,
+  adding a category without an engine change),
+  `docs/EXPERIMENT_DESCRIPTORS.md` (every block of `ExperimentBody`, the
+  validation codes, the limits), `docs/DIMENSION_DESCRIPTORS.md` (the nine
+  types, `source` routing, controllability, the shipped dimensions),
+  `docs/EXPERIMENT_TYPES.md` (when to use each of the four types and what the
+  validator refuses), `docs/FACTORIAL_DESIGN.md` (the five strategies,
+  baseline and pinned values, deduplication, the cost bound and the limits),
+  `docs/ISOLATION_AND_SECURITY.md` (the threat model, what is enforced today,
+  the deferred Docker sandbox named as deferred, and what AK-Bench explicitly
+  does not guarantee). `docs/AGENT_ADAPTERS.md` and `docs/EVALUATORS.md`
+  already carry the `fake`/`http` protocol and the five evaluators from phases
+  F and C, so the plan's list of documentation files is complete.
+  `docs/CLI.md` gains the commands that postdate the plan's sketch (`ui`,
+  `migrate`) with their aliases, and `README.md` links the plan-conformance
+  audit next to the plan it describes.
+- **`tests/unit/test_docs_examples.py`**: every complete YAML example in the
+  docs is run through the same loader the platform uses: a documented field
+  that no longer validates in code is a failing test. A block whose fence says
+  `yaml fragment` shows part of a larger file and is skipped, and the suite
+  asserts a minimum number of complete examples are validated, so it cannot
+  pass by checking nothing.
 
 ### Fixed
 
