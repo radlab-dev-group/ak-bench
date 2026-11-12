@@ -26,8 +26,64 @@ release tagged as `v<version>`.
   `.env.example` and `docs/STORAGE.md` state which mode is the default and what
   each one is for.
 
+### Changed
+
+- **`task.evaluator` accepts a list.** A task judged by more than one
+  measurement declares every evaluator in the order it runs them: the
+  descriptor normalises a bare id to a one-entry list, the dataset validator
+  checks that every id is registered and refuses `evaluator_inputs` that name
+  an evaluator the task does not declare, and `akbench dataset list`/`show`
+  render the whole set. New in the same change: `task.evaluator_inputs`,
+  per-evaluator inputs (a command evaluator's `command`, a Python evaluator's
+  `script`, a diff evaluator's `reference_patch`) that travel with the task so
+  a verdict is reproducible from it.
+
+- **Fourteen new tasks: two in each of the seven roadmap categories.** The
+  memory suite's four seeds (`atlas`, `tidewater`, `depweaver`, `walqueue`)
+  carry them, so each is a real repository with its own documentation rather
+  than a fixture: `debugging` (`tidewater-postmortem-trace-triangulation-001`,
+  a 2.5 MB incident trace and no stack trace;
+  `walqueue-silent-corruption-triage-001`, a store that opens clean and is one
+  transaction short), `security` (`atlas-vector-clock-forge-001`, a returning
+  worker that takes a lease sideways; `tidewater-byzantine-timing-oracle-001`,
+  a peer that pre-votes at ever higher terms inside one leader lease),
+  `refactoring` (`tidewater-state-machine-pattern-001`, the role branches out
+  of `Node`; `depweaver-sat-engine-modularization-001`, the CDCL solver into
+  modules), `testing` (`tidewater-chaos-schedule-synthesis-001`, synthesise the
+  schedule that makes three quorum defects fire;
+  `atlas-property-based-fencing-suite-001`, a stateful suite that catches four
+  drift defects), `code_review` (`tidewater-joint-consensus-pr-review-001`,
+  `atlas-antientropy-merkle-pr-review-001` — a PR in the seed and a
+  `review_findings.json` graded against goldens), `performance`
+  (`tidewater-eventloop-throughput-001`, `walqueue-zerocopy-io-001`) and
+  `architecture` (`atlas-pluggable-storage-engine-001`,
+  `tidewater-actor-runtime-decoupling-001`). Three of them are proven by a
+  mutation `verified` with the seed suite green in both states; the rest are
+  capability, structure and harness tasks whose base state fails its hidden
+  tests by design. The dataset is 99 tasks.
+- **The seeds gained the documentation their tasks reason from** — additive
+  only, every seed suite green before and after. `walqueue`: `INC-0004` with
+  its captured segments and `ADR-0004`. `tidewater`: `INC-0010` with a gzipped
+  16 000-event trace, `docs/schedule-spec.md`, `tools/bench.py` and
+  `reviews/PR-118-joint-consensus/`. `atlas`: `ADR-0014`, `tools/check_arch.py`
+  and `reviews/PR-742-merkle-antientropy/`. `depweaver`:
+  `docs/sat-solver-architecture.md`, `src/depweaver/solver.py` and its suite.
+
 ### Added
 
+- **`tests/unit/test_multi_evaluator_tasks.py`**: the composition rules —
+  a measurement failure outranks everything, the hard evaluators decide in
+  the declared order, and a score-valued evaluator can dim a pass to a
+  partial but never fail the task on its own.
+- **Multi-evaluator evaluation and its storage.** `evaluate_task` runs every
+  declared evaluator, each into its own output directory, and composes one
+  verdict that keeps the primary evaluator's identity with every part visible
+  in `details.evaluators`. A run judged by several writes one
+  `EvaluationRecord` per evaluator — the composed verdict at
+  `evaluator_rank = 0`, the parts ranked after it — and every reader of a run
+  quotes rank 0. Migration `0011_evaluator_lists.py` adds `tasks.evaluators`
+  and `evaluations.evaluator_rank`; a task judged once writes only the
+  composed row, as before.
 - **`tests/unit/test_bench_ui_import.py`**: the dashboard is an add-on, and
   importing it or building the app must reach for no database: `akbench ui`
   starts the FastAPI app on request, and the benchmark never depends on it.
