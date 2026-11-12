@@ -1,0 +1,9 @@
+operator capture: /var/lib/walqueue/reconciler-01
+recovered with: stat -c '%n %s' *
+
+CURRENT                        61  (not restored: the compaction never published)
+wal-0000000000000001.log  917  (sealed; 11 bytes at the end are gone)
+wal-0000000000000002.log  0
+
+The client's last observed sequence number, read from this store a minute before
+the crash, was 5. After the restart the store reported 4. Nothing was logged.

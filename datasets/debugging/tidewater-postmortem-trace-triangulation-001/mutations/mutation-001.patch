@@ -1,0 +1,12 @@
+diff --git a/src/tidewater/clock.py b/src/tidewater/clock.py
+index f556a1c..cbb9a36 100644
+--- a/src/tidewater/clock.py
++++ b/src/tidewater/clock.py
+@@ -86,6 +86,7 @@ class NodeClock:
+             if offset < 0:
+                 raise ConfigurationError("a node clock offset cannot be negative")
+             self.offset = offset
++            self._local = offset
+ 
+     def tick(self) -> int:
+         """Advance by one global tick; return the new local time."""

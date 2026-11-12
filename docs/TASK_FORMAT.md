@@ -107,12 +107,23 @@ while the index still named it.
 
 ### `task.evaluator`
 
-The id of the evaluator that judges the task (required). It must be a
-registered evaluator descriptor and one this installation implements — the
-planner refuses a task that would be judged by a stand-in
-(`docs/EVALUATORS.md`). The shipped convention is `pytest_evaluator`; the
-supplementary evaluators take their subject from the task, not from the
+The evaluator that judges the task (required): one registered evaluator id,
+or a list of them when the task is judged by more than one measurement. Every
+id must be a registered evaluator descriptor and one this installation
+implements — the planner refuses a task that would be judged by a stand-in
+(`docs/EVALUATORS.md`). The first entry is the primary: what a
+single-valued reader quotes. The shipped convention is `pytest_evaluator`;
+the supplementary evaluators take their subject from the task, not from the
 workspace.
+
+### `task.evaluator_inputs`
+
+Per-evaluator inputs, keyed by evaluator id: the `command` a command or
+static-analysis evaluator runs, the `script` a Python evaluator runs, the
+`reference_patch` a diff evaluator measures against. Only evaluators the task
+declares may be named here — an input for an evaluator nobody calls would sit
+unread, and the dataset validator fails the task for it. Keeping the inputs
+with the task is what makes a verdict reproducible from the task alone.
 
 ### `task.hidden_tests` and `task.public_tests`
 

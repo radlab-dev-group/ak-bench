@@ -1,0 +1,38 @@
+schema_version: "1.0"
+id: atlas-antientropy-merkle-pr-review-001
+version: "1.0.0"
+created_at: "2026-11-12T09:00:00+01:00"
+title: Review the Merkle anti-entropy PR before it ships
+description: >-
+  PR-742 gives the pre-rebalance anti-entropy pass a bucketed Merkle view. It
+  is wrong in three places: how a bucket ends, what the walk reads, and how a
+  tie between two replicas is settled. Review the diff where it lives in
+  reviews/ and write your findings to review_findings.json.
+authors:
+  - "[agy] gemini-3.8-flash"
+task:
+  category: code_review
+  difficulty: hard
+  repository:
+    source: datasets/_sources/atlas
+    ref: HEAD
+    notes: >-
+      the change under review is reviews/PR-742-merkle-antientropy/diff.patch
+      with reviews/PR-742-merkle-antientropy/PR.md beside it; the rules it has to
+      meet are README.md rules 4 and 5, SPEC.md 5.1, docs/adr/ADR-0003,
+      docs/adr/ADR-0004 and the incident notes on inclusive windows
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - write your findings to review_findings.json at the repository root
+    - review_findings.json is a JSON object with a findings array of objects carrying title, file, severity, detail and reference
+    - do not apply the patch and do not modify src/, tests/, tools/ or reviews/
+    - name the rule each finding breaks (README rule, SPEC section or ADR) in the finding
+    - do not add third-party dependencies
+  notes: >-
+    The base state fails the hidden tests by design: review_findings.json does
+    not exist until the agent writes it. The hidden tests grade it against three
+    planted defects, require a rule to be cited, and cap the number of findings
+    so that a shotgun review does not score.

@@ -1,0 +1,33 @@
+Two captures from the same host, forty minutes apart. Neither one is a stack
+trace of the thing that went wrong, which is why this ticket is still open.
+
+--- capture A: 2026-11-03T02:11:46Z  walqueue-worker(31244) ---
+OSError: [Errno 28] No space left on device
+
+Traceback (most recent call last):
+  File "/srv/reconciler/worker.py", line 88, in main
+    queue.compact()
+  File "/srv/reconciler/lib/walqueue/queue.py", line 132, in compact
+    self.journal.rotate()
+  File "/srv/reconciler/lib/walqueue/journal.py", line 36, in _create
+    os.fsync(stream.fileno())
+OSError: [Errno 28] No space left on device
+
+The unit was restarted by systemd at 02:11:47 and came back healthy.
+
+--- capture B: 2026-11-03T02:12:03Z  walqueue-worker(31298) ---
+(no traceback)
+
+  INFO      opened store /var/lib/walqueue/reconciler-01 sequence=4
+  INFO      ready=1 leased=0 done=1 dead=0
+
+--- what the operator wrote ---
+"Sequence 5 was observed by the client at 02:10:59 (GET /state returned it and
+ the client logged the body). The 02:12:03 process is one transaction short and
+ raised nothing. I checked the segment and the frames in it are all fine, the
+ checksums pass. I do not know where the bytes went and I could not reproduce
+ it: if I truncate the tail of the store myself and restart, the queue just
+ truncates the last frame and carries on, which looks correct to me, but it
+ loses a transaction that the client had already been told about. If I truncate
+ the NEWEST segment the same thing happens, which also seems right. I cannot
+ see why the second one would be wrong."

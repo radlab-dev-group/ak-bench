@@ -1,0 +1,122 @@
+diff --git a/src/atlas/antientropy.py b/src/atlas/antientropy.py
+index d571703..e1713b5 100644
+--- a/src/atlas/antientropy.py
++++ b/src/atlas/antientropy.py
+@@ -104,6 +104,14 @@ def compare_digests(left: str, right: str) -> bool:
+     return left == right
+ 
+ 
++def merkle_view(store, *, leaf_size: int = 8):
++    """A Merkle view of one shard, for the pass an operator runs before a rebalance."""
++
++    from .merkle import MerkleTree
++
++    return MerkleTree.build(store, leaf_size=leaf_size)
++
++
+ class AntiEntropy:
+     def __init__(self, nodes, *, placement, strategy: str = "blake2b-16", width: int = 8) -> None:
+         self.nodes = nodes
+diff --git a/src/atlas/merkle.py b/src/atlas/merkle.py
+new file mode 100644
+index 0000000..7d922e2
+--- /dev/null
++++ b/src/atlas/merkle.py
+@@ -0,0 +1,97 @@
++"""A Merkle tree over one shard, for the anti-entropy walk.
++
++The tree is built from the store: one leaf per live key, keys in sorted order,
++and buckets of ``leaf_size`` keys. A bucket digest covers the key, the
++generation and the LSN of every record in it, which is the same triple
++:func:`atlas.antientropy.digest_records` covers, so a bucket of one tree can be
++compared with a bucket of another without exchanging values.
++"""
++
++from __future__ import annotations
++
++import hashlib
++from dataclasses import dataclass, field
++
++
++def _leaf_digest(key: str, generation: int, lsn: int) -> str:
++    material = f"{key}\x1f{generation}\x1f{lsn}".encode("utf-8")
++    return hashlib.blake2b(material, digest_size=16).hexdigest()
++
++
++@dataclass(frozen=True)
++class Bucket:
++    low: str
++    high: str
++    digest: str
++    keys: tuple[str, ...]
++
++    def overlaps(self, other: "Bucket") -> bool:
++        return self.low <= other.high and other.low <= self.high
++
++
++@dataclass
++class MerkleTree:
++    """The tree of one shard, read from the store the walk is running on."""
++
++    buckets: list[Bucket] = field(default_factory=list)
++    entries: dict[str, tuple[int, int]] = field(default_factory=dict)
++
++    @classmethod
++    def build(cls, store, *, leaf_size: int = 8) -> "MerkleTree":
++        tree = cls()
++        bucket: list[str] = []
++        digests: list[str] = []
++        # The walk does not hold the shard: the key order is taken once and each
++        # record is read when its bucket is closed, so a write that lands in the
++        # middle of the walk shows up in the bucket it belongs to.
++        for key in sorted(store.state.records):
++            record = store.state.records[key]
++            if record.is_tombstone:
++                continue
++            bucket.append(key)
++            if len(bucket) >= leaf_size:
++                tree._close_bucket(store, bucket, digests)
++                bucket, digests = [], []
++        if bucket:
++            tree._close_bucket(store, bucket, digests)
++        return tree
++
++    def _close_bucket(self, store, keys: list[str], _digests: list[str]) -> None:
++        digests = []
++        for key in keys:
++            record = store.state.records[key]
++            digests.append(_leaf_digest(key, record.generation, record.lsn))
++            self.entries[key] = (record.generation, record.lsn)
++        joined = "".join(digests).encode("ascii")
++        self.buckets.append(
++            Bucket(
++                low=keys[0],
++                high=keys[-1],
++                digest=hashlib.blake2b(joined, digest_size=16).hexdigest(),
++                keys=tuple(keys),
++            )
++        )
++
++    def differing(self, other: "MerkleTree") -> list[str]:
++        """The keys this tree and ``other`` disagree about, sorted."""
++
++        mine = {bucket.low: bucket for bucket in self.buckets}
++        theirs = {bucket.low: bucket for bucket in other.buckets}
++        found: list[str] = []
++        for low, bucket in sorted(mine.items()):
++            rival = theirs.get(low)
++            if rival is None:
++                found.extend(key for key in bucket.keys if key not in other.entries)
++                continue
++            if rival.digest == bucket.digest:
++                continue
++            for key in set(bucket.keys) | set(rival.keys):
++                left = self.entries.get(key)
++                right = other.entries.get(key)
++                if left is None or right is None:
++                    found.append(key)
++                elif left != right and right[0] >= left[0]:
++                    # The replica that is scanned second wins a tie, which is how
++                    # a pass that runs twice converges in one direction.
++                    found.append(key)
++        return sorted(set(found))

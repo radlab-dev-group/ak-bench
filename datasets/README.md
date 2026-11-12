@@ -87,6 +87,20 @@
 | `ARCH_002`   | `inventory-repository-001` | `architecture` | [READ](./architecture/inventory-repository-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
 | `ARCH_003`   | `plugcore-registry-001` | `architecture` | [READ](./architecture/plugcore-registry-001/description.md) | `expert` | Arena AI agent | `2026-11-10 19:00`   |
 | `ARCH_004`   | `shopcore-layered-001` | `architecture` | [READ](./architecture/shopcore-layered-001/description.md) | `hard` | Arena AI agent | `2026-11-10 19:00`   |
+| `DB_007`   | `tidewater-postmortem-trace-triangulation-001` | `debugging` | [READ](./debugging/tidewater-postmortem-trace-triangulation-001/description.md) | `hard` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `DB_008`   | `walqueue-silent-corruption-triage-001` | `debugging` | [READ](./debugging/walqueue-silent-corruption-triage-001/description.md) | `hard` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `SEC_007`   | `atlas-vector-clock-forge-001` | `security` | [READ](./security/atlas-vector-clock-forge-001/description.md) | `hard` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `SEC_008`   | `tidewater-byzantine-timing-oracle-001` | `security` | [READ](./security/tidewater-byzantine-timing-oracle-001/description.md) | `expert` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `RF_007`   | `tidewater-state-machine-pattern-001` | `refactoring` | [READ](./refactoring/tidewater-state-machine-pattern-001/description.md) | `hard` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `RF_008`   | `depweaver-sat-engine-modularization-001` | `refactoring` | [READ](./refactoring/depweaver-sat-engine-modularization-001/description.md) | `hard` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `TST_007`   | `tidewater-chaos-schedule-synthesis-001` | `testing` | [READ](./testing/tidewater-chaos-schedule-synthesis-001/description.md) | `hard` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `TST_008`   | `atlas-property-based-fencing-suite-001` | `testing` | [READ](./testing/atlas-property-based-fencing-suite-001/description.md) | `hard` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `CR_007`   | `tidewater-joint-consensus-pr-review-001` | `code_review` | [READ](./code_review/tidewater-joint-consensus-pr-review-001/description.md) | `hard` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `CR_008`   | `atlas-antientropy-merkle-pr-review-001` | `code_review` | [READ](./code_review/atlas-antientropy-merkle-pr-review-001/description.md) | `hard` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `PERF_007`   | `tidewater-eventloop-throughput-001` | `performance` | [READ](./performance/tidewater-eventloop-throughput-001/description.md) | `expert` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `PERF_008`   | `walqueue-zerocopy-io-001` | `performance` | [READ](./performance/walqueue-zerocopy-io-001/description.md) | `expert` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `ARCH_005`   | `atlas-pluggable-storage-engine-001` | `architecture` | [READ](./architecture/atlas-pluggable-storage-engine-001/description.md) | `expert` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
+| `ARCH_006`   | `tidewater-actor-runtime-decoupling-001` | `architecture` | [READ](./architecture/tidewater-actor-runtime-decoupling-001/description.md) | `expert` | AGY `gemini-3.8-flash` | `2026-11-12 09:00`   |
 
 `Difficulty` is the task descriptor's own `task.difficulty`
 (`src/akbench/datasets/task.py`: `easy` | `medium` | `hard` | `expert`), so the

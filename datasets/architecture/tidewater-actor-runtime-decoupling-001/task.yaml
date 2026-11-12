@@ -1,0 +1,43 @@
+schema_version: "1.0"
+id: tidewater-actor-runtime-decoupling-001
+version: "1.0.0"
+created_at: "2026-11-12T09:00:00+01:00"
+title: Turn the node into a pure state machine that returns effects
+description: >-
+  Node.tick, Node.receive and Node.propose each reach out to four collaborators
+  — storage, trace, outbox, state machine — at the moment they feel like it, so
+  the persistence order of SPEC 5 is a property of six call sites rather than
+  one. Make the node a pure step function that returns immutable effects, and
+  move the reaching-out into an imperative shell. No trace may move.
+authors:
+  - "[agy] gemini-3.8-flash"
+task:
+  category: architecture
+  difficulty: expert
+  repository:
+    source: datasets/_sources/tidewater
+    ref: HEAD
+    notes: >-
+      standard-library-only Raft simulator seed; traces/*.digest is the golden
+      behaviour of schedules/*.json and tools/reference_traces.py --check
+      compares the two
+  evaluator:
+    - pytest_evaluator
+    - static_analysis_evaluator
+  evaluator_inputs:
+    static_analysis_evaluator:
+      command: ["python", "tools/reference_traces.py", "--check"]
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - the trace of every schedule in schedules/ stays byte-identical, so every reference digest in traces/ still matches
+    - the repository suite under tests/ stays green and is not modified
+    - preserve the public API of tidewater.node (Node.tick, Node.receive and Node.propose keep their signatures)
+    - an effect never performs its own side effect; it is data, immutable after construction
+    - do not add third-party dependencies, threads, timers or real time
+  notes: >-
+    The base state fails the hidden tests by design: the node reaches out to its
+    collaborators directly and there is no effect type to interpret. The static
+    analysis evaluator is a signal, not a verdict: it runs the repository's own
+    reference digest check, which is green on the base commit.

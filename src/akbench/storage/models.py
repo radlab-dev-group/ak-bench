@@ -122,7 +122,11 @@ class Task(Base, TimestampMixin):
     title: Mapped[str | None] = mapped_column(String(255))
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     difficulty: Mapped[str] = mapped_column(String(32), nullable=False)
+    # The primary evaluator: the first the task declared. ``evaluators`` holds
+    # the whole set when a task is judged by more than one, and a row written
+    # before lists existed holds exactly this same value.
     evaluator: Mapped[str] = mapped_column(String(128), nullable=False)
+    evaluators: Mapped[str | None] = mapped_column(Text)
     repository_uid: Mapped[str | None] = mapped_column(
         ForeignKey("repositories.uid", ondelete="SET NULL")
     )
@@ -375,6 +379,10 @@ class EvaluationRecord(Base, TimestampMixin):
     run_id: Mapped[int] = mapped_column(ForeignKey("task_runs.id", ondelete="CASCADE"))
     evaluator_id: Mapped[str] = mapped_column(String(128), nullable=False)
     evaluator_version: Mapped[str | None] = mapped_column(String(64))
+    # Rank 0 is the verdict a reader quotes: the composed one when a run was
+    # judged by several evaluators, the single one otherwise. The rows after it
+    # say what each of those evaluators reported on its own.
+    evaluator_rank: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     verdict: Mapped[str] = mapped_column(String(32), nullable=False)
     score: Mapped[float | None] = mapped_column()
     passed: Mapped[int | None] = mapped_column(Integer)

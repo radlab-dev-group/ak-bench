@@ -179,6 +179,20 @@ pass.
 | `inventory-repository-001` | `architecture` | hard | `inventory` | fails on the base commit because the target structure is missing; passes once the agent restructures |
 | `plugcore-registry-001` | `architecture` | expert | `plugcore` | fails on the base commit because the target structure is missing; passes once the agent restructures |
 | `shopcore-layered-001` | `architecture` | hard | `shopcore` | fails on the base commit because the target structure is missing; passes once the agent restructures |
+| `tidewater-postmortem-trace-triangulation-001` | `debugging` | hard | `tidewater` | passes on the base commit, fails once the mutation patch is applied (`verified`); the incident trace under `docs/incidents/captures/` is the only evidence pointing at the clock rule |
+| `walqueue-silent-corruption-triage-001` | `debugging` | hard | `walqueue` | passes on the base commit, fails once the mutation patch is applied (`verified`); the sealed-segment capture under `docs/incidents/captures/INC-0004/` is what makes the case reproducible |
+| `atlas-vector-clock-forge-001` | `security` | hard | `atlas` | passes on the base commit, fails once the mutation patch is applied (`verified`); a returning worker takes a lease sideways until the fencing rule is closed |
+| `tidewater-byzantine-timing-oracle-001` | `security` | expert | `tidewater` | fails on the base commit because pre-votes with ever-rising terms inside one lease are never quarantined; passes once the agent adds the per-peer quarantine, with the twelve reference digests unchanged |
+| `tidewater-state-machine-pattern-001` | `refactoring` | hard | `tidewater` | fails on the base commit because the role branches live in `Node`; passes once they are a role hierarchy, byte-for-byte on the twelve reference traces |
+| `depweaver-sat-engine-modularization-001` | `refactoring` | hard | `depweaver` | fails on the base commit because the CDCL solver is one module; passes once it is split, with the search order and the model goldens unchanged |
+| `tidewater-chaos-schedule-synthesis-001` | `testing` | hard | `tidewater` | the agent's schedule and harness must leave the seed green and make three planted quorum defects fire, each in its own run |
+| `atlas-property-based-fencing-suite-001` | `testing` | hard | `atlas` | the agent's stateful suite must pass on the seed and catch four planted drift defects, one per run, without editing the code under test |
+| `tidewater-joint-consensus-pr-review-001` | `code_review` | hard | `tidewater` | the PR ships in the seed (`reviews/PR-118-joint-consensus/`); `review_findings.json` must name the three seeded defects and nothing that is not wrong |
+| `atlas-antientropy-merkle-pr-review-001` | `code_review` | hard | `atlas` | the PR ships in the seed (`reviews/PR-742-merkle-antientropy/`); the same findings contract, over a Merkle tree read against a live memtable |
+| `tidewater-eventloop-throughput-001` | `performance` | expert | `tidewater` | fails on the base commit because a hundred thousand ticks cost too much (measured ticks and wall-clock budget); passes once the loop is cheaper and the twelve reference traces still match |
+| `walqueue-zerocopy-io-001` | `performance` | expert | `walqueue` | fails on the base commit because the write path copies per append (counted copies and syscalls); passes once it is batched, with every durability rule intact |
+| `atlas-pluggable-storage-engine-001` | `architecture` | expert | `atlas` | fails on the base commit because the storage engine is not a protocol with two interchangeable implementations; passes once the seam exists and both engines agree on the goldens |
+| `tidewater-actor-runtime-decoupling-001` | `architecture` | expert | `tidewater` | fails on the base commit because the node reaches for I/O; passes once it is a pure state machine returning effects, with the twelve reference traces unchanged |
 
 `slugify-001` declares no mutation, so `--verify-mutations` reports
 `no_mutation` for it. Its honesty check lives in
