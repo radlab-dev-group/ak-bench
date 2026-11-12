@@ -1,0 +1,43 @@
+schema_version: "1.0"
+id: atlas-pluggable-storage-engine-001
+version: "1.0.0"
+created_at: "2026-11-12T09:00:00+01:00"
+title: Extract the storage engine behind a protocol with two implementations
+description: >-
+  One shard's state is welded to the disk: ShardStorage builds a memtable, a
+  write-ahead log and a snapshot store in its own constructor, so a simulation
+  cannot run a cluster without touching a filesystem and a second storage
+  format has nowhere to go. Introduce a storage engine boundary — one protocol,
+  an in-memory engine and a disk engine — behind the existing store API, and
+  keep every import pointing downward.
+authors:
+  - "[agy] gemini-3.8-flash"
+task:
+  category: architecture
+  difficulty: expert
+  repository:
+    source: datasets/_sources/atlas
+    ref: HEAD
+    notes: >-
+      standard-library-only sharded store seed; tools/check_arch.py enforces the
+      layer map of docs/adr/ADR-0014-storage-boundaries.md
+  evaluator:
+    - pytest_evaluator
+    - static_analysis_evaluator
+  evaluator_inputs:
+    static_analysis_evaluator:
+      command: ["python", "tools/check_arch.py"]
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - preserve the public API of atlas.store.Atlas (put, get, resolve, delete, current_generation keep their signatures and results)
+    - preserve the on-disk format; a cluster written by the base commit must open after the change
+    - do not modify the repository test suite under tests/
+    - do not add third-party dependencies
+    - src/atlas/engines/ must not import a layer above the durable half (no replication, repair, store, transaction, cli)
+  notes: >-
+    The base state fails the hidden tests by design: the engine package does not
+    exist yet and the hidden tests import it. The static analysis evaluator is a
+    signal, not a verdict: it runs tools/check_arch.py, which is clean on the
+    base commit and must stay clean.
