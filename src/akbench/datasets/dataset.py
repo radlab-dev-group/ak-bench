@@ -52,6 +52,7 @@ class LoadedTask:
             "category": self.task.category,
             "difficulty": self.task.difficulty,
             "evaluator": self.task.evaluator,
+            "evaluators": self.task.evaluators,
             "digest": self.digest,
             "path": str(self.path),
         }
@@ -407,14 +408,34 @@ class Dataset:
                 result.pass_check("category")
                 result.pass_check("difficulty")
 
-        evaluator = registry.get(DescriptorKind.EVALUATOR, body.evaluator)
-        if evaluator is None:
+        # Every declared evaluator must be registered: a task is judged by all
+        # of them, so one the installation cannot describe is a defect in the
+        # task, not something to skip over at evaluation time.
+        missing = [
+            evaluator_id
+            for evaluator_id in body.evaluators
+            if registry.get(DescriptorKind.EVALUATOR, evaluator_id) is None
+        ]
+        if missing:
             result.fail(
                 "evaluator",
-                f"evaluator {body.evaluator!r} is not registered; add an Evaluator Descriptor",
+                f"evaluator {', '.join(repr(name) for name in missing)} is not registered; "
+                "add an Evaluator Descriptor",
             )
         else:
             result.pass_check("evaluator")
+
+        # Inputs declared for an evaluator nobody names would sit unread, and a
+        # verdict would look self-explanatory while quietly dropping them.
+        orphaned = sorted(name for name in body.evaluator_inputs if name not in body.evaluators)
+        if orphaned:
+            result.fail(
+                "evaluator_inputs",
+                f"evaluator_inputs names {', '.join(repr(name) for name in orphaned)} "
+                "which the task does not declare as an evaluator",
+            )
+        else:
+            result.pass_check("evaluator_inputs")
 
 
 def load_dataset(

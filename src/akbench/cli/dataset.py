@@ -49,6 +49,7 @@ def _task_payload(dataset: Dataset, loaded) -> dict[str, object]:
         "category": task.category,
         "difficulty": task.difficulty,
         "evaluator": body.evaluator,
+        "evaluators": list(body.evaluators),
         "repository": {
             "source": body.repository.source,
             "ref": body.repository.ref,
@@ -96,7 +97,7 @@ def dataset_list_cmd(
             loaded.task.version,
             loaded.task.category,
             loaded.task.difficulty,
-            loaded.task.evaluator,
+            ", ".join(loaded.task.evaluators),
             "yes" if loaded.task.requires_mutation() else "no",
         )
     console.print(table)
@@ -186,7 +187,7 @@ def dataset_show_cmd(
     console.print(f"[bold]{loaded.uid}[/bold]")
     console.print(f"  title       {loaded.task.title or '—'}")
     console.print(f"  category    {loaded.task.category} ({loaded.task.difficulty})")
-    console.print(f"  evaluator   {loaded.task.evaluator}")
+    console.print(f"  evaluators  {", ".join(loaded.task.evaluators)}")
     repository = payload["repository"]
     console.print(f"  repository  {repository['source']} @ {repository['ref']}")
     if loaded.task.requires_mutation():

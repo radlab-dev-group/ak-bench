@@ -733,3 +733,83 @@ def test_a_task_with_no_code_records_nothing(
     store.record_run(_run_record(), task=_task_stub(path=tmp_path))
 
     assert store.task_files("wordcount-001@1.0.0") == []
+
+
+# --------------------------------------------------------------------------
+# a run judged by several evaluators keeps every part, ranked
+
+
+def _multi_evaluation() -> dict[str, object]:
+    return {
+        "evaluator_id": "pytest_evaluator",
+        "verdict": "partial",
+        "score": 0.7,
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "details": {
+            "declared_evaluators": ["pytest_evaluator", "static_analysis_evaluator"],
+            "decided_by": "pytest_evaluator",
+            "reason": "advisory evaluator reported findings",
+            "evaluators": [
+                {
+                    "reference": "pytest_evaluator",
+                    "evaluator_id": "pytest_evaluator",
+                    "verdict": "passed",
+                    "score": 1.0,
+                    "advisory": False,
+                },
+                {
+                    "reference": "static_analysis_evaluator",
+                    "evaluator_id": "static_analysis_evaluator",
+                    "verdict": "partial",
+                    "score": 0.4,
+                    "advisory": True,
+                },
+            ],
+        },
+    }
+
+
+def test_a_multi_evaluator_run_stores_one_row_per_evaluator(database_url: str) -> None:
+    from akbench.storage.models import EvaluationRecord
+
+    store = _store(database_url)
+    store.record_run(_run_record(evaluation=_multi_evaluation()), task=_task_stub())
+
+    with session_scope(create_db_engine(database_url)) as session:
+        rows = session.scalars(
+            select(EvaluationRecord).order_by(EvaluationRecord.evaluator_rank)
+        ).all()
+        assert [(row.evaluator_rank, row.evaluator_id) for row in rows] == [
+            (0, "pytest_evaluator"),
+            (1, "static_analysis_evaluator"),
+        ]
+        composed = rows[0]
+        assert composed.verdict == "partial"
+        assert composed.score == 0.7
+        part = rows[1]
+        assert part.verdict == "partial"
+        assert part.score == 0.4
+
+
+def test_a_single_evaluator_run_stores_only_the_composed_row(database_url: str) -> None:
+    from akbench.storage.models import EvaluationRecord
+
+    store = _store(database_url)
+    store.record_run(_run_record(), task=_task_stub())
+
+    with session_scope(create_db_engine(database_url)) as session:
+        rows = session.scalars(select(EvaluationRecord)).all()
+        assert [row.evaluator_rank for row in rows] == [0]
+
+
+def test_run_records_quote_the_composed_row_of_a_multi_evaluator_run(
+    database_url: str,
+) -> None:
+    store = _store(database_url)
+    store.record_run(_run_record(evaluation=_multi_evaluation()), task=_task_stub())
+
+    runs = store.runs()
+    assert runs[0]["evaluation"]["verdict"] == "partial"
+    assert runs[0]["evaluation"]["score"] == 0.7

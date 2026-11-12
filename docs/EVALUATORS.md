@@ -84,6 +84,40 @@ calls `EvaluatorEngine.evaluate` with the same keyword arguments. The task's
 `evaluator` field always names a registered id; an unknown id is refused by the
 registry, which is what keeps a task from being judged by a stand-in.
 
+## Judging a task with several evaluators
+
+A task may declare a list of evaluators; they run in the declared order, each
+with its own output directory so their raw reports cannot overwrite one
+another, and one verdict is composed from what they reported
+(`akbench/evaluators/task_evaluation.py`):
+
+1. **A measurement failure outranks everything.** An `evaluator_error` or
+   `infrastructure_error` is reported first: it says nothing about the agent,
+   and it is the only thing worth saying.
+2. **The hard evaluators decide, in the declared order.** A pass/fail
+   evaluator that does not pass ends the composition with its verdict.
+3. **A signal can dim a pass, never fail one.** The score-valued kinds
+   (`static_analysis_evaluator`, `diff_evaluator`) are advisory: with every
+   hard evaluator passed, a finding keeps the run from claiming a clean pass
+   (`partial`), but on its own it cannot fail the task.
+
+The composed verdict keeps the primary evaluator's identity, so a historical
+row still quotes one evaluator, and `details.evaluators` keeps every part —
+which evaluator reported what, and whether it was advisory — so a combined
+verdict can always be re-examined. In storage, the composed verdict is the
+row with `evaluator_rank = 0`; the parts get ranks 1..n, and readers of a run
+quote rank 0. A task judged once writes only the composed row.
+
+```yaml fragment
+# a task judged by its tests and by the analyser
+evaluator:
+  - pytest_evaluator
+  - static_analysis_evaluator
+evaluator_inputs:
+  static_analysis_evaluator:
+    command: ruff check --output-format=json .
+```
+
 ## Using it
 
 ```bash

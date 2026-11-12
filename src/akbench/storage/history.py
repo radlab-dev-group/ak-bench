@@ -917,6 +917,7 @@ class HistoryStore:
                 category=str(loaded.task.category),
                 difficulty=str(loaded.task.difficulty),
                 evaluator=str(loaded.task.evaluator),
+                evaluators=_dump(list(self._evaluators_of(loaded.task))),
                 snapshot_digest=str(loaded.digest),
                 task_created_at=task_created_at,
                 authors_json=authors_json,
@@ -940,6 +941,7 @@ class HistoryStore:
                 task_row.task_yaml = task_yaml
             if description_md is not None:
                 task_row.description_md = description_md
+            task_row.evaluators = _dump(list(self._evaluators_of(loaded.task)))
         task_row.repository_uid = repository_uid
         task_row.base_commit = getattr(loaded.task.task.repository, "ref", None)
         task_row.updated_at = now
@@ -986,6 +988,19 @@ class HistoryStore:
                 for path, _kind, _content, _size, digest in collected
                 if recorded.get(path) != digest
             )
+
+    @staticmethod
+    def _evaluators_of(descriptor: Any) -> list[str]:
+        """The evaluators a descriptor declares, tolerant of a stub standing in.
+
+        A test stub is a namespace carrying the bare ``evaluator`` attribute
+        and nothing else; for it the whole set is exactly that one, which is
+        what a real single-evaluator descriptor would return.
+        """
+        evaluators = getattr(descriptor, "evaluators", None)
+        if evaluators is None:
+            return [str(getattr(descriptor, "evaluator", ""))]
+        return [str(item) for item in evaluators]
 
     def _record_component(
         self,
@@ -1164,11 +1179,13 @@ class HistoryStore:
             session.delete(row)
         if not evaluation:
             return
+        # Rank 0 is the composed verdict, the one every reader of a run quotes.
         session.add(
             EvaluationRecord(
                 run_id=run.id,
                 evaluator_id=str(evaluation.get("evaluator_id", "")),
                 evaluator_version=evaluation.get("evaluator_version"),
+                evaluator_rank=0,
                 verdict=str(evaluation.get("verdict", "")),
                 score=evaluation.get("score"),
                 passed=evaluation.get("passed"),
@@ -1182,6 +1199,48 @@ class HistoryStore:
                 updated_at=now,
             )
         )
+        self._record_evaluator_parts(session, run, evaluation, now)
+
+    @staticmethod
+    def _record_evaluator_parts(
+        session: Session, run: TaskRun, evaluation: dict[str, Any], now: Any
+    ) -> None:
+        """Record what each evaluator of a multi-evaluator run reported.
+
+        A run judged once writes no extra row: there is nothing beyond the
+        verdict itself to say. A run judged by several keeps each part, because
+        the composed verdict alone cannot show that the tests passed while the
+        analyser found something.
+        """
+        details = evaluation.get("details")
+        if not isinstance(details, dict):
+            return
+        parts = details.get("evaluators")
+        if not isinstance(parts, list) or len(parts) < 2:
+            return
+        # The composed row (rank 0) already keeps the verdict of the deciding
+        # evaluator; counting it again under a rank would double it in a report.
+        deciding = str(evaluation.get("evaluator_id", ""))
+        rank = 1
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            if str(part.get("evaluator_id", "")) == deciding:
+                continue
+            session.add(
+                EvaluationRecord(
+                    run_id=run.id,
+                    evaluator_id=str(part.get("evaluator_id", "")),
+                    evaluator_version=None,
+                    evaluator_rank=rank,
+                    verdict=str(part.get("verdict", "")),
+                    score=part.get("score"),
+                    details_json=_dump({"advisory": part.get("advisory")}),
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            rank += 1
 
     def _record_agent_observations(
         self, session: Session, run: TaskRun, record: dict[str, Any]
@@ -1290,7 +1349,9 @@ class HistoryStore:
         verdicts: dict[str, int] = {}
         for run in runs:
             verdict = session.scalar(
-                select(EvaluationRecord.verdict).where(EvaluationRecord.run_id == run.id)
+                select(EvaluationRecord.verdict)
+                .where(EvaluationRecord.run_id == run.id)
+                .order_by(EvaluationRecord.evaluator_rank)
             )
             if verdict:
                 verdicts[verdict] = verdicts.get(verdict, 0) + 1
@@ -1319,7 +1380,9 @@ class HistoryStore:
             else None
         )
         evaluation = session.scalar(
-            select(EvaluationRecord).where(EvaluationRecord.run_id == row.id)
+            select(EvaluationRecord)
+            .where(EvaluationRecord.run_id == row.id)
+            .order_by(EvaluationRecord.evaluator_rank)
         )
         observation = session.scalar(
             select(AgentObservation).where(AgentObservation.run_id == row.id)
