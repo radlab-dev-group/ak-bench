@@ -1,0 +1,45 @@
+schema_version: "1.0"
+id: tidewater-postmortem-trace-triangulation-001
+version: "1.0.0"
+created_at: "2026-11-12T09:00:00+01:00"
+title: A node's clock went backwards in the middle of the run
+description: >-
+  A 3000-tick production replay ends with one node that stopped taking part in
+  elections after tick 1200, and the only evidence is a 2.5 MB JSONL trace with
+  no stack trace in it. Find the tick where the behaviour first diverges, prove
+  why from the trace, fix the cause, and leave a reproducer short enough to run
+  in the suite.
+authors:
+  - "[agy] gemini-3.8-flash"
+task:
+  category: debugging
+  difficulty: hard
+  repository:
+    source: datasets/_sources/tidewater
+    ref: HEAD
+    notes: >-
+      standard-library-only Raft simulator seed; the evidence is a captured
+      trace under docs/incidents/captures/INC-0010/, and tools/replay_trace.py
+      compares a run against a reference trace
+  mutation:
+    patch: mutations/mutation-001.patch
+    version: "1.0.0"
+    verification: hidden_tests
+    notes: >-
+      One statement, in the clock: a skew action that changes the offset also
+      moves the local reading to it. The twelve reference schedules never pass an
+      offset, so the corpus, the digests and the repository suite stay green and
+      the defect is visible only in a run that skews one.
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - the repository suite under tests/ stays green and is not modified
+    - the twelve reference digests in traces/ keep matching (python tools/reference_traces.py --check)
+    - preserve the public API of tidewater.clock.NodeClock (set_skew, tick, now)
+    - do not add third-party dependencies
+  notes: >-
+    The base state fails the hidden tests by design: the defect is in the base
+    code, the captured incident trace is the only evidence pointing at it, and
+    the repository suite never skews a node's clock by an offset.
