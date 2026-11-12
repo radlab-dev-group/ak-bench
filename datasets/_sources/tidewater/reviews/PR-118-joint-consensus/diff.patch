@@ -1,0 +1,83 @@
+diff --git a/src/tidewater/membership.py b/src/tidewater/membership.py
+index f8638db..fb2284a 100644
+--- a/src/tidewater/membership.py
++++ b/src/tidewater/membership.py
+@@ -120,10 +120,11 @@ class JointConfiguration:
+     old: Configuration
+     new: Configuration
+ 
+-    def has_majority(self, acks: Iterable[str]) -> bool:  # pragma: no cover - contract stub
+-        """Both majorities, from the same set of acks."""
++    def has_majority(self, acks: Iterable[str]) -> bool:
++        """A decision carries when a majority of the configuration it names agrees."""
+ 
+-        raise FeatureNotImplemented("joint consensus is not implemented")
++        counted = set(acks)
++        return self.old.has_majority(counted) or self.new.has_majority(counted)
+ 
+     @property
+     def all_voters(self) -> frozenset[str]:
+@@ -195,3 +196,30 @@ def configuration_from_entry_payload(payload: dict) -> Configuration | JointConf
+     committed or not — on every append and on restart."""
+ 
+     raise FeatureNotImplemented("membership change is not implemented")
++
++
++def configuration_in_force(log, base: Configuration) -> Configuration | JointConfiguration:
++    """The configuration a node counts against (``SPEC.md`` 7.1).
++
++    The latest ``config`` entry in the log is the one in force, committed or
++    not: a joint entry brings ``C_old,new`` in, and the cluster goes back to
++    counting a single majority once the change has a decision behind it.
++    """
++
++    latest = None
++    for entry in log.entries():
++        if getattr(entry, "kind", "") == "config":
++            latest = entry
++    if latest is None:
++        return base
++    payload = latest.payload
++    if payload.get("config") == "final":
++        return Configuration.of(payload["new"])
++    joint = JointConfiguration(
++        Configuration.of(payload["old"]), Configuration.of(payload["new"])
++    )
++    if log.commit_index >= latest.index:
++        # The joint entry is committed, so the change is decided and the cluster
++        # can go back to counting one majority instead of two.
++        return joint.new
++    return joint
+diff --git a/src/tidewater/node.py b/src/tidewater/node.py
+index e175498..edea7f6 100644
+--- a/src/tidewater/node.py
++++ b/src/tidewater/node.py
+@@ -537,6 +537,28 @@ class Node:
+                 self._set_commit_index(index, "majority")
+                 return
+ 
++    def _finish_membership_change(self) -> None:
++        """Hand the leadership over when a change leaves the leader out (7.5)."""
++
++        if not isinstance(self.config, JointConfiguration):
++            return
++        if self.node_id in self.config.new.voters:
++            return
++        joint_index = next(
++            (
++                entry.index
++                for entry in reversed(self.log.entries())
++                if getattr(entry, "kind", "") == "config"
++                and entry.payload.get("config") == "joint"
++            ),
++            None,
++        )
++        if joint_index is None or self.commit_index < joint_index:
++            return
++        self.trace.record(self.global_tick, self.node_id, "membership_step_down",
++                          term=self.current_term, committed=self.commit_index)
++        self._become_follower(self.current_term, reason="removed_by_membership_change")
++
+     def _set_commit_index(self, index: int, how: str) -> None:
+         if index <= self.commit_index:
+             return
