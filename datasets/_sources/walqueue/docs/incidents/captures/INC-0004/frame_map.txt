@@ -1,0 +1,14 @@
+# frame map of the captured segment
+file: wal-0000000000000001.log as captured (917 bytes; the frame map below is of the intact file)
+
+frame 0: offset 00000000 length-prefix    171 bytes  complete
+frame 1: offset 000000cf length-prefix    171 bytes  complete
+frame 2: offset 0000019e length-prefix    122 bytes  complete
+frame 3: offset 0000023c length-prefix    113 bytes  complete
+frame 4: offset 000002d1 length-prefix    171 bytes  incomplete: 11 bytes of the frame are missing
+
+valid_bytes reported by walqueue.codec.decode(..., allow_torn_tail=True): 721
+torn: True
+
+The last complete frame carries 'sequence': 4; the truncated frame carried 'sequence': 5, the last number the client had seen.
+Nothing in the capture is a checksum mismatch: the frames that are there are all intact.
