@@ -8,11 +8,11 @@ release tagged as `v<version>`.
 
 | Version | Changelog                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 |---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 0.1.2   | **Added:** the memory suite — thirteen expert tasks over four seeds (`atlas`, `tidewater`, `depweaver`, `walqueue`) built for one question: does a model that remembers do something a model that does not cannot? A learning task with antagonistic defect pairs plus exact-, related- and negative-transfer twins per seed; the new `tidewater` seed, a standard-library-only deterministic Raft-lite simulator with its own `SPEC.md`, ADRs, incident notes and trace-regeneration runbook; two new-feature pairs whose features are only finished once the repository's own generate/lock/digest procedure has been run; `configs/experiments/knowledge-replay-memory-suite.yaml` with the plugin mechanisms switched on per arm and a `knowledge_escalation_enabled` dimension for the ablation; isolated reference solutions under `tests/fixtures/` and an integrity suite per family. **Fixed:** a stray backtick in the atlas seed's package init that made every atlas mutation verification report an error, and the atlas memory experiment's arm and run-count assertions in the planner tests. |
+| 0.1.2   | **Changed:** `task.evaluator` accepts a list of ids with per-evaluator `evaluator_inputs`, composed verdicts and per-evaluator rows in storage (migration 0011), and the default database is SQLite. **Added:** the memory suite — thirteen expert tasks over four seeds (`atlas`, `tidewater`, `depweaver`, `walqueue`) built for one question: does a model that remembers do something a model that does not cannot? A learning task with antagonistic defect pairs plus exact-, related- and negative-transfer twins per seed; the new `tidewater` seed, a standard-library-only deterministic Raft-lite simulator with its own `SPEC.md`, ADRs, incident notes and trace-regeneration runbook; two new-feature pairs whose features are only finished once the repository's own generate/lock/digest procedure has been run; `configs/experiments/knowledge-replay-memory-suite.yaml` with the plugin mechanisms switched on per arm and a `knowledge_escalation_enabled` dimension for the ablation; isolated reference solutions under `tests/fixtures/` and an integrity suite per family; the fourteen AGY tasks — two in each of the seven roadmap categories (`debugging`, `security`, `refactoring`, `testing`, `code_review`, `performance`, `architecture`) over the same four seeds, the incident documentation their reasoning draws on, and the PRs their reviews judge. **Fixed:** a stray backtick in the atlas seed's package init that made every atlas mutation verification report an error, and the atlas memory experiment's arm and run-count assertions in the planner tests. |
 | 0.1.1   | **Security:** dashboard authentication and roles, protected task answers and artifacts, hardened PostgreSQL configuration, response headers and input validation. **Added:** model verification indicators, themes, keyboard navigation, run export, tool-call metrics, task downloads and score charts, recorded task files and descriptors, agent and runtime pages. **Changed:** configuration labels, sortable tables, code and YAML viewers, PostgreSQL as the default database, automatic `.env` loading and SQLite-to-PostgreSQL migration. **Datasets:** the atlas sharded-store family — five `expert` tasks over one standard-library fixture (a five-module learning task, three single-defect twins in other modules, one new-feature task from a declared stub), a memory-replay experiment over six model × knowledge configurations with a no-memory baseline, and the knowledge scope pin that lets a replay read what its learning run wrote (an off arm is a process without the plugin). **UI:** model comparison on the dashboard — a Pareto chart and a paired base-vs-memory comparison with a delta heatmap, Wilson confidence intervals and low-sample marking on the model charts — and a full-page loading spinner.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 0.1.0   | **Added:** the first release: the whole of AK-Bench, from the initial commit to now. A `typer` CLI (`akbench init/doctor/config`, experiments, datasets, runs, reports and exports); YAML/ENV configuration with an environment allowlist where secrets stay opaque (presence only, `src/akbench/config/`); a descriptor system with eight kinds — agents, runtimes, plugins, dimensions, models, categories, evaluators, metrics — versioned, digest-pinned and registered (`src/akbench/descriptors/`, `docs/DESCRIPTOR_SYSTEM.md`); tasks, datasets, repeatable workspaces, mutation verification and hidden tests (`src/akbench/datasets/`, `docs/DATASETS.md`); an agent-adapter framework with a Codex CLI adapter and capability gating (`src/akbench/agents/`, `docs/AGENT_ADAPTERS.md`); a runtime manager with direct/runtime/router execution, managed self-starting LLM Router instances with per-run port ownership and the instance log kept as a run artifact, plus model verification from that log (`src/akbench/runtime/`, `docs/RUNTIME_MANAGER.md`); a pytest/command evaluator engine with verdicts and hidden-test isolation (`src/akbench/evaluators/`, `docs/EVALUATORS.md`); a run orchestrator with a lifecycle state machine, isolation, retries and run records (`src/akbench/orchestration/`, `docs/RUN_ORCHESTRATOR.md`); an experiment descriptor and planner with matrix strategies, validation that refuses unmeasurable plans, factor routing by dimension source and environment bound to a combination (`src/akbench/experiments/`, `docs/EXPERIMENTS.md`); plugin observability — a run reports only the plugins it configured, with verification statuses (`src/akbench/plugins/`, `docs/PLUGINS.md`); knowledge replay for memory experiments (`docs/KNOWLEDGE_REPLAY.md`); SQLite storage, artifacts, a reproducibility manifest with digests, aggregates and baseline deltas (`src/akbench/storage/`, `src/akbench/metrics/`); a static HTML report — dashboard with a configuration ranking pooled across experiments, experiment/task/agent/runtime/plugin/model pages, a "Not verified" table and an in-report `docs/` subpage (`src/akbench/reporting/`, `docs/REPORTING.md`); JSON/CSV/HTML export with secret screening (`src/akbench/export/`, `docs/EXPORT.md`); shipped descriptors and eight experiment configs under `descriptors/` and `configs/experiments/`. |
 
-## [Unreleased]
+## [0.1.2] - 2026-11-12
 
 ### Changed
 
@@ -25,9 +25,6 @@ release tagged as `v<version>`.
   run belongs to and there is no automatic migration between them. `README.md`,
   `.env.example` and `docs/STORAGE.md` state which mode is the default and what
   each one is for.
-
-### Changed
-
 - **`task.evaluator` accepts a list.** A task judged by more than one
   measurement declares every evaluator in the order it runs them: the
   descriptor normalises a bare id to a one-entry list, the dataset validator
@@ -37,7 +34,6 @@ release tagged as `v<version>`.
   per-evaluator inputs (a command evaluator's `command`, a Python evaluator's
   `script`, a diff evaluator's `reference_patch`) that travel with the task so
   a verdict is reproducible from it.
-
 - **Fourteen new tasks: two in each of the seven roadmap categories.** The
   memory suite's four seeds (`atlas`, `tidewater`, `depweaver`, `walqueue`)
   carry them, so each is a real repository with its own documentation rather
@@ -214,7 +210,6 @@ release tagged as `v<version>`.
   `runtime status` (one runtime as `state`, or the whole registry), and
   `evaluator list` (the evaluators this installation actually implements).
   `docs/CLI.md` now carries a plan-versus-implementation table.
-
 - **All five evaluators of plan section 16** (`docs/EVALUATORS.md`).
   `pytest_evaluator` and `command_evaluator` were already there; the three that
   had a descriptor and no code now do:
@@ -270,6 +265,26 @@ release tagged as `v<version>`.
   `yaml fragment` shows part of a larger file and is skipped, and the suite
   asserts a minimum number of complete examples are validated, so it cannot
   pass by checking nothing.
+- **The memory suite: thirteen expert tasks over four seeds, one question.**
+  `configs/experiments/knowledge-replay-memory-suite.yaml` replays the suite
+  with the knowledge plugin's mechanisms switched on per arm (and one ablation
+  arm with them off): does a model that remembers — recipes, dead ends,
+  playbooks and a documentation map carried over by the `agentic_knowledge`
+  plugin — do something a model that does not cannot? The design rules are in
+  `.plans/memory-suite-plan.md`; the tasks are `atlas-quorum-001..004`
+  (learning, exact, related and negative twins of the quorum invariant),
+  `atlas-schema-001/002` (a procedure pair over the schema tools), the new
+  `tidewater` seed — a deterministic Raft-lite simulator — with
+  `tidewater-election-001..003` (five election regressions all ending in one
+  `election_safety` line, plus the related and the negative twin) and
+  `tidewater-snapshot-001/002` (the node half of `SPEC.md` section 6 and its
+  transfer half, each landing a corpus entry through the documented tools),
+  `depweaver-lockfile-001` and `walqueue-compaction-002`. References for the
+  new-feature tasks live under `tests/fixtures/`; integrity suites:
+  `tests/integration/test_atlas_quorum_family_tasks.py`,
+  `test_atlas_schema_family_tasks.py`, `test_tidewater_family_tasks.py`,
+  `test_tidewater_snapshot_tasks.py`, `test_depweaver_lockfile_task.py` and
+  `test_durable_dataset_tasks.py`.
 
 ### Fixed
 
@@ -292,31 +307,6 @@ release tagged as `v<version>`.
   as written); the plan's source-plan path, §13 checklist reference, CLI
   paths, `default_registry` comment wording, and `full-matrix.yaml` strategy
   are fixed, and Phase A (A1–A5) is checked off with the evidence for each.
-
-## [0.1.2] - 2026-11-10
-
-### Added
-
-- **The memory suite: thirteen expert tasks over four seeds, one question.**
-  `configs/experiments/knowledge-replay-memory-suite.yaml` replays the suite
-  with the knowledge plugin's mechanisms switched on per arm (and one ablation
-  arm with them off): does a model that remembers — recipes, dead ends,
-  playbooks and a documentation map carried over by the `agentic_knowledge`
-  plugin — do something a model that does not cannot? The design rules are in
-  `.plans/memory-suite-plan.md`; the tasks are `atlas-quorum-001..004`
-  (learning, exact, related and negative twins of the quorum invariant),
-  `atlas-schema-001/002` (a procedure pair over the schema tools), the new
-  `tidewater` seed — a deterministic Raft-lite simulator — with
-  `tidewater-election-001..003` (five election regressions all ending in one
-  `election_safety` line, plus the related and the negative twin) and
-  `tidewater-snapshot-001/002` (the node half of `SPEC.md` section 6 and its
-  transfer half, each landing a corpus entry through the documented tools),
-  `depweaver-lockfile-001` and `walqueue-compaction-002`. References for the
-  new-feature tasks live under `tests/fixtures/`; integrity suites:
-  `tests/integration/test_atlas_quorum_family_tasks.py`,
-  `test_atlas_schema_family_tasks.py`, `test_tidewater_family_tasks.py`,
-  `test_tidewater_snapshot_tasks.py`, `test_depweaver_lockfile_task.py` and
-  `test_durable_dataset_tasks.py`.
 
 ## [0.1.1] - 2026-11-08
 
