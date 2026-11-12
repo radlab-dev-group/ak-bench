@@ -1,0 +1,40 @@
+schema_version: "1.0"
+id: tidewater-byzantine-timing-oracle-001
+version: "1.0.0"
+created_at: "2026-11-12T09:00:00+01:00"
+title: A peer pre-votes at ever higher terms until the cluster stops making sense
+description: >-
+  An operator's cluster is being walked through pre-vote after pre-vote by a
+  peer that raises its proposed term every time it is refused, each attempt
+  inside the leader's lease window, while the trace shows nothing wrong with the
+  lease itself. Give the simulator a quarantine for a peer that behaves that way,
+  keep the lease judged only by the node's own clock, and keep a real election
+  after a real partition working exactly as well as it does today.
+authors:
+  - "[agy] gemini-3.8-flash"
+task:
+  category: security
+  difficulty: expert
+  repository:
+    source: datasets/_sources/tidewater
+    ref: HEAD
+    notes: >-
+      deterministic Raft simulator; SPEC.md 2.4 and 2.7 are the pre-vote and
+      leader-lease rules, ADR-0003 and ADR-0009 are why they are shaped that way,
+      and INC-0007 is the earlier incident about a node whose clock was wrong
+  evaluator: pytest_evaluator
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - a leader lease is judged only by the node's own clock; nothing about an incoming message may extend, reset or replace it
+    - a peer whose pre-votes are refused by the lease and whose proposed term keeps rising inside one lease window is quarantined for a bounded time, and the quarantine is visible in the trace with the reason quarantined
+    - quarantine is per peer and expires; it is not a permanent ban and it must not affect peers that never misbehaved
+    - a pre-vote never changes persistent state, and a quarantine must not change that
+    - a legitimate election after a partition still completes, so the twelve reference digests and the repository suite stay green
+    - do not add third-party dependencies
+  notes: >-
+    There is no mutation: the shipped simulator is the base state, and it fails
+    the hidden tests because it has no quarantine at all — a peer can repeat the
+    same refused pre-vote forever. The fix is a hardening change that has to be
+    narrow enough not to touch honest traffic.

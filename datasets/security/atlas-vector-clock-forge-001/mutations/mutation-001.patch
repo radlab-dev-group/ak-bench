@@ -1,0 +1,12 @@
+diff --git a/src/atlas/fencing.py b/src/atlas/fencing.py
+index 68cab81..ff97d9e 100644
+--- a/src/atlas/fencing.py
++++ b/src/atlas/fencing.py
+@@ -106,6 +106,6 @@ class FenceBook:
+         """
+ 
+         previous = self.leases.get(key)
+-        if previous is not None and generation <= previous.generation:
++        if previous is not None and generation < previous.generation:
+             raise StaleGenerationError(key, previous.generation, generation)
+         return self.grant(key, holder, generation)
