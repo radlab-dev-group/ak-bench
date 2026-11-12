@@ -1,0 +1,80 @@
+{
+  "review": "PR-742 Merkle anti-entropy",
+  "defects": [
+    {
+      "id": "bucket-boundary-is-counted-twice",
+      "summary": "Buckets are contiguous chunks whose high edge is inclusive (Bucket.high/overlaps) while the rest of the module treats a range as [low, high); a key at a boundary is compared by two buckets and the ranges are not the ranges range_digest uses.",
+      "groups": [
+        [
+          "boundary",
+          "inclusive",
+          "off-by-one",
+          "off by one",
+          "double",
+          "twice",
+          "overlaps",
+          "high"
+        ],
+        [
+          "bucket",
+          "range",
+          "bound"
+        ]
+      ]
+    },
+    {
+      "id": "walk-reads-the-live-store",
+      "summary": "MerkleTree.build takes the key order once and then reads store.state.records per bucket while the shard keeps accepting writes, so the tree is built over a torn view (and a deleted key raises KeyError); a digest walk needs a snapshot.",
+      "groups": [
+        [
+          "snapshot",
+          "consistent",
+          "torn",
+          "race",
+          "concurrent",
+          "changes under",
+          "changed under",
+          "KeyError",
+          "live",
+          "not atomic"
+        ],
+        [
+          "write",
+          "record",
+          "read",
+          "store",
+          "memtable",
+          "walk",
+          "digest"
+        ]
+      ]
+    },
+    {
+      "id": "tie-broken-by-scan-order",
+      "summary": "differing() resolves equal generations with right[0] >= left[0], adopting the scanned-second replica; the rule is the version vector and, for concurrent versions, the greatest writer identifier, so the loser of the tie can be written forward.",
+      "groups": [
+        [
+          ">=",
+          "scan order",
+          "second",
+          "arbitrary",
+          "tie",
+          "equal generation",
+          "same generation",
+          "order the two trees"
+        ],
+        [
+          "vector",
+          "tie-break",
+          "winner",
+          "generation",
+          "concurrent",
+          "dominates",
+          "writer"
+        ]
+      ]
+    }
+  ],
+  "reference_pattern": "(readme[^\\n]{0,12}rule\\s*[0-9]|spec(\\.md)?\\s*§?\\s*[0-9]|adr-?0[0-9]{3}|inc-?[0-9]{3,4}|rule\\s*[0-9])",
+  "reference_hint": "a README rule, a SPEC section, an ADR or an incident note"
+}

@@ -1,0 +1,77 @@
+{
+  "review": "PR-118 joint consensus",
+  "defects": [
+    {
+      "id": "either-side-majority",
+      "summary": "JointConfiguration.has_majority accepts a majority of either side instead of a majority of both old and new, which lets two disjoint majorities decide (SPEC 7.2).",
+      "groups": [
+        [
+          "either",
+          "disjoint",
+          "one side",
+          "one of the two",
+          "only one",
+          "instead of both",
+          "rather than both",
+          "any majority",
+          "one majority",
+          "single majority"
+        ],
+        [
+          "majority",
+          "quorum"
+        ]
+      ]
+    },
+    {
+      "id": "drops-old-configuration-early",
+      "summary": "configuration_in_force returns C_new as soon as the joint entry commits, before the final entry is appended and committed, so the old majority stops counting (SPEC 7.4).",
+      "groups": [
+        [
+          "final entry",
+          "final",
+          "c_new",
+          "new configuration",
+          "single configuration",
+          "old configuration",
+          "old majority",
+          "joint phase"
+        ],
+        [
+          "commit",
+          "committed",
+          "transition",
+          "switch",
+          "drop",
+          "abandon",
+          "back to",
+          "reverts"
+        ]
+      ]
+    },
+    {
+      "id": "leader-steps-down-too-early",
+      "summary": "A leader removed by the change steps down once the joint entry commits instead of immediately after the final entry, leaving no one obliged to finish the change (SPEC 7.5).",
+      "groups": [
+        [
+          "step down",
+          "steps down",
+          "step-down",
+          "leadership",
+          "resign",
+          "abdicate"
+        ],
+        [
+          "final",
+          "joint",
+          "before",
+          "early",
+          "too soon",
+          "commit"
+        ]
+      ]
+    }
+  ],
+  "reference_pattern": "(spec\\.?\\s*(md)?\\s*§?\\s*7|spec 7|adr-?0007|adr 7|membership_split)",
+  "reference_hint": "SPEC.md section 7.x, ADR-0007 or the membership_split invariant"
+}
