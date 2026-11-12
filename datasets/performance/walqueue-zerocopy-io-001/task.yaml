@@ -1,0 +1,45 @@
+schema_version: "1.0"
+id: walqueue-zerocopy-io-001
+version: "1.0.0"
+created_at: "2026-11-12T09:00:00+01:00"
+title: Make the write path linear without weakening a byte of durability
+description: >-
+  Every put, reserve, ack and release clones the entire queue state to validate
+  a transaction that almost always succeeds, re-serialises the commands through
+  canonical JSON, reopens the segment, and then fsyncs one frame. A thousand
+  tasks turns that into a quadratic. Make the write path fast and keep the
+  durability contract of ADR-0004: a call that returned is a call that survived
+  a crash at any of the hook points.
+authors:
+  - "[agy] gemini-3.8-flash"
+task:
+  category: performance
+  difficulty: expert
+  repository:
+    source: datasets/_sources/walqueue
+    ref: HEAD
+    notes: >-
+      standard-library-only durable queue seed; the crash-injection hook points
+      are named in src/walqueue/journal.py and docs/adr/ADR-0004 states what a
+      sync owes the caller
+  evaluator:
+    - pytest_evaluator
+    - command_evaluator
+  evaluator_inputs:
+    command_evaluator:
+      command: ["-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"]
+  hidden_tests: hidden_tests
+  public_tests: public_tests
+  timeout_seconds: 10800
+  constraints:
+    - the on-disk frame format is unchanged (length prefix, canonical JSON payload, SHA-256 digest); a store written by the base commit opens after the change
+    - a transaction that returned is durable; no fsync may be skipped, deferred past a successful return, or replaced by a buffer
+    - the crash-injection hook names in journal.py and snapshot.py keep firing at the same points
+    - the repository suite under tests/ stays green and is not modified
+    - do not add third-party dependencies, threads, timers or background processes
+  notes: >-
+    The hidden harness times the workspace against a pristine copy of the seed
+    kept inside the task, measured the same way, so the target is a ratio rather
+    than a wall-clock number; the same harness then runs a crash matrix at every
+    hook point, which is the half of the task that stops fsync from being
+    optimised away.
