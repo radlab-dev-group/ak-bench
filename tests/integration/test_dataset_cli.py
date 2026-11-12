@@ -44,7 +44,7 @@ def test_dataset_list_json_shape(project: Path) -> None:
     result = runner.invoke(app, ["dataset", "list", "--json"])
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
-    assert payload["count"] == 85
+    assert payload["count"] == 99
     assert {task["id"] for task in payload["tasks"]} == {
         "wordcount-001",
         "bookshop-tiers-001",
@@ -131,6 +131,20 @@ def test_dataset_list_json_shape(project: Path) -> None:
         "inventory-repository-001",
         "plugcore-registry-001",
         "shopcore-layered-001",
+        "atlas-pluggable-storage-engine-001",
+        "tidewater-actor-runtime-decoupling-001",
+        "tidewater-joint-consensus-pr-review-001",
+        "atlas-antientropy-merkle-pr-review-001",
+        "tidewater-postmortem-trace-triangulation-001",
+        "walqueue-silent-corruption-triage-001",
+        "tidewater-eventloop-throughput-001",
+        "walqueue-zerocopy-io-001",
+        "tidewater-state-machine-pattern-001",
+        "depweaver-sat-engine-modularization-001",
+        "atlas-vector-clock-forge-001",
+        "tidewater-byzantine-timing-oracle-001",
+        "tidewater-chaos-schedule-synthesis-001",
+        "atlas-property-based-fencing-suite-001",
     }
     assert {task["category"] for task in payload["tasks"]} == {
         "bug_fix",
@@ -161,7 +175,7 @@ def test_dataset_validate_reports_ok(project: Path) -> None:
     assert result.exit_code == 0, result.output
     payload = _payload(result.output)
     assert payload["ok"] is True
-    assert payload["tasks"] == 85
+    assert payload["tasks"] == 99
 
 
 def test_dataset_validate_fails_on_broken_task(project: Path) -> None:
