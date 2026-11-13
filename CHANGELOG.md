@@ -8,9 +8,87 @@ release tagged as `v<version>`.
 
 | Version | Changelog                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 |---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 0.1.3   | **Changed:** the `code_review` tasks grade the `path:line` citation on the flawed code, not a keyword count; the `testing` tasks run three times — as it is, reformatted, and with one behaviour changed — so a suite that hashes its sources cannot pass; cadence's plan order (dependency depth) and ledgerlite's `open_candidates` order are pinned in the statements and seeds; `fib-memo-001` also checks `fib(400)` in a subprocess with a deadline, so a table of values cannot hide; the mutation notes say which state the agent is given. **Added:** `scripts/update_dataset_readme.py` makes `datasets/README.md` a projection of the descriptors (it had drifted to 77 of 99 tasks, and one `task_ids` block parsed as a nonexistent task), pinned by `datasets/task-codes.json` and `tests/unit/test_dataset_readme.py`; `docs/TASK_FORMAT.md` says what a `code_review` task has to check and what `public_tests` are. **Fixed:** the select-then-insert race in run recording, settled with a savepoint so two concurrent runs of one experiment do not lose one to a UNIQUE violation; the runtime CLI test supplies the API key its descriptor declares required. |
 | 0.1.2   | **Changed:** `task.evaluator` accepts a list of ids with per-evaluator `evaluator_inputs`, composed verdicts and per-evaluator rows in storage (migration 0011), and the default database is SQLite. **Added:** the memory suite — thirteen expert tasks over four seeds (`atlas`, `tidewater`, `depweaver`, `walqueue`) built for one question: does a model that remembers do something a model that does not cannot? A learning task with antagonistic defect pairs plus exact-, related- and negative-transfer twins per seed; the new `tidewater` seed, a standard-library-only deterministic Raft-lite simulator with its own `SPEC.md`, ADRs, incident notes and trace-regeneration runbook; two new-feature pairs whose features are only finished once the repository's own generate/lock/digest procedure has been run; `configs/experiments/knowledge-replay-memory-suite.yaml` with the plugin mechanisms switched on per arm and a `knowledge_escalation_enabled` dimension for the ablation; isolated reference solutions under `tests/fixtures/` and an integrity suite per family; the fourteen AGY tasks — two in each of the seven roadmap categories (`debugging`, `security`, `refactoring`, `testing`, `code_review`, `performance`, `architecture`) over the same four seeds, the incident documentation their reasoning draws on, and the PRs their reviews judge. **Fixed:** a stray backtick in the atlas seed's package init that made every atlas mutation verification report an error, and the atlas memory experiment's arm and run-count assertions in the planner tests. |
 | 0.1.1   | **Security:** dashboard authentication and roles, protected task answers and artifacts, hardened PostgreSQL configuration, response headers and input validation. **Added:** model verification indicators, themes, keyboard navigation, run export, tool-call metrics, task downloads and score charts, recorded task files and descriptors, agent and runtime pages. **Changed:** configuration labels, sortable tables, code and YAML viewers, PostgreSQL as the default database, automatic `.env` loading and SQLite-to-PostgreSQL migration. **Datasets:** the atlas sharded-store family — five `expert` tasks over one standard-library fixture (a five-module learning task, three single-defect twins in other modules, one new-feature task from a declared stub), a memory-replay experiment over six model × knowledge configurations with a no-memory baseline, and the knowledge scope pin that lets a replay read what its learning run wrote (an off arm is a process without the plugin). **UI:** model comparison on the dashboard — a Pareto chart and a paired base-vs-memory comparison with a delta heatmap, Wilson confidence intervals and low-sample marking on the model charts — and a full-page loading spinner.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 0.1.0   | **Added:** the first release: the whole of AK-Bench, from the initial commit to now. A `typer` CLI (`akbench init/doctor/config`, experiments, datasets, runs, reports and exports); YAML/ENV configuration with an environment allowlist where secrets stay opaque (presence only, `src/akbench/config/`); a descriptor system with eight kinds — agents, runtimes, plugins, dimensions, models, categories, evaluators, metrics — versioned, digest-pinned and registered (`src/akbench/descriptors/`, `docs/DESCRIPTOR_SYSTEM.md`); tasks, datasets, repeatable workspaces, mutation verification and hidden tests (`src/akbench/datasets/`, `docs/DATASETS.md`); an agent-adapter framework with a Codex CLI adapter and capability gating (`src/akbench/agents/`, `docs/AGENT_ADAPTERS.md`); a runtime manager with direct/runtime/router execution, managed self-starting LLM Router instances with per-run port ownership and the instance log kept as a run artifact, plus model verification from that log (`src/akbench/runtime/`, `docs/RUNTIME_MANAGER.md`); a pytest/command evaluator engine with verdicts and hidden-test isolation (`src/akbench/evaluators/`, `docs/EVALUATORS.md`); a run orchestrator with a lifecycle state machine, isolation, retries and run records (`src/akbench/orchestration/`, `docs/RUN_ORCHESTRATOR.md`); an experiment descriptor and planner with matrix strategies, validation that refuses unmeasurable plans, factor routing by dimension source and environment bound to a combination (`src/akbench/experiments/`, `docs/EXPERIMENTS.md`); plugin observability — a run reports only the plugins it configured, with verification statuses (`src/akbench/plugins/`, `docs/PLUGINS.md`); knowledge replay for memory experiments (`docs/KNOWLEDGE_REPLAY.md`); SQLite storage, artifacts, a reproducibility manifest with digests, aggregates and baseline deltas (`src/akbench/storage/`, `src/akbench/metrics/`); a static HTML report — dashboard with a configuration ranking pooled across experiments, experiment/task/agent/runtime/plugin/model pages, a "Not verified" table and an in-report `docs/` subpage (`src/akbench/reporting/`, `docs/REPORTING.md`); JSON/CSV/HTML export with secret screening (`src/akbench/export/`, `docs/EXPORT.md`); shipped descriptors and eight experiment configs under `descriptors/` and `configs/experiments/`. |
+
+## [0.1.3] - 2026-11-13
+
+### Changed
+
+- **The `code_review` tasks grade the citation, not the keyword.** A review
+  that repeated "race", "thread" and "lock" a hundred times passed the old
+  keyword check, so each `review-*` hidden test now resolves the review's
+  `path:line` citations against the repository and requires the citation to
+  land on the flawed code: inside the function that holds the defect, on the
+  exact line for a module-level flaw, or on the file to change for a finding
+  about an absence (a missing test, stale docs). The number of distinct
+  citations is capped a few times above the number of seeded issues, so a
+  review that cites the whole tree is caught as spray. The task statements
+  say so, and the reference reviews carry the citations their tests grade.
+- **The `testing` tasks run three times instead of two.** A suite that hashes
+  its sources, or compares them with a snapshot, passes both runs the old
+  harness made; it cannot pass a run where only comments and blank lines
+  change. Each testing task's harness now runs the suite as it is, reformatted,
+  and with one behaviour changed, and its statement says the suite must be at
+  least three tests of behaviour, with no imports of `hashlib`, `inspect`,
+  `filecmp`, `difflib`, `dis` or `marshal` and no reads of `src/`.
+- **Two `new_feature` statements pin what they used to leave open.** Cadence's
+  plan is ordered by dependency depth within a logical time, not
+  alphabetically among the tasks that happen to be ready, and the seed's
+  docstring says exactly what depth means, with the example that settles it.
+  Ledgerlite's `open_candidates` are ordered by the entry's booking time, ties
+  on the entry id, and an unclaimed candidate in a currency the statement never
+  mentions still leaves its entry open.
+- **`fib-memo-001` asks for a value no small table holds.** Counting calls
+  with `sys.setprofile` passed a table of precomputed values, so the hidden
+  tests now also check `fib(400)` in a subprocess with a deadline: a table
+  cannot answer it, and the plain recursion cannot finish in time, which the
+  subprocess turns into a bounded failure instead of an evaluation that never
+  returns.
+- **The mutation task notes say which state the agent is given.** They read
+  "the base state fails the hidden tests by design", which reads as the pinned
+  base commit and contradicts the mutation's `verified` status. They now say
+  the state the agent is given — the mutated build — is the one that fails,
+  and the pinned base commit is the one the mutation is applied to and that
+  passes, which is what `akbench dataset validate --verify-mutations` reports.
+
+### Added
+
+- **`datasets/README.md` is a projection of the descriptors.** It was
+  maintained by hand and drifted: it listed 77 of 99 tasks, and one multiline
+  `task_ids` block had lost a newline, so an experiment that pasted it
+  benchmarked a smaller dataset than it claimed, silently.
+  `scripts/update_dataset_readme.py` now reads the descriptors and rewrites the
+  table and every `task_ids` block, keeping the prose; run it with `--check`
+  to fail on a dataset that grew without the index.
+- **`datasets/task-codes.json`** pins every code ever issued: a task keeps its
+  code, and a new one takes the next free number in its category.
+- **`tests/unit/test_dataset_readme.py`** fails when `datasets/README.md` is
+  not exactly what the generator would write today, when the table and the
+  tasks on disk disagree, or when a `task_ids` block names a task that does not
+  exist.
+- **`docs/TASK_FORMAT.md`** says what a `code_review` task has to check (the
+  convention above, and why a keyword search is not enough for a review, which
+  is prose), and what `public_tests` are: a second set of evaluator-side
+  checks, never copied into a workspace — the runner has never made them
+  visible to the agent, and the page now says that instead of the opposite.
+
+### Fixed
+
+- **The select-then-insert race in run recording.** Two runs of one
+  experiment record the same identities — the same task, repository and agent
+  version — at the same moment when `concurrency` is above one, and the
+  database settles the race by refusing one insert with a UNIQUE violation in
+  the middle of a recorded run. Every `record_*` path now goes through
+  `_first_row`, which runs the insert inside a savepoint and turns a lost race
+  into a select of the winner's row instead of an exception thrown out of the
+  run.
+- **The runtime CLI test no longer depends on a developer's environment.**
+  The descriptor declares `LLM_ROUTER_API_KEY` as required, so the fixture now
+  supplies it: a suite that passed only on a machine with the variable
+  exported was not testing the environment check, it was depending on it.
 
 ## [0.1.2] - 2026-11-12
 
