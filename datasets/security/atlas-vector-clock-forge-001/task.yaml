@@ -43,7 +43,10 @@ task:
     - public signatures in atlas.fencing (grant, lease, release, check_write, advance_lease) are unchanged
     - do not add third-party dependencies
   notes: >-
-    The base state fails the hidden tests by design: the shipped fence lets a
-    worker take a lease at the generation another worker already holds, which is
-    the INC-1204 regression, and no test in the repository suite replays that
-    take-over.
+    The state the agent is given fails the hidden tests by design: the mutation
+    plants the INC-1204 regression, so the fence lets a worker take a lease at
+    the generation another worker already holds, and no test in the repository
+    suite replays that take-over. The pinned base commit passes the hidden tests,
+    which is what `akbench dataset validate --verify-mutations` reports as
+    `verified`: "base state" above means the workspace the agent starts from,
+    not the commit the mutation is applied to.

@@ -40,6 +40,8 @@ task:
     - preserve the public API of tidewater.clock.NodeClock (set_skew, tick, now)
     - do not add third-party dependencies
   notes: >-
-    The base state fails the hidden tests by design: the defect is in the base
-    code, the captured incident trace is the only evidence pointing at it, and
-    the repository suite never skews a node's clock by an offset.
+    The state the agent is given fails the hidden tests by design: the mutation
+    introduces the defect, the captured incident trace is the only evidence
+    pointing at it, and the repository suite never skews a node's clock by an
+    offset. The pinned base commit passes the hidden tests, which is what
+    `akbench dataset validate --verify-mutations` reports as `verified`.
