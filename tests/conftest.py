@@ -59,3 +59,10 @@ def empty_environ(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, str]]:
             monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("AKBENCH_DB_BACKEND", "sqlite")
     return dict(os.environ)
+
+
+#: The reference-solution trees shipped under ``tests/fixtures/`` carry their own
+#: ``tests/`` directories (a fixture's suite, verbatim). They are data for the
+#: integration tests, not part of this project's suite: collecting them makes
+#: pytest import their ``conftest`` and fail before a single test runs.
+collect_ignore_glob = ["fixtures/*/*/tests/*"]
