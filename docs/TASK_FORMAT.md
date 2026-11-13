@@ -14,7 +14,7 @@ datasets/
     <task-id>/
       task.yaml           # the Task Descriptor (required)
       description.md      # the statement given to the agent
-      public_tests/       # optional, visible to the agent
+      public_tests/       # optional, run for a verdict; never copied into a workspace
       hidden_tests/       # run by the evaluator only, never in an agent workspace
       mutations/          # versioned defect (required for bug_fix)
         mutation-001.patch
@@ -133,6 +133,16 @@ security boundary, not a convenience: the hidden tests never enter an agent
 workspace and are copied into the evaluation sandbox only for the duration of
 one evaluation (`docs/ISOLATION_AND_SECURITY.md`).
 
+`public_tests` is a second set of *evaluator-side* checks, not a file the agent
+receives. The workspace manager copies the repository, and the prompt is
+`description.md`; nothing copies `public_tests/` into a workspace. What makes a
+public test public is that it is inspectable — it says what "correct" means
+without giving away the hidden cases — and that a reader can run it against a
+candidate without the evaluator. An earlier version of this page called them
+"visible to the agent", which the runner has never done; a task that wanted the
+agent to see its checks would need the runner change that goes with it, not a
+change to this field.
+
 ### `task.setup`, `task.timeout_seconds`, `task.constraints`, `task.notes`
 
 - `setup` — a list of shell commands the task may declare to run in the
@@ -168,6 +178,28 @@ run is a different task, not a reinterpretation.
    by path and never embeds them; the workspace manager copies the repository,
    not the task directory, and the evaluator is the only component that reads
    the hidden tests.
+
+## What a `code_review` task has to check
+
+A review is prose, so its hidden tests are the one place where a keyword search
+is tempting and insufficient: a file that repeats "race", "thread" and "lock"
+200 times is not a review, and the first version of the `review-*` tests
+accepted exactly that. The convention those tasks follow now, and that a new
+one should follow, is that an issue is found when the review both **says** what
+is wrong in its own words and **cites** it as `path:line`, where the citation
+lands on the code that is wrong:
+
+- the citation is resolved against the repository (`src/pkg/mod.py:12`, or the
+  bare `mod.py:12` when that is unambiguous);
+- it has to land inside the function that holds the flaw, or on the exact line
+  when the flaw is module-level (`API_KEY = ...`);
+- a finding about an absence — a missing test, stale docs — cites the file to
+  change, because there is no wrong line to point at;
+- the number of distinct citations is capped a few times above the number of
+  seeded issues, so citing every line of the repository does not help.
+
+The task statement says this, because a gate the statement does not mention is
+a gate an agent can only pass by guessing.
 
 ## What a task is not
 
