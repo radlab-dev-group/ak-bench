@@ -19,7 +19,9 @@ the evaluation measures against it.
 - A dependency that cannot be satisfied is a **skip with a reason**, not a
   silent omission, and a skip blocks what waits on it.
 - The plan comes back in an order the scheduler could execute top-down: oldest
-  first, and a waiting task never before the task it waits for.
+  logical time first, then by dependency depth within that time, ties on the
+  task name. The docstring says exactly what depth means; it is not
+  alphabetical order among the tasks that happen to be ready.
 
 ## Boundaries
 

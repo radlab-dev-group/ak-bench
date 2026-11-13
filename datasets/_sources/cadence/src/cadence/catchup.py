@@ -48,8 +48,21 @@ When an occurrence cannot be planned yet
     and each of those carries the same kind of reason.
 
 Ordering
-    Oldest logical time first; within one logical time, a task that waits for
-    another comes after it; remaining ties break on the task name. A plan is
+    Oldest logical time first. Within one logical time the plan is ordered by
+    **dependency depth**, then by name:
+
+    * a task whose waits at that time are all met from ``history`` — nothing
+      left for this plan to place — is at depth 0;
+    * any other task is at depth one more than the deepest task it waits for at
+      that time, counting both ``depends_on`` and its own previous occurrence in
+      the window;
+    * tasks at the same depth are ordered by name.
+
+    The depth is the whole rule, and it is deliberately not "whichever ready
+    task comes first alphabetically": with tasks ``root``, ``middle`` and
+    ``leaf`` chained and an unrelated ``solo``, the plan at one logical time is
+    ``root, solo, middle, leaf`` — ``middle`` is deeper than ``solo`` even
+    though its name sorts first among the tasks still waiting. A plan is
     therefore a valid topological order of the window, and applying it top-down
     never starts a run whose dependency is not already satisfied.
 

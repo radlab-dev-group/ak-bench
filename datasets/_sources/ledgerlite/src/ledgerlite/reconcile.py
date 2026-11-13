@@ -52,7 +52,10 @@ What comes back
     lines no pass could place, in the same order the lines were considered.
     ``open_candidates`` lists the ids of entries that carry an unclaimed
     candidate — an entry whose every candidate was claimed is not listed, even
-    if it has postings to other accounts.
+    if it has postings to other accounts. The list is ordered by the entry's
+    booking time, oldest first, and equal bookings break on the entry id; the
+    currency of the candidate does not filter it out, so an unclaimed candidate
+    in a currency the statement never mentions still leaves its entry open.
 
     ``difference_cents`` is what the statement says that the journal has not
     accounted for: the sum of the amounts of ``unmatched_lines``. An empty

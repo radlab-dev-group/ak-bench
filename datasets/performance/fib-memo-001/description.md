@@ -16,6 +16,10 @@ The repository's own test suite pins the values and must stay green.
   every `n`, and refuses negative `n` the same way.
 - Computing a large value (say `fib(30)`) calls the recursive
   function only a handful of times, not millions.
+- The answer comes from the recurrence, not from a table of values.
+  `fib(400)` is checked too: a memo computes it in milliseconds, a
+  precomputed list of a few hundred numbers does not have it, and the
+  plain recursion never finishes.
 
 ## Boundaries
 
