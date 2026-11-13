@@ -17,7 +17,8 @@ evaluation measures against it.
   window does not apply.
 - Lines are always considered oldest first; among candidates the closer, then
   earlier, then smaller-id booking wins.
-- `open_candidates` are entries that still carry an unclaimed candidate;
+- `open_candidates` are entries that still carry an unclaimed candidate,
+  oldest booking first and ties on the entry id;
   `difference_cents` is the sum of the amounts the statement could not place.
 
 ## Boundaries

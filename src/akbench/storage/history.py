@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from akbench.core.time import utc_now
@@ -70,6 +71,35 @@ def _dump(payload: Any | None) -> str | None:
     if payload is None:
         return None
     return json.dumps(payload, ensure_ascii=False, default=str, sort_keys=True)
+
+
+def _first_row(session: Session, model: Any, match: Any, create: Any) -> Any:
+    """The row matching ``match``, inserted when it does not exist yet.
+
+    Two runs of one experiment record the same identities — the same task, the
+    same repository, the same agent version — and with ``concurrency: 2`` they
+    record them at the same moment. The select-then-insert that suffices for a
+    single run is then a race the database settles by refusing one of the two
+    inserts with a UNIQUE violation: correct at the storage level, wrong for
+    the caller, whose row does exist. The insert therefore runs inside a
+    savepoint, and a lost race becomes a select of the winner's row instead of
+    an exception thrown out of the middle of a recorded run.
+    """
+    criteria = match if isinstance(match, tuple) else (match,)
+    row = session.scalar(select(model).where(*criteria))
+    if row is not None:
+        return row
+    try:
+        with session.begin_nested():
+            row = create()
+            session.add(row)
+            session.flush()
+        return row
+    except IntegrityError:
+        row = session.scalar(select(model).where(*criteria))
+        if row is None:  # pragma: no cover - the violation had another cause
+            raise
+        return row
 
 
 def _load(text_value: str | None) -> Any | None:
@@ -856,43 +886,46 @@ class HistoryStore:
     # ------------------------------------------------------------ internals
 
     def _record_benchmark(self, session: Session, uid: str) -> None:
-        benchmark = session.scalar(select(Benchmark).where(Benchmark.uid == uid))
-        if benchmark is None:
-            session.add(
-                Benchmark(
-                    uid=uid,
-                    name=uid,
-                    created_at=utc_now(),
-                    updated_at=utc_now(),
-                )
-            )
+        _first_row(
+            session,
+            Benchmark,
+            Benchmark.uid == uid,
+            lambda: Benchmark(
+                uid=uid,
+                name=uid,
+                created_at=utc_now(),
+                updated_at=utc_now(),
+            ),
+        )
 
     def _record_experiment(self, session: Session, uid: str) -> None:
-        if session.scalar(select(Experiment).where(Experiment.uid == uid)) is None:
-            session.add(Experiment(uid=uid, created_at=utc_now(), updated_at=utc_now()))
-            session.flush()
+        _first_row(
+            session,
+            Experiment,
+            Experiment.uid == uid,
+            lambda: Experiment(uid=uid, created_at=utc_now(), updated_at=utc_now()),
+        )
 
     def _record_task(self, session: Session, loaded: Any) -> None:
         now = utc_now()
         repository_uid: str | None = None
         repository = getattr(loaded.task.task.repository, "source", None)
         if repository:
-            repo_row = session.scalar(
-                select(Repository).where(Repository.source == repository)
-            )
-            if repo_row is None:
-                repo_row = Repository(
+            repo_row = _first_row(
+                session,
+                Repository,
+                Repository.source == repository,
+                lambda: Repository(
                     uid=f"repo-{hashlib.sha256(repository.encode()).hexdigest()[:16]}",
                     source=repository,
                     default_ref=getattr(loaded.task.task.repository, "ref", None),
                     created_at=now,
                     updated_at=now,
-                )
-                session.add(repo_row)
-                session.flush()
+                ),
+            )
             repository_uid = repo_row.uid
 
-        task_row = session.scalar(select(Task).where(Task.uid == loaded.uid))
+        task_row: Task | None = session.scalar(select(Task).where(Task.uid == loaded.uid))
         task_created_at = getattr(loaded.task, "created_at", None)
         if isinstance(task_created_at, str):
             task_created_at = _parse_time(task_created_at)
@@ -909,25 +942,29 @@ class HistoryStore:
         task_yaml, description_md = _task_texts(loaded)
 
         if task_row is None:
-            task_row = Task(
-                uid=loaded.uid,
-                task_id=str(loaded.task.id),
-                version=str(loaded.task.version),
-                title=title,
-                category=str(loaded.task.category),
-                difficulty=str(loaded.task.difficulty),
-                evaluator=str(loaded.task.evaluator),
-                evaluators=_dump(list(self._evaluators_of(loaded.task))),
-                snapshot_digest=str(loaded.digest),
-                task_created_at=task_created_at,
-                authors_json=authors_json,
-                description=description,
-                task_yaml=task_yaml,
-                description_md=description_md,
-                created_at=now,
-                updated_at=now,
+            task_row = _first_row(
+                session,
+                Task,
+                Task.uid == loaded.uid,
+                lambda: Task(
+                    uid=loaded.uid,
+                    task_id=str(loaded.task.id),
+                    version=str(loaded.task.version),
+                    title=title,
+                    category=str(loaded.task.category),
+                    difficulty=str(loaded.task.difficulty),
+                    evaluator=str(loaded.task.evaluator),
+                    evaluators=_dump(list(self._evaluators_of(loaded.task))),
+                    snapshot_digest=str(loaded.digest),
+                    task_created_at=task_created_at,
+                    authors_json=authors_json,
+                    description=description,
+                    task_yaml=task_yaml,
+                    description_md=description_md,
+                    created_at=now,
+                    updated_at=now,
+                ),
             )
-            session.add(task_row)
         else:
             if task_created_at is not None:
                 task_row.task_created_at = task_created_at
@@ -1035,26 +1072,29 @@ class HistoryStore:
         description = stated("description")
         document = stated("descriptor_yaml")
 
-        row = session.scalar(
-            select(model).where(
-                getattr(model, f"{kind}_id") == str(identifier),
-                model.version == version,
-            )
+        match = (
+            getattr(model, f"{kind}_id") == str(identifier),
+            model.version == version,
         )
         now = utc_now()
+        row = session.scalar(select(model).where(*match))
         if row is None:
-            row = model(
-                **{
-                    f"{kind}_id": str(identifier),
-                    "version": version,
-                    "title": title,
-                    "description": description,
-                    f"{kind}_yaml": document,
-                    "created_at": now,
-                    "updated_at": now,
-                }
+            row = _first_row(
+                session,
+                model,
+                match,
+                lambda: model(
+                    **{
+                        f"{kind}_id": str(identifier),
+                        "version": version,
+                        "title": title,
+                        "description": description,
+                        f"{kind}_yaml": document,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ),
             )
-            session.add(row)
         else:
             if title:
                 row.title = title

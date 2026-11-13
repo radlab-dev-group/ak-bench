@@ -44,9 +44,15 @@ the current suite is green with all four in place.
 ## What the harness does
 
 1. Runs your `tests/test_fencing_stateful.py` against the repository unchanged:
-   the exit code has to be 0, with at least one test that actually asserts
-   something (no skips, no `xfail`, no empty module).
-2. Runs it again against a copy with one mutant applied, four times: every run
+   the exit code has to be 0, with at least three test functions that actually
+   assert something (no skips, no `xfail`, no empty module).
+2. Runs it again against a copy of the repository whose sources differ only in
+   comments and blank lines. It has to be green there too: a suite that hashes
+   the sources, or compares them with a snapshot, fails this run, because a
+   comment changed the bytes and not the behaviour. Do not import `hashlib`,
+   `inspect`, `filecmp`, `difflib`, `dis` or `marshal`, and do not read the
+   files under `src/`.
+3. Runs it again against a copy with one mutant applied, four times: every run
    has to fail, and has to fail with a message that says which rule broke.
 
 A suite that fails on the unmodified store scores nothing, however many mutants

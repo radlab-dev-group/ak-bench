@@ -43,7 +43,9 @@ task:
     - preserve the public API of walqueue.Queue and the on-disk frame format (walqueue.codec)
     - do not add third-party dependencies
   notes: >-
-    The base state fails the hidden tests by design: the shipped build silently
-    truncates damaged sealed segments, the repository suite never tears one, and
-    the capture under docs/incidents/captures/INC-0004/ is the only artefact
-    that shows the loss.
+    The state the agent is given fails the hidden tests by design: the mutation
+    makes the build silently truncate damaged sealed segments, the repository
+    suite never tears one, and the capture under docs/incidents/captures/INC-0004/
+    is the only artefact that shows the loss. The pinned base commit passes the
+    hidden tests, which is what `akbench dataset validate --verify-mutations`
+    reports as `verified`.

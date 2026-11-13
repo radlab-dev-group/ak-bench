@@ -80,6 +80,11 @@ def project(
     )
 
     monkeypatch.setenv("AKBENCH_HOME", str(root))
+    # The descriptor declares this credential as required, so a test that runs
+    # the agent must supply one: the stub never sees it, and a suite that
+    # passed only on a developer machine with the variable exported was not
+    # testing the environment check, it was depending on it.
+    monkeypatch.setenv("LLM_ROUTER_API_KEY", "test-key-not-used")
     for name in list(os.environ):
         if name.startswith("AKBENCH__") or name == "AKBENCH_CONFIG":
             monkeypatch.delenv(name, raising=False)
