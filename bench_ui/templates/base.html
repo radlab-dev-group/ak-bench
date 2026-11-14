@@ -17,7 +17,7 @@
       } catch (err) { /* a blocked storage leaves the default, which is dark */ }
     })();
   </script>
-  <link rel="stylesheet" href="/static/css/style.css?v=3">
+  <link rel="stylesheet" href="/static/css/style.css?v=4">
   <!-- Chart.js is served from this origin, not from a CDN. A library this page
        hands its run data is not something a third party should be able to
        substitute, and on a plain-HTTP deployment a man in the middle could do
@@ -55,52 +55,112 @@
         <span>AK-BENCH<span class="slash"> /</span> UI</span>
       </a>
 
-      <nav class="nav-links">
-        <a href="/" class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
-        <a href="/runs" class="{% if active_page == 'runs' %}active{% endif %}">Runs & Filters</a>
-        <a href="/analytics" class="{% if active_page == 'analytics' %}active{% endif %}">Analytics</a>
-        <a href="/failures" class="{% if active_page == 'failures' %}active{% endif %}">Failures</a>
-        <a href="/compare" class="{% if active_page == 'compare' %}active{% endif %}">Comparison Studio</a>
-        <a href="/best-match" class="{% if active_page == 'best-match' %}active{% endif %}">Best Match</a>
-        <a href="/experiments" class="{% if active_page == 'experiments' %}active{% endif %}">Experiments</a>
-        <a href="/tasks" class="{% if active_page == 'tasks' %}active{% endif %}">Tasks</a>
-        <a href="/agents" class="{% if active_page == 'agents' %}active{% endif %}">Agents</a>
-        <a href="/runtimes" class="{% if active_page == 'runtimes' %}active{% endif %}">Runtimes</a>
-        {% if nav_identity and nav_identity.is_admin %}
-        <a href="/admin" class="{% if active_page == 'admin' %}active{% endif %}">Admin</a>
-        {% endif %}
-      </nav>
+      {# The navigation is three kinds of thing, and it is laid out that way:
+         the two pages a reader opens every day stay one click away; the
+         pages that analyse the history and the pages that list what the
+         history is made of each fold into a menu. A group is a label and a
+         list of (key, href, label); `key` is what a route passes as
+         `active_page`, so adding a page is adding one tuple here. #}
+      {% set nav_groups = [
+        ('analysis', 'Analysis', [
+          ('analytics', '/analytics', 'Analytics'),
+          ('failures', '/failures', 'Failures'),
+          ('compare', '/compare', 'Comparison Studio'),
+          ('best-match', '/best-match', 'Best Match'),
+        ]),
+        ('catalog', 'Catalog', [
+          ('experiments', '/experiments', 'Experiments'),
+          ('tasks', '/tasks', 'Tasks'),
+          ('agents', '/agents', 'Agents'),
+          ('runtimes', '/runtimes', 'Runtimes'),
+        ]),
+      ] %}
+
+      <div class="nav-main" data-nav-group>
+        <button type="button" class="nav-burger" data-nav-toggle
+                aria-expanded="false" aria-controls="navLinks" aria-label="Menu">
+          <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+        </button>
+
+        <nav class="nav-links" id="navLinks" aria-label="Main">
+          <a href="/" class="{% if active_page == 'dashboard' %}active{% endif %}"{% if active_page == 'dashboard' %} aria-current="page"{% endif %}>Dashboard</a>
+          <a href="/runs" class="{% if active_page == 'runs' %}active{% endif %}"{% if active_page == 'runs' %} aria-current="page"{% endif %}>Runs</a>
+
+          {% for group_id, group_label, group_items in nav_groups %}
+          {% set current = group_items | selectattr(0, 'equalto', active_page) | first %}
+          <div class="nav-group" data-nav-group>
+            <button type="button" class="nav-group-toggle{% if current %} active{% endif %}" data-nav-toggle
+                    aria-expanded="false" aria-haspopup="true" aria-controls="navMenu-{{ group_id }}">
+              <span>{{ group_label }}</span>
+              {% if current %}<span class="nav-group-current"><span class="slash">/</span> {{ current[2] }}</span>{% endif %}
+              <svg class="nav-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <div class="nav-menu" id="navMenu-{{ group_id }}">
+              {% for key, href, label in group_items %}
+              <a href="{{ href }}" class="{% if active_page == key %}active{% endif %}"{% if active_page == key %} aria-current="page"{% endif %}>{{ label }}</a>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+
+          {% if nav_identity and nav_identity.is_admin %}
+          <a href="/admin" class="{% if active_page == 'admin' %}active{% endif %}"{% if active_page == 'admin' %} aria-current="page"{% endif %}>Admin</a>
+          {% endif %}
+        </nav>
+      </div>
 
       <div class="nav-right">
-        <button id="themeToggle" class="theme-toggle"
-                title="Switch between the dark and the light palette">
-          <span class="theme-toggle-icon" aria-hidden="true">&#9681;</span>
-          <span class="theme-toggle-label">Dark</span>
-        </button>
         <span class="chip chip-live">
           <span class="pulse-dot"></span>
           <span>LIVE DB</span>
         </span>
-        <div style="display:flex; align-items:center; gap:6px;">
-          <label for="refreshInterval" style="font-size:11.5px; color:var(--fg-faint); font-family:var(--mono);">Auto-refresh:</label>
-          <select id="refreshInterval" class="select" style="padding:3px 8px; font-size:11.5px;">
-            <option value="0">Off</option>
-            <option value="5">5s</option>
-            <option value="15">15s</option>
-            <option value="30">30s</option>
-          </select>
+
+        <!-- Everything that is a setting rather than a destination: the
+             palette, the refresh interval, and who is signed in. -->
+        <div class="nav-group nav-group-end" data-nav-group>
+          <button type="button" class="nav-group-toggle nav-account" data-nav-toggle
+                  aria-expanded="false" aria-haspopup="true" aria-controls="navMenu-settings"
+                  title="{% if nav_identity %}signed in as {{ nav_identity.name }} · {{ nav_identity.role }}{% else %}Settings{% endif %}">
+            {% if nav_identity %}
+            <span class="nav-account-name">{{ nav_identity.name }}</span>
+            <span class="nav-account-role">{{ nav_identity.role }}</span>
+            {% else %}
+            <span>Settings</span>
+            {% endif %}
+            <svg class="nav-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+              <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="nav-menu nav-menu-settings" id="navMenu-settings">
+            <div class="nav-menu-row">
+              <span class="nav-menu-label">Theme</span>
+              <button type="button" id="themeToggle" class="theme-toggle"
+                      title="Switch between the dark and the light palette">
+                <span class="theme-toggle-icon" aria-hidden="true">&#9681;</span>
+                <span class="theme-toggle-label">Dark</span>
+              </button>
+            </div>
+            <div class="nav-menu-row">
+              <label class="nav-menu-label" for="refreshInterval">Auto-refresh</label>
+              <select id="refreshInterval" class="select nav-menu-select">
+                <option value="0">Off</option>
+                <option value="5">5s</option>
+                <option value="15">15s</option>
+                <option value="30">30s</option>
+              </select>
+            </div>
+            {% if auth_enabled %}
+            <div class="nav-menu-sep" role="separator"></div>
+            {% if nav_identity %}
+            <a href="/logout" title="Sign out">Sign out</a>
+            {% else %}
+            <a href="/login?next={{ (nav_path or '/') | urlencode }}" title="Sign in to manage the results">Login</a>
+            {% endif %}
+            {% endif %}
+          </div>
         </div>
-        {% if nav_identity %}
-        <span class="chip" title="signed in as {{ nav_identity.name }} · {{ nav_identity.role }}">
-          <span>{{ nav_identity.name }}</span>
-          <span style="color:var(--fg-faint);">{{ nav_identity.role }}</span>
-        </span>
-        {% endif %}
-        {% if nav_identity and auth_enabled %}
-        <a href="/logout" class="btn btn-sm" title="Sign out">Sign out</a>
-        {% elif auth_enabled %}
-        <a href="/login?next={{ (nav_path or '/') | urlencode }}" class="btn btn-sm" title="Sign in to manage the results">Login</a>
-        {% endif %}
       </div>
     </div>
   </header>
@@ -160,7 +220,7 @@
     </div>
   </footer>
 
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=4"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
