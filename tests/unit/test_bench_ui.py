@@ -2059,3 +2059,62 @@ def test_the_admin_page_deletes_agents_and_runtimes_and_keeps_scores(database_ur
 
     missing = client.delete("/api/admin/agents/codex", headers=header)
     assert missing.status_code == 404
+
+
+def test_tests_are_read_from_the_database_when_the_recorded_path_is_elsewhere(
+    database_url: str, tmp_path, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
+    """A history recorded on another machine still names its tests.
+
+    The artifact row carries the report's bytes; the recorded path is only
+    where the file once was. A dashboard that cannot (or may not) open that
+    path reads the row, and does not fill the log with one refusal per run.
+    """
+    import shutil
+
+    store = _seeded_store(database_url)
+    for run_uid in ("run-001", "run-002"):
+        report = tmp_path / "elsewhere" / run_uid
+        report.mkdir(parents=True)
+        (report / "junit.xml").write_text(
+            '<testsuite><testcase name="test_ok"/>'
+            '<testcase name="test_broken"><failure message="boom"/></testcase>'
+            "</testsuite>",
+            encoding="utf-8",
+        )
+        _record_junit_artifact(store, run_uid, report / "junit.xml")
+    # The files are gone and their directory is not one this dashboard reads.
+    shutil.rmtree(tmp_path / "elsewhere")
+    permitted = tmp_path / "permitted"
+    permitted.mkdir()
+    monkeypatch.setenv("AKBENCH_UI_ARTIFACT_ROOTS", str(permitted))
+    monkeypatch.setenv("AKBENCH_UI_ARTIFACT_ROOTS_ONLY", "1")
+
+    client = TestClient(create_app(database_url=database_url))
+    with caplog.at_level("WARNING"):
+        tests = client.get("/api/runs/run-001").json()["tests"]
+        data = client.get("/api/failures/data").json()
+    assert [test["name"] for test in tests] == ["test_ok", "test_broken"]
+    assert "test_broken" in str(data)
+    assert "refused to read an artifact" not in caplog.text
+
+
+def test_a_refused_artifact_path_is_warned_about_once(
+    database_url: str, tmp_path, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
+    """One line with the remedy, not one line per artifact per page load."""
+    from bench_ui.service import BenchDataService
+
+    _seeded_store(database_url)
+    permitted = tmp_path / "permitted"
+    permitted.mkdir()
+    monkeypatch.setenv("AKBENCH_UI_ARTIFACT_ROOTS", str(permitted))
+    monkeypatch.setenv("AKBENCH_UI_ARTIFACT_ROOTS_ONLY", "1")
+    service = BenchDataService(database_url=database_url)
+    with caplog.at_level("WARNING"):
+        for index in range(5):
+            assert service._read_artifact_file(f"/somewhere/else/{index}.xml") is None
+        # Inside a permitted root but deleted: not a refusal at all.
+        assert service._read_artifact_file(str(permitted / "gone.xml")) is None
+    assert caplog.text.count("refused to read an artifact") == 1
+    assert "AKBENCH_UI_ARTIFACT_ROOTS" in caplog.text

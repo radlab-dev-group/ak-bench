@@ -559,3 +559,71 @@ def test_a_database_user_signs_in_with_their_hash_and_signs_out(database_url: st
     viewer = TestClient(app)
     viewer.post("/login", data={"name": "bo", "password": "long-enough-word"})
     assert viewer.get("/admin").status_code == 403
+
+
+# ------------------------------------------- auto auth follows configured users
+def test_auto_auth_turns_on_for_configured_users_even_on_loopback() -> None:
+    """Loopback is also where a reverse proxy points; a user list is a request."""
+    settings = load_security_settings(
+        {"AKBENCH_UI_BIND_HOST": "127.0.0.1", "AKBENCH_UI_USERS": "ops:s3cret-s3cret"}
+    )
+    assert settings.enabled is True
+
+    off = load_security_settings(
+        {
+            "AKBENCH_UI_BIND_HOST": "127.0.0.1",
+            "AKBENCH_UI_USERS": "ops:s3cret-s3cret",
+            "AKBENCH_UI_AUTH": "off",
+        }
+    )
+    assert off.enabled is False
+
+
+def test_a_database_user_makes_a_loopback_dashboard_ask_and_sign_out(
+    database_url: str,
+) -> None:
+    """Sign-in and sign-out work on 127.0.0.1 once somebody has an account.
+
+    Before, ``auto`` looked at the bind address only: the caller was the local
+    admin on every request, ``/login`` bounced back to ``/`` and there was no
+    way to be signed out.
+    """
+    from bench_ui import userstore
+
+    from akbench.storage.db import create_db_engine
+
+    userstore.create_user(
+        create_db_engine(database_url), "ada", "long-enough-word", "admin"
+    )
+    settings = load_security_settings({"AKBENCH_UI_BIND_HOST": "127.0.0.1"})
+    assert settings.enabled is False  # the environment alone says "local"
+    app = create_app(database_url=database_url, security=settings)
+    assert app.state.security.enabled is True
+    client = TestClient(app, follow_redirects=False)
+    html = {"Accept": "text/html"}
+
+    refused = client.get("/admin", headers=html)
+    assert refused.status_code == 303
+    assert refused.headers["location"].startswith("/login")
+    assert client.get("/login", headers=html).status_code == 200
+
+    wrong = client.post("/login", content="name=ada&password=nope&next=/")
+    assert "akbench_session" not in wrong.cookies
+    signed_in = client.post(
+        "/login", content="name=ada&password=long-enough-word&next=/admin"
+    )
+    assert signed_in.status_code == 303
+    assert client.get("/admin", headers=html).status_code == 200
+
+    out = client.get("/logout", headers=html)
+    assert out.headers["location"] == "/login?signed_out=1"
+    assert client.get("/admin", headers=html).status_code == 303
+
+    # An explicit "off" still means off, users or not.
+    open_app = create_app(
+        database_url=database_url,
+        security=load_security_settings(
+            {"AKBENCH_UI_BIND_HOST": "127.0.0.1", "AKBENCH_UI_AUTH": "off"}
+        ),
+    )
+    assert TestClient(open_app).get("/admin", headers=html).status_code == 200
