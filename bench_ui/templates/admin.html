@@ -153,24 +153,28 @@
 
     {% elif tab == 'agents' %}
     <div class="table-responsive">
-      <table class="table-wide">
+      <table>
         <thead><tr>
-          <th>Agent</th><th>Versions</th><th class="num">Runs</th>
-          <th style="text-align:right;">Actions</th>
+          <th>Agent</th><th>Version</th><th>Title</th><th class="num">Runs</th><th>Description</th><th style="text-align:right;">Actions</th>
         </tr></thead>
         <tbody>
           {% for a in agents %}
           <tr>
-            <td>
-              <div class="mono" style="font-weight:600;">{{ a.id }}</div>
-              {% if a.title %}<div style="font-size:12px; color:var(--fg-dim); max-width:320px;">{{ a.title }}</div>{% endif %}
-            </td>
-            <td>{% for v in a.versions %}<span class="badge badge-neutral" style="font-size:11px;">{{ v }}</span> {% endfor %}</td>
+            <td><a href="/agents/{{ a.id }}" class="mono" style="font-weight:600;">{{ a.id }}</a></td>
+            <td class="mono" style="font-size:12px;">{{ a.version }}</td>
+            <td>{{ a.title or "—" }}</td>
             <td class="num mono">{{ a.runs_count }}</td>
-            <td style="text-align:right;">{{ delete_button('agent', a.id, 'Every recorded version of this agent leaves the catalog. Its ' ~ a.runs_count ~ ' run(s) keep their scores and their recorded agent id.') }}</td>
+            <td><div class="task-snippet" title="{{ a.description or '' }}">{{ a.description or "—" }}</div></td>
+            <td style="text-align:right; white-space:nowrap;">
+              <a href="/agents/{{ a.id }}/{{ a.version }}" class="btn btn-sm">View</a>
+              <button type="button" class="btn btn-sm btn-danger admin-delete"
+                      data-endpoint="/api/admin/agents/{{ a.id }}/versions/{{ a.version }}"
+                      data-kind="agent" data-uid="{{ a.uid }}"
+                      data-warning="This version leaves the catalog. Its {{ a.runs_count }} run(s) keep their scores and recorded agent id.">Delete</button>
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="4"><div class="fl-empty">No agent matches.</div></td></tr>
+          <tr><td colspan="6"><div class="fl-empty">No agent matches.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -178,24 +182,28 @@
 
     {% else %}
     <div class="table-responsive">
-      <table class="table-wide">
+      <table>
         <thead><tr>
-          <th>Runtime</th><th>Versions</th><th class="num">Runs</th>
-          <th style="text-align:right;">Actions</th>
+          <th>Runtime</th><th>Version</th><th>Title</th><th class="num">Runs</th><th>Description</th><th style="text-align:right;">Actions</th>
         </tr></thead>
         <tbody>
           {% for r in runtimes %}
           <tr>
-            <td>
-              <div class="mono" style="font-weight:600;">{{ r.id }}</div>
-              {% if r.title %}<div style="font-size:12px; color:var(--fg-dim); max-width:320px;">{{ r.title }}</div>{% endif %}
-            </td>
-            <td>{% for v in r.versions %}<span class="badge badge-neutral" style="font-size:11px;">{{ v }}</span> {% endfor %}</td>
+            <td><a href="/runtimes/{{ r.id }}" class="mono" style="font-weight:600;">{{ r.id }}</a></td>
+            <td class="mono" style="font-size:12px;">{{ r.version }}</td>
+            <td>{{ r.title or "—" }}</td>
             <td class="num mono">{{ r.runs_count }}</td>
-            <td style="text-align:right;">{{ delete_button('runtime', r.id, 'Every recorded version of this runtime leaves the catalog. Its ' ~ r.runs_count ~ ' run(s) keep their scores and their recorded runtime id.') }}</td>
+            <td><div class="task-snippet" title="{{ r.description or '' }}">{{ r.description or "—" }}</div></td>
+            <td style="text-align:right; white-space:nowrap;">
+              <a href="/runtimes/{{ r.id }}/{{ r.version }}" class="btn btn-sm">View</a>
+              <button type="button" class="btn btn-sm btn-danger admin-delete"
+                      data-endpoint="/api/admin/runtimes/{{ r.id }}/versions/{{ r.version }}"
+                      data-kind="runtime" data-uid="{{ r.uid }}"
+                      data-warning="This version leaves the catalog. Its {{ r.runs_count }} run(s) keep their scores and recorded runtime id.">Delete</button>
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="4"><div class="fl-empty">No runtime matches.</div></td></tr>
+          <tr><td colspan="6"><div class="fl-empty">No runtime matches.</div></td></tr>
           {% endfor %}
         </tbody>
       </table>

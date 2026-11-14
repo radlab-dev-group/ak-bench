@@ -2798,6 +2798,40 @@ class BenchDataService:
             "runs_kept": int(runs),
         }
 
+    def admin_delete_agent_version(self, agent_id: str, version: str) -> dict[str, Any]:
+        """One agent version leaves the catalog; the others stay.
+
+        Like :meth:`admin_delete_agent`, runs keep their scores and their
+        recorded ``agent_id`` — a run is evidence of what happened, the
+        catalog is what is shown. This is the per-version twin of the bulk
+        delete, so the admin list can mirror the Agents page (one row per
+        version) and let a concrete ``agent@version`` be removed.
+        """
+        with session_scope(self.engine) as session:
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.agent_id == agent_id)
+                )
+                or 0
+            )
+            result = session.execute(
+                sa_delete(Agent).where(
+                    Agent.agent_id == agent_id, Agent.version == version
+                )
+            )
+            if not result.rowcount:
+                raise KeyError(f"{agent_id}@{version}")
+        self.invalidate_history()
+        return {
+            "deleted": f"{agent_id}@{version}",
+            "kind": "agent",
+            "agent_id": agent_id,
+            "version": version,
+            "runs_kept": int(runs),
+        }
+
     def admin_delete_runtime(self, runtime_id: str) -> dict[str, Any]:
         """One runtime's catalog entries go; its runs stay as they were.
 
@@ -2824,5 +2858,37 @@ class BenchDataService:
             "deleted": runtime_id,
             "kind": "runtime",
             "versions_deleted": versions,
+            "runs_kept": int(runs),
+        }
+
+    def admin_delete_runtime_version(self, runtime_id: str, version: str) -> dict[str, Any]:
+        """One runtime version leaves the catalog; the others stay.
+
+        The per-version twin of :meth:`admin_delete_runtime`, mirroring the
+        Runtimes page (one row per version) so a concrete ``runtime@version``
+        can be removed from the admin.
+        """
+        with session_scope(self.engine) as session:
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.runtime_id == runtime_id)
+                )
+                or 0
+            )
+            result = session.execute(
+                sa_delete(Runtime).where(
+                    Runtime.runtime_id == runtime_id, Runtime.version == version
+                )
+            )
+            if not result.rowcount:
+                raise KeyError(f"{runtime_id}@{version}")
+        self.invalidate_history()
+        return {
+            "deleted": f"{runtime_id}@{version}",
+            "kind": "runtime",
+            "runtime_id": runtime_id,
+            "version": version,
             "runs_kept": int(runs),
         }
