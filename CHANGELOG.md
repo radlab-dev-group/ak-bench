@@ -8,10 +8,139 @@ release tagged as `v<version>`.
 
 | Version | Changelog                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 |---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 0.1.4   | **Added:** sign-in for the dashboard — a login form and a signed session cookie beside the Basic challenge that scripts speak, with a user table in the benchmark database itself (`ui_users`, migration 0012) carrying roles and salted PBKDF2-HMAC-SHA256 password hashes; `scripts/ui-user-add.sh` and `python3 -m bench_ui.userstore` add a user through a password typed at a prompt (never an argument), connecting where the project `.env` says — PostgreSQL for `AKBENCH_PG_*`, `data/akbench.sqlite` when the file is silent, `AKBENCH_UI_DATABASE_URL` above both; an Administration tab for the `admin` role — runs, experiments, tasks, agents and runtimes, as stat cards that double as section tabs, each section with its own search, and deletion behind a confirmation drawn in the page's own language that refuses to proceed until the exact name is retyped; deletion semantics stated per entity before the fact and kept after it (a run goes with its evaluation, artifacts and observations, an experiment takes its runs, a task leaves its runs with their scores and the link cleared, an agent or runtime leaves the catalog and its runs stay as evidence); the Failures tab — failure classes across the history with flaky pairs, rates and examples; a pin toggle for the Controls panel on Analytics and Failures, pinned by default and remembered per tab. **Changed:** signing out reaches the server — the cookie is cleared with every attribute it was set with, and any cookie issued before the sign-out is dead even if a jar kept it and tried to spend it; the navigation says who is signed in and offers "Sign out" only where there is something to sign out of; the Analytics Controls panel stays in view while scrolling. **Fixed:** the Run Inspector no longer opens empty and unclosable on every page — the confirmation dialog had redefined `.modal-overlay`, the inspector's own class, and pinned it visible; session cookies now survive every cookie jar (cookie-safe characters in the value, quoted values unwrapped on the way back). **Security:** the session cookie is HMAC-SHA256-signed with a key derived from the configured users (or `AKBENCH_UI_SESSION_SECRET`), roles are never in the cookie and are re-read on every request so a demotion applies at once; a delete needs the admin role and an `X-Akbench-Admin` header no cross-site form can set; `next` after login cannot leave the site; the login error names neither the name nor the password. |
 | 0.1.3   | **Changed:** the `code_review` tasks grade the `path:line` citation on the flawed code, not a keyword count; the `testing` tasks run three times — as it is, reformatted, and with one behaviour changed — so a suite that hashes its sources cannot pass; cadence's plan order (dependency depth) and ledgerlite's `open_candidates` order are pinned in the statements and seeds; `fib-memo-001` also checks `fib(400)` in a subprocess with a deadline, so a table of values cannot hide; the mutation notes say which state the agent is given. **Added:** `scripts/update_dataset_readme.py` makes `datasets/README.md` a projection of the descriptors (it had drifted to 77 of 99 tasks, and one `task_ids` block parsed as a nonexistent task), pinned by `datasets/task-codes.json` and `tests/unit/test_dataset_readme.py`; `docs/TASK_FORMAT.md` says what a `code_review` task has to check and what `public_tests` are. **Fixed:** the select-then-insert race in run recording, settled with a savepoint so two concurrent runs of one experiment do not lose one to a UNIQUE violation; the runtime CLI test supplies the API key its descriptor declares required. |
 | 0.1.2   | **Changed:** `task.evaluator` accepts a list of ids with per-evaluator `evaluator_inputs`, composed verdicts and per-evaluator rows in storage (migration 0011), and the default database is SQLite. **Added:** the memory suite — thirteen expert tasks over four seeds (`atlas`, `tidewater`, `depweaver`, `walqueue`) built for one question: does a model that remembers do something a model that does not cannot? A learning task with antagonistic defect pairs plus exact-, related- and negative-transfer twins per seed; the new `tidewater` seed, a standard-library-only deterministic Raft-lite simulator with its own `SPEC.md`, ADRs, incident notes and trace-regeneration runbook; two new-feature pairs whose features are only finished once the repository's own generate/lock/digest procedure has been run; `configs/experiments/knowledge-replay-memory-suite.yaml` with the plugin mechanisms switched on per arm and a `knowledge_escalation_enabled` dimension for the ablation; isolated reference solutions under `tests/fixtures/` and an integrity suite per family; the fourteen AGY tasks — two in each of the seven roadmap categories (`debugging`, `security`, `refactoring`, `testing`, `code_review`, `performance`, `architecture`) over the same four seeds, the incident documentation their reasoning draws on, and the PRs their reviews judge. **Fixed:** a stray backtick in the atlas seed's package init that made every atlas mutation verification report an error, and the atlas memory experiment's arm and run-count assertions in the planner tests. |
 | 0.1.1   | **Security:** dashboard authentication and roles, protected task answers and artifacts, hardened PostgreSQL configuration, response headers and input validation. **Added:** model verification indicators, themes, keyboard navigation, run export, tool-call metrics, task downloads and score charts, recorded task files and descriptors, agent and runtime pages. **Changed:** configuration labels, sortable tables, code and YAML viewers, PostgreSQL as the default database, automatic `.env` loading and SQLite-to-PostgreSQL migration. **Datasets:** the atlas sharded-store family — five `expert` tasks over one standard-library fixture (a five-module learning task, three single-defect twins in other modules, one new-feature task from a declared stub), a memory-replay experiment over six model × knowledge configurations with a no-memory baseline, and the knowledge scope pin that lets a replay read what its learning run wrote (an off arm is a process without the plugin). **UI:** model comparison on the dashboard — a Pareto chart and a paired base-vs-memory comparison with a delta heatmap, Wilson confidence intervals and low-sample marking on the model charts — and a full-page loading spinner.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 0.1.0   | **Added:** the first release: the whole of AK-Bench, from the initial commit to now. A `typer` CLI (`akbench init/doctor/config`, experiments, datasets, runs, reports and exports); YAML/ENV configuration with an environment allowlist where secrets stay opaque (presence only, `src/akbench/config/`); a descriptor system with eight kinds — agents, runtimes, plugins, dimensions, models, categories, evaluators, metrics — versioned, digest-pinned and registered (`src/akbench/descriptors/`, `docs/DESCRIPTOR_SYSTEM.md`); tasks, datasets, repeatable workspaces, mutation verification and hidden tests (`src/akbench/datasets/`, `docs/DATASETS.md`); an agent-adapter framework with a Codex CLI adapter and capability gating (`src/akbench/agents/`, `docs/AGENT_ADAPTERS.md`); a runtime manager with direct/runtime/router execution, managed self-starting LLM Router instances with per-run port ownership and the instance log kept as a run artifact, plus model verification from that log (`src/akbench/runtime/`, `docs/RUNTIME_MANAGER.md`); a pytest/command evaluator engine with verdicts and hidden-test isolation (`src/akbench/evaluators/`, `docs/EVALUATORS.md`); a run orchestrator with a lifecycle state machine, isolation, retries and run records (`src/akbench/orchestration/`, `docs/RUN_ORCHESTRATOR.md`); an experiment descriptor and planner with matrix strategies, validation that refuses unmeasurable plans, factor routing by dimension source and environment bound to a combination (`src/akbench/experiments/`, `docs/EXPERIMENTS.md`); plugin observability — a run reports only the plugins it configured, with verification statuses (`src/akbench/plugins/`, `docs/PLUGINS.md`); knowledge replay for memory experiments (`docs/KNOWLEDGE_REPLAY.md`); SQLite storage, artifacts, a reproducibility manifest with digests, aggregates and baseline deltas (`src/akbench/storage/`, `src/akbench/metrics/`); a static HTML report — dashboard with a configuration ranking pooled across experiments, experiment/task/agent/runtime/plugin/model pages, a "Not verified" table and an in-report `docs/` subpage (`src/akbench/reporting/`, `docs/REPORTING.md`); JSON/CSV/HTML export with secret screening (`src/akbench/export/`, `docs/EXPORT.md`); shipped descriptors and eight experiment configs under `descriptors/` and `configs/experiments/`. |
+
+## [0.1.4] - 2026-11-14
+
+### Added
+
+- **Sign-in for the dashboard.** A login form (`/login`) and a signed session
+  cookie stand beside the Basic challenge that scripts have always spoken: a
+  browser without a session is shown the form — the credential box cannot
+  explain itself, cannot be styled, and cannot be signed out of — while a
+  script asking the same path still gets the 401 challenge it understands.
+  The cookie (`akbench_session`) names one caller for twelve hours, carries
+  its expiry and an HMAC-SHA256 signature over both, and is marked
+  `HttpOnly`, `SameSite=Lax` and `Secure` under HTTPS. What it does *not*
+  carry is the role: that is read from the configuration on every request,
+  so a demoted user keeps a valid cookie and loses the privilege anyway.
+  The `next` parameter cannot leave the site — an open redirect is a
+  phishing page's best friend — and a wrong name or password gets one
+  generic answer, because which of the two was wrong is the caller's to
+  guess, not the page's to say.
+- **Users live in the database, as hashes.** The people who may sign in used
+  to sit in the process environment or a text file with their secrets in
+  plain text beside the process that served them. They are now rows of the
+  same database the runs live in (`ui_users`, migration `0012`): a name, a
+  role (`viewer`, `judge`, `admin`) and a salted PBKDF2-HMAC-SHA256 digest
+  of the secret — `pbkdf2_sha256$<iterations>$<salt>$<hash>`, never the
+  letters themselves. Bare sha256 would prove guesses too, at a billion a
+  second against a wordlist; PBKDF2 is the same idea with the work
+  multiplied, so a stolen table stays boring instead of fatal. The
+  configured users of the environment and `AKBENCH_UI_USERS_FILE` remain a
+  fallback, so a deployment can move people into the database one at a
+  time. A row that is not there yet is read as "no users" and never as a
+  crash: the app starts against an unmigrated database and the login page
+  says nobody is configured, which is fail-closed and diagnosable at once.
+- **`scripts/ui-user-add.sh` and `python3 -m bench_ui.userstore`.** Adding a
+  user is a name, a role and a password typed twice at a prompt — never an
+  argument, because argv is world-readable in `ps` and lands in the shell
+  history of everyone who watched. The connection is resolved the way the
+  app resolves it, by the very loader the dashboard and the CLI use: the
+  project's `.env` (`AKBENCH_PG_*` and `AKBENCH_DB_BACKEND`) puts the users
+  in PostgreSQL, silence leaves them in `data/akbench.sqlite`, and
+  `AKBENCH_UI_DATABASE_URL` sits above both. A user written anywhere but
+  where the app reads its users from would be worse than no user at all, so
+  this walk is deliberately the app's own, not a second one that could
+  drift.
+- **The Administration tab.** `/admin`, for the `admin` role alone: the
+  recorded history as five sections — Runs, Experiments, Tasks, Agents,
+  Runtimes — with stat cards that double as section tabs, one search per
+  section, and the tables behind them. (The role is a third one on purpose:
+  an admin may erase the answer key outright, so the admin is never shown
+  less than a judge, but a judge is not handed the eraser.)
+- **Deletion, behind a dialog that names the cost.** Every delete asks in
+  the page's own language — the same card, the same buttons, the same
+  voice, not the browser's confirm box — states what goes with the record,
+  and will not proceed until the exact name is retyped. The endpoints
+  (`DELETE /api/admin/{runs,experiments,tasks,agents,runtimes}/…`) are
+  gated twice: the admin role, and an `X-Akbench-Admin: 1` header that a
+  form on another site cannot set and a fetch from another origin cannot
+  add without a CORS preflight this app never grants — so a delete is
+  always an act of this page. What each delete means is what the foreign
+  keys promised and the dialog repeats: a run goes with its evaluation,
+  artifacts, observations and events (CASCADE); an experiment takes its
+  runs — a claim without its evidence is not kept; a task leaves its runs
+  with their scores and only the link cleared (SET NULL), because deleting
+  the task does not un-happen the work; an agent or runtime leaves the
+  catalog — every recorded version together — and its runs stay exactly as
+  they were, since a run names its instrument by string and is evidence of
+  what happened.
+- **The Failures tab.** Failure classes across the history — which classes
+  bite, which pairs are flaky, the rates behind them and examples to open —
+  answering the question the other tabs ask sideways: what is actually
+  broken.
+- **A pin toggle for the Controls panel.** The Analytics and Failures
+  controls stay in view while scrolling, pinned by default as before, with
+  a toggle to let them go and a memory per tab (`localStorage`, surviving
+  refreshes) — a small thing, but a panel that scrolls away is a panel
+  clicked back to.
+
+### Changed
+
+- **Signing out reaches the server.** Sign-out used to drop the cookie in
+  the browser and hope: any jar that kept the value kept the session. The
+  logout now clears the cookie with every attribute it was set with *and*
+  records the moment in the user's row (`ui_users.session_cutoff`), so a
+  cookie issued before it is dead even when some jar sends it along — the
+  sign-out is a fact on the server, not only in the browser. The password
+  is untouched by it: signing out of a session is not surrendering the
+  credential. A name outside the user table keeps the old meaning, said
+  out loud rather than pretended.
+- **The navigation says who is at the door.** Pages show who is signed in
+  and offer "Sign out" only when there is something to sign out of; a
+  loopback instance with authentication off no longer displays a door
+  painted on a wall.
+
+### Fixed
+
+- **The Run Inspector no longer opens empty and unclosable.** The
+  confirmation dialog's stylesheet redefined `.modal-overlay` — the class
+  the Run Inspector hides behind — and its `display: flex` overrode the
+  inspector's `display: none`, so every page load showed the inspector,
+  empty, and its close button (which only removes `.open`) could not hide
+  it. The dialog now keeps to its own `confirm-*` class names, and a test
+  pins the inspector's rule in place: one definition of `.modal-overlay`,
+  hidden by default.
+- **Session cookies survive every cookie jar.** The value now travels in
+  cookie-safe characters only (the name as base64url), and a value that a
+  jar sends back wrapped in quotes is unwrapped before the signature is
+  checked — what is signed is exactly what returns.
+
+### Security
+
+- The session cookie is signed with HMAC-SHA256 over name and expiry, under
+  a key derived from every user the dashboard has (or
+  `AKBENCH_UI_SESSION_SECRET` when one is set): a restart signs nobody out,
+  and a removed user's old cookie stops proving anything.
+- Passwords are stored as salted, iterated PBKDF2-HMAC-SHA256 digests,
+  compared in constant time; the plaintext is never stored, never echoed
+  and never passes through argv. User names are compared in constant time
+  too — the set of valid names is itself a secret when it encodes people.
+- The admin endpoints need the role *and* the confirmation header; the
+  session cookie's role is re-read from the database on every request.
+
+### Upgrade notes
+
+1. Apply the migrations (`akbench init`, or `migrator.upgrade` on a raw
+   checkout) — this creates `ui_users`.
+2. Add at least one user: `./scripts/ui-user-add.sh <name> admin` (the
+   `.env` decides which database it reaches).
+3. Serve with `AKBENCH_UI_AUTH=on` (or `auto` off-loopback) and sign in.
 
 ## [0.1.3] - 2026-11-13
 
