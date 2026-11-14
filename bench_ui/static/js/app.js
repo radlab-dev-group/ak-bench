@@ -195,6 +195,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initCopyButtons();
   initYamlHighlighting();
   initSparklines();
+  initPinToggle('anControls', 'anPin', 'akbench:pin:analytics');
+  initPinToggle('flControls', 'flPin', 'akbench:pin:failures');
   const copyCsv = document.getElementById('btnCopyCsv');
   if (copyCsv) copyCsv.addEventListener('click', () => copyRunsTable('csv'));
   const copyMarkdown = document.getElementById('btnCopyMarkdown');
@@ -1143,6 +1145,45 @@ function initThemeToggle() {
   paintThemeToggle(button);
   button.addEventListener('click', () => {
     setTheme(currentTheme() === 'light' ? 'dark' : 'light');
+  });
+}
+
+// ============================================================ Controls pin
+// The pin on a controls panel: pinned is the default a reader gets without
+// choosing anything, the button unpins it when the panel is in the way, and
+// the choice is remembered per page. A choice made explicitly also stands on
+// small screens, where the stylesheet otherwise unpins the panel to keep it
+// from hiding the content it filters.
+function initPinToggle(panelId, buttonId, storageKey) {
+  const panel = document.getElementById(panelId);
+  const button = document.getElementById(buttonId);
+  if (!panel || !button) return;
+  const PINNED_TITLE = 'Pinned: stays at the top while scrolling. Click to unpin.';
+  const UNPINNED_TITLE = 'Not pinned: scrolls with the page. Click to pin at the top.';
+
+  const paint = (pinned) => {
+    button.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+    const label = button.querySelector('.pin-label');
+    if (label) label.textContent = pinned ? 'Pinned' : 'Pin';
+    button.title = pinned ? PINNED_TITLE : UNPINNED_TITLE;
+  };
+
+  const apply = (pinned, explicit) => {
+    panel.classList.toggle('pinned-controls', pinned);
+    panel.classList.toggle('pinned-explicit', explicit);
+    paint(pinned);
+  };
+
+  // '1' = pinned by choice, '0' = unpinned by choice, absent = the default
+  // (pinned, with the stylesheet's small-screen fallback still in charge).
+  let stored = null;
+  try { stored = localStorage.getItem(storageKey); } catch (err) { /* nowhere to remember it; the default stands for this page */ }
+  apply(stored !== '0', stored !== null);
+
+  button.addEventListener('click', () => {
+    const pinned = button.getAttribute('aria-pressed') !== 'true';
+    apply(pinned, true);
+    try { localStorage.setItem(storageKey, pinned ? '1' : '0'); } catch (err) { /* stays for this page */ }
   });
 }
 

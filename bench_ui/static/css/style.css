@@ -1782,11 +1782,11 @@ pre {
 @keyframes an-spin { to { transform:rotate(360deg); } }
 @media (max-width:640px) { .an-grid { grid-template-columns:1fr; } }
 
-/* Pinned Controls panel: sticks just below the sticky nav (.nav is z-index 60)
-   so filters stay reachable while scrolling the charts and tables below.
-   The max-height cap keeps it from swallowing the viewport on short screens
-   (an expanded filter chip can make it tall — it scrolls inside instead). */
-.an-controls-panel {
+/* Pinned controls panel (Analytics, Failures): sticks just below the sticky
+   nav (.nav is z-index 60) so filters stay reachable while scrolling the
+   content below. The max-height cap keeps it from swallowing the viewport on
+   short screens (an expanded filter can make it tall — it scrolls inside). */
+.pinned-controls {
   position: sticky;
   top: calc(var(--nav-h) + 12px);
   z-index: 50;
@@ -1798,11 +1798,103 @@ pre {
   box-shadow: 0 14px 28px -14px var(--modal-shadow);
 }
 /* keep the panel title visible while the body scrolls internally */
-.an-controls-panel .panel-header { position: sticky; top: 0; z-index: 1; }
+.pinned-controls .panel-header { position: sticky; top: 0; z-index: 1; }
 /* keep the 24px rhythm below the panel without a transparent margin gap —
    content would otherwise flash through the gap under the stuck panel */
-.an-controls-panel + .grid-cards { margin-top: 24px; }
+.pinned-controls + .grid-cards { margin-top: 24px; }
 @media (max-width:720px) {
-  /* stacked selects get too tall to pin — it would hide the content it filters */
-  .an-controls-panel { position: static; max-height: none; overflow-y: hidden; box-shadow: none; }
+  /* stacked controls get too tall to pin — they would hide what they filter
+     (unless the reader pinned them on purpose: an explicit choice stands) */
+  .pinned-controls:not(.pinned-explicit) { position: static; max-height: none; overflow-y: hidden; box-shadow: none; }
+}
+
+/* The pin toggle on a controls panel: the same idea as the theme toggle —
+   an icon and a short word, kept in the panel header. Pinned is the default,
+   so the pressed state is the one shown first. */
+.pin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.16s;
+}
+.pin-toggle:hover { border-color: var(--btn-hover-border); color: var(--fg); }
+.pin-toggle[aria-pressed="true"] {
+  border-color: var(--mint-border);
+  color: var(--mint);
+  background: var(--mint-bg);
+}
+.pin-icon { display: block; }
+.panel-header-right { display: inline-flex; align-items: center; gap: 10px; }
+
+/* ===== Failure analysis ===== */
+.fl-empty { padding: 26px 20px; color: var(--fg-faint); font-family: var(--mono); font-size: 12.5px; }
+
+.fl-rate { display: flex; align-items: center; gap: 8px; min-width: 130px; }
+.fl-rate-fill { height: 6px; min-width: 2px; border-radius: 3px; flex: 0 1 90px; }
+.fl-rate-label { font-family: var(--mono); font-size: 11.5px; color: var(--fg-dim); white-space: nowrap; }
+.fl-fill-mint { background: var(--mint); }
+.fl-fill-amber { background: var(--amber); }
+.fl-fill-red { background: var(--red); }
+.fl-fill-neutral { background: var(--track); }
+
+.fl-verdicts { display: flex; height: 8px; border-radius: 4px; overflow: hidden; min-width: 110px; background: var(--track); }
+.fl-seg { height: 100%; }
+.fl-seg-passed { background: var(--mint); }
+.fl-seg-partial { background: var(--amber); }
+.fl-seg-failed { background: var(--red); }
+.fl-seg-error { background: var(--purple); }
+.fl-seg-neutral { background: var(--fg-faint); }
+
+.fl-seq { display: flex; gap: 3px; flex-wrap: wrap; }
+.fl-seq-item {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-family: var(--mono);
+  cursor: default;
+}
+.fl-seq-pass { background: var(--mint-bg); color: var(--mint); border: 1px solid var(--mint-border); }
+.fl-seq-fail { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+
+.fl-test-name { font-size: 12px; max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-test-detail {
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-faint);
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fl-class-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) 140px 60px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.fl-class-row:last-child { border-bottom: none; }
+.fl-class-bar { height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; }
+.fl-class-fill { height: 100%; background: var(--red); opacity: 0.8; }
+.fl-class-count { text-align: right; color: var(--fg-strong); font-size: 12.5px; }
+.fl-class-example { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fl-class-example .fl-test-detail { margin-top: 0; }
+@media (max-width:720px) {
+  .fl-class-row { grid-template-columns: 1fr auto; }
+  .fl-class-bar, .fl-class-example { grid-column: 1 / -1; }
 }

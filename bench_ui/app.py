@@ -208,6 +208,21 @@ def create_app(
     def api_analytics_data():
         return service.get_analytics_dataset()
 
+    @app.get("/failures", response_class=HTMLResponse)
+    def failures_page(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="failures.html",
+            context={
+                "active_page": "failures",
+                "database": database,
+            },
+        )
+
+    @app.get("/api/failures/data")
+    def api_failures_data():
+        return service.get_failures_dataset()
+
     @app.get("/compare", response_class=HTMLResponse)
     def compare_page(
         request: Request,
