@@ -27,7 +27,8 @@ import binascii
 import hashlib
 import hmac
 import os
-from collections.abc import Iterable
+import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,8 +38,12 @@ VIEWER = "viewer"
 #: Additionally sees what would let someone pass a task without doing it: the
 #: hidden tests, the planted defect, and the archive that carries both.
 JUDGE = "judge"
+#: Manages the recorded history: deletes runs, tasks and experiments from the
+#: admin page. A separate role on purpose -- erasing the record is a different
+#: trust from reading it, and the two are handed to different people.
+ADMIN = "admin"
 
-ROLES: tuple[str, ...] = (VIEWER, JUDGE)
+ROLES: tuple[str, ...] = (VIEWER, JUDGE, ADMIN)
 
 #: The recorded file kinds that are the answer key rather than the task.
 GROUND_TRUTH_KINDS: frozenset[str] = frozenset({"hidden_tests", "mutation"})
@@ -53,6 +58,7 @@ ENV_BIND_HOST = f"{ENV_PREFIX}BIND_HOST"
 ENV_USER_HEADER = f"{ENV_PREFIX}USER_HEADER"
 ENV_CSP = f"{ENV_PREFIX}CSP"
 ENV_SHOW_GROUND_TRUTH = f"{ENV_PREFIX}SHOW_GROUND_TRUTH"
+ENV_SESSION_SECRET = f"{ENV_PREFIX}SESSION_SECRET"
 
 #: The addresses that mean "this box only". Binding any of these still lets a
 #: local process in, which is the accepted trust model of a developer machine.
@@ -121,7 +127,13 @@ class Identity:
 
     @property
     def is_judge(self) -> bool:
-        return self.role == JUDGE
+        # An admin may erase the answer key outright; showing it is the lesser
+        # power, so the admin role is never shown less than a judge.
+        return self.role in (JUDGE, ADMIN)
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == ADMIN
 
 
 @dataclass(frozen=True)
@@ -142,6 +154,11 @@ class SecuritySettings:
     csp: str = DEFAULT_CSP
     #: ``auto`` (judges only when auth is on), ``always``, or ``never``.
     ground_truth: str = "auto"
+    #: Whether the ``ui_users`` table of the database has people in it. Users
+    #: live there as password hashes; ``bench_ui.app`` asks the table at startup
+    #: and records the answer here, because the table — not the environment —
+    #: is where the login form looks first.
+    database_users: bool = False
     #: Anything that went wrong while reading the environment, kept as a value
     #: rather than raised because ``bench_ui.app`` builds the app at import time
     #: -- that is how uvicorn loads an import string -- and a module that cannot
@@ -161,9 +178,15 @@ class SecuritySettings:
         problems = []
         if self.load_errors:
             problems.append(self.load_errors)
-        if self.enabled and not self.users and not self.user_header:
+        if (
+            self.enabled
+            and not self.users
+            and not self.user_header
+            and not self.database_users
+        ):
             problems.append(
-                "authentication is on but nobody is configured: set "
+                "authentication is on but nobody is configured: add a user to "
+                "the database (scripts/ui-user-add.sh), or set "
                 f"{ENV_USERS}='name:secret[:role],...' or "
                 f"{ENV_USERS_FILE}=/path/to/users (one entry per line), or "
                 f"{ENV_USER_HEADER}='X-Forwarded-User' behind a proxy that "
@@ -370,8 +393,39 @@ def _decode_basic(header_value: str) -> tuple[str, str] | None:
     return name, secret
 
 
+def verify_credentials(
+    settings: SecuritySettings,
+    name: str,
+    secret: str,
+    resolver: Callable[[str, str | None, float | None], Identity | None] | None = None,
+) -> Identity | None:
+    """The caller this name and secret prove, or ``None`` when they prove nothing.
+
+    One verification path for the Basic header and the login form, so that the
+    two cannot drift apart into two different ideas of who is signed in. The
+    resolver — the user table, where secrets live as hashes — answers first;
+    the configured users of the environment are the fallback, so a deployment
+    can move people into the database one at a time.
+    """
+    if resolver is not None:
+        found = resolver(name, secret, None)
+        if found is not None:
+            return found
+    for user in settings.users:
+        # Compare the name in constant time too: the set of valid names is
+        # itself a secret when it encodes people.
+        name_matches = hmac.compare_digest(
+            user.name.encode("utf-8"), name.encode("utf-8")
+        )
+        if name_matches and user.verify(secret):
+            return Identity(name=user.name, role=user.role)
+    return None
+
+
 def authenticate(
-    settings: SecuritySettings, headers: dict[str, str]
+    settings: SecuritySettings,
+    headers: dict[str, str],
+    resolver: Callable[[str, str | None, float | None], Identity | None] | None = None,
 ) -> Identity | None:
     """The caller behind these headers, or ``None`` when there is no such caller.
 
@@ -380,7 +434,7 @@ def authenticate(
     if not settings.enabled:
         # A loopback instance has one trusted caller and they see everything,
         # which is what the command line has always done.
-        return Identity(name="local", role=JUDGE)
+        return Identity(name="local", role=ADMIN)
 
     if settings.user_header:
         # A proxy in front has already authenticated; it overwrites this header,
@@ -393,21 +447,148 @@ def authenticate(
     credentials = _decode_basic(headers.get("authorization", ""))
     if credentials is None:
         return None
-    name, secret = credentials
-    for user in settings.users:
-        # Compare the name in constant time too: the set of valid names is
-        # itself a secret when it encodes people.
-        name_matches = hmac.compare_digest(
-            user.name.encode("utf-8"), name.encode("utf-8")
-        )
-        if name_matches and user.verify(secret):
-            return Identity(name=user.name, role=user.role)
-    return None
+    return verify_credentials(settings, credentials[0], credentials[1], resolver)
 
 
 def authorization_challenge(realm: str) -> str:
     """The ``WWW-Authenticate`` value that makes a browser show a login box."""
     return f'Basic realm="{realm}", charset="UTF-8"'
+
+
+# ============================================================ UI sessions
+#: The cookie a browser carries after signing in through the login page. A
+#: form and a cookie, on top of the Basic credential box, because the box
+#: cannot explain itself, cannot be styled, and cannot be signed out of.
+SESSION_COOKIE = "akbench_session"
+#: How long a sign-in lasts: long enough for a working session, short enough
+#: that a shared machine does not keep a stranger signed in overnight.
+SESSION_TTL_SECONDS = 12 * 60 * 60
+#: The header every state-changing admin request must carry. A plain HTML form
+#: cannot set it and a cross-site fetch cannot add it without a CORS preflight
+#: this app never grants, so its presence is what separates a delete this page
+#: asked for from one another site asked this browser to make.
+ADMIN_HEADER = "x-akbench-admin"
+
+
+def session_key(
+    settings: SecuritySettings, *, extra_material: str = ""
+) -> bytes:
+    """The key session cookies are signed with.
+
+    An explicit ``AKBENCH_UI_SESSION_SECRET`` wins. Without one the key is
+    derived from the configured users *and* ``extra_material`` (the users the
+    database carries): stable across restarts (a restart must not sign
+    everyone out) and changed whenever the users change (a removed user's old
+    cookie must stop working). A deployment authenticating at a proxy header
+    with no users anywhere gets a per-process key, which signs everyone out at
+    restart — said out loud here rather than pretended.
+    """
+    explicit = os.environ.get(ENV_SESSION_SECRET)
+    if explicit:
+        return hashlib.sha256(explicit.encode("utf-8")).digest()
+    if settings.users or extra_material:
+        material = (
+            "|".join(f"{user.name}\0{user.secret}" for user in settings.users)
+            + "\n"
+            + extra_material
+        )
+        return hashlib.sha256(
+            f"akbench-ui-session|{material}".encode("utf-8")
+        ).digest()
+    return os.urandom(32)
+
+
+def issue_session(name: str, key: bytes, *, now: float | None = None) -> str:
+    """A signed cookie value naming one caller until its timestamp runs out.
+
+    The name travels as base64url: a value with ``|`` or ``%`` in it gets
+    wrapped in quotes by the cookie writer and *not* unwrapped by every cookie
+    jar that sends it back, so what is signed would not be what returns.
+    """
+    expires = int((time.time() if now is None else now) + SESSION_TTL_SECONDS)
+    body = f"{_encode_name(name)}|{expires}"
+    signature = hmac.new(key, body.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{body}|{signature}"
+
+
+def _encode_name(name: str) -> str:
+    """The name in letters a cookie carries without quoting."""
+    return (
+        base64.urlsafe_b64encode(name.encode("utf-8")).decode("ascii").rstrip("=")
+    )
+
+
+def _decode_name(encoded: str) -> str:
+    padding = "=" * (-len(encoded) % 4)
+    return base64.urlsafe_b64decode(encoded + padding).decode("utf-8")
+
+
+def _cookie_value(cookie_header: str, name: str) -> str | None:
+    for part in cookie_header.split(";"):
+        key, sep, value = part.strip().partition("=")
+        if sep and key == name:
+            value = value.strip()
+            # Some jars send back the quotes the writer put around the value;
+            # take them off so the signature sees the letters it signed.
+            if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+                value = value[1:-1]
+            return value
+    return None
+
+
+def session_identity(
+    cookie_header: str,
+    settings: SecuritySettings,
+    key: bytes,
+    resolver: Callable[[str, str | None, float | None], Identity | None] | None = None,
+) -> Identity | None:
+    """The caller a session cookie proves, or ``None`` when it proves nothing.
+
+    The cookie names a person and carries an expiry, both covered by the
+    signature; the role is deliberately *not* in the cookie. It is read from
+    the configuration and the user table on every request, so a demoted user
+    keeps a valid cookie and loses the privilege anyway, and a name that is no
+    longer configured is no longer signed in.
+    """
+    raw = _cookie_value(cookie_header, SESSION_COOKIE)
+    if not raw:
+        return None
+    body, sep, signature = raw.rpartition("|")
+    if not sep:
+        return None
+    encoded, sep2, expiry = body.rpartition("|")
+    if not sep2:
+        return None
+    expected = hmac.new(key, body.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature or ""):
+        return None
+    try:
+        if time.time() > int(expiry):
+            return None
+    except ValueError:
+        return None
+    try:
+        name = _decode_name(encoded)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if resolver is not None:
+        # The cookie's issue time rides along so the resolver can weigh it
+        # against a sign-out that happened after it was handed out.
+        found = resolver(name, None, int(expiry) - SESSION_TTL_SECONDS)
+        if found is not None:
+            return found
+    for user in settings.users:
+        # The name is compared in constant time for the same reason as at the
+        # Basic credential: the set of valid names is itself a secret.
+        if hmac.compare_digest(user.name.encode("utf-8"), name.encode("utf-8")):
+            return Identity(name=user.name, role=user.role)
+    return None
+
+
+def admin_from_scope(scope: dict[str, Any]) -> Identity | None:
+    """The caller when they may manage the history, ``None`` when they may not."""
+    identity = identity_from_scope(scope)
+    return identity if identity is not None and identity.is_admin else None
 
 
 def fingerprint(settings: SecuritySettings) -> str:

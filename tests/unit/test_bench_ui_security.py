@@ -13,15 +13,20 @@ from pathlib import Path
 import pytest
 from bench_ui.app import create_app
 from bench_ui.security import (
+    ADMIN,
     JUDGE,
     VIEWER,
+    Identity,
     SecuritySettings,
     User,
     is_loopback,
+    issue_session,
     load_security_settings,
     parse_user,
     parse_users,
     require_valid_security,
+    session_identity,
+    session_key,
 )
 from bench_ui.service import _redact_task_yaml, scrub_ground_truth
 from starlette.testclient import TestClient
@@ -270,3 +275,287 @@ def test_a_descriptor_that_will_not_parse_is_dropped_not_shown() -> None:
 def test_a_descriptor_without_answers_is_handed_through_unchanged() -> None:
     text = "id: wordcount-001\ntask:\n  category: bug_fix\n"
     assert _redact_task_yaml(text) == text
+
+
+# ------------------------------------------------------------ login & sessions
+
+
+def test_the_login_page_signs_a_caller_in(database_url: str) -> None:
+    """The form answers the question the Basic box cannot explain.
+
+    A browser is shown the login page rather than the credential box, a script
+    keeps the 401 challenge it has always understood, and the cookie the form
+    hands out opens the pages until it expires.
+    """
+    app = create_app(
+        database_url=database_url,
+        security=SecuritySettings(
+            enabled=True,
+            users=(
+                User("ops", "long-enough-word", ADMIN),
+                User("reader", "long-enough-word", VIEWER),
+            ),
+        ),
+    )
+    client = TestClient(app)
+
+    page = client.get("/login")
+    assert page.status_code == 200
+    assert '<form method="post" action="/login"' in page.text
+
+    browser = client.get("/", headers={"accept": "text/html"}, follow_redirects=False)
+    assert browser.status_code == 303
+    assert browser.headers["location"].startswith("/login?next=")
+
+    assert client.get("/").status_code == 401
+
+    wrong = client.post(
+        "/login", data={"name": "ops", "password": "not-it", "next": "/runs"}
+    )
+    assert wrong.status_code == 200
+    assert "Wrong name or password." in wrong.text
+
+    signed_in = client.post(
+        "/login",
+        data={"name": "ops", "password": "long-enough-word", "next": "/runs"},
+        follow_redirects=False,
+    )
+    assert signed_in.status_code == 303
+    assert signed_in.headers["location"] == "/runs"
+    assert "akbench_session=" in signed_in.headers["set-cookie"]
+
+    home = client.get("/runs")
+    assert home.status_code == 200
+    assert "ops" in home.text  # the nav says who is signed in
+
+    # an open redirect is not followed
+    escape = client.post(
+        "/login",
+        data={"name": "ops", "password": "long-enough-word", "next": "//evil.example"},
+        follow_redirects=False,
+    )
+    assert escape.headers["location"] == "/"
+
+    out = client.get("/logout", follow_redirects=False)
+    assert out.status_code == 303
+    assert client.get("/api/runs").status_code == 401
+
+
+def test_a_tampered_or_expired_session_cookie_proves_nothing() -> None:
+    """What a cookie proves: a name, an expiry, and a signature over both."""
+    import time
+
+    settings = SecuritySettings(enabled=True, users=(User("ops", "long-enough-word", ADMIN),))
+    key = session_key(settings)
+
+    good = issue_session("ops", key)
+    assert session_identity(f"akbench_session={good}", settings, key) == Identity(
+        name="ops", role=ADMIN
+    )
+    # the role is read from the configuration, never from the cookie
+    assert session_identity(f"akbench_session={good}", settings, key).is_admin
+
+    tampered = good[:-6] + ("000000" if not good.endswith("000000") else "111111")
+    assert session_identity(f"akbench_session={tampered}", settings, key) is None
+
+    stale = issue_session("ops", key, now=time.time() - 400_000)
+    assert session_identity(f"akbench_session={stale}", settings, key) is None
+
+    gone = issue_session("ghost", key)
+    assert session_identity(f"akbench_session={gone}", settings, key) is None
+
+    assert session_identity("", settings, key) is None
+
+
+def test_only_an_admin_deletes_and_only_with_the_header(database_url: str) -> None:
+    """The admin gate is a role and a header: either one alone does not open it."""
+    app = create_app(
+        database_url=database_url,
+        security=SecuritySettings(
+            enabled=True,
+            users=(
+                User("root", "long-enough-word", ADMIN),
+                User("reader", "long-enough-word", VIEWER),
+            ),
+        ),
+    )
+    client = TestClient(app)
+    admin = _basic("root", "long-enough-word")
+    reader = _basic("reader", "long-enough-word")
+
+    assert client.get("/admin", headers=reader).status_code == 403
+    assert client.get("/admin", headers=admin).status_code == 200
+
+    # an admin without the confirmation header is still refused a delete
+    assert (
+        client.delete("/api/admin/runs/nope", headers=admin).status_code == 403
+    )
+    # a viewer with the header is still not an admin
+    assert (
+        client.delete(
+            "/api/admin/runs/nope", headers={**reader, "X-Akbench-Admin": "1"}
+        ).status_code
+        == 403
+    )
+    # the two halves together reach the deletion, which then says 404 honestly
+    assert (
+        client.delete(
+            "/api/admin/runs/nope", headers={**admin, "X-Akbench-Admin": "1"}
+        ).status_code
+        == 404
+    )
+
+
+def test_the_user_script_adds_a_hashed_user_to_the_database(tmp_path) -> None:
+    """The script's words: one row, one hash, no secret left anywhere."""
+    import os
+    import subprocess
+
+    from bench_ui import userstore
+
+    db_url = f"sqlite:///{tmp_path}/ui-users.sqlite"
+    upgrade(db_url)
+    script = Path(__file__).resolve().parents[2] / "scripts" / "ui-user-add.sh"
+    env = {**os.environ, "AKBENCH_UI_DATABASE_URL": db_url}
+
+    added = subprocess.run(
+        ["bash", str(script), "alice", "admin"],
+        input="s3cret-s3cret\ns3cret-s3cret\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert added.returncode == 0, added.stderr
+    assert "s3cret-s3cret" not in added.stdout  # never spoken back
+
+    from akbench.storage.db import create_db_engine
+
+    engine = create_db_engine(db_url)
+    role, pw_hash = userstore.find_user(engine, "alice")
+    assert role == "admin"
+    assert "s3cret-s3cret" not in pw_hash  # the letters are gone
+    assert pw_hash.startswith("pbkdf2_sha256$")  # the digest is what stayed
+    assert userstore.verify_password("s3cret-s3cret", pw_hash)
+
+    again = subprocess.run(
+        ["bash", str(script), "alice"],
+        input="x\nx\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert again.returncode != 0
+
+
+def test_the_user_store_follows_the_env_file_to_the_database(tmp_path) -> None:
+    """The .env speaks for the connection; silence means the SQLite file.
+
+    The script must write its users where the app will read them — and the
+    app reads its connection from the project's .env — so the two resolve the
+    database with one walk, not two that could drift apart.
+    """
+    from bench_ui.userstore import database_url as resolve
+
+    # nothing configured: the SQLite file a fresh checkout carries
+    plain = resolve({}, project_root=tmp_path)
+    assert plain.startswith("sqlite:///")
+    assert plain.endswith("data/akbench.sqlite")
+
+    # a .env as run-postgres.sh leaves it: the shared PostgreSQL database
+    (tmp_path / ".env").write_text(
+        "AKBENCH_DB_BACKEND=postgres\n"
+        "AKBENCH_PG_HOST=db.example\n"
+        "AKBENCH_PG_PORT=5432\n"
+        "AKBENCH_PG_USER=akbench\n"
+        "AKBENCH_PG_PASSWORD=hunter2\n"
+        "AKBENCH_PG_DB=akbench\n",
+        encoding="utf-8",
+    )
+    from_env = resolve({}, project_root=tmp_path)
+    assert from_env.startswith("postgresql")
+    assert "db.example" in from_env
+    assert "akbench" in from_env
+
+    # a real environment variable still wins over the file
+    over = resolve(
+        {"AKBENCH_UI_DATABASE_URL": "sqlite:////tmp/elsewhere.sqlite"},
+        project_root=tmp_path,
+    )
+    assert over == "sqlite:////tmp/elsewhere.sqlite"
+
+
+def test_a_database_user_signs_in_with_their_hash_and_signs_out(database_url: str) -> None:
+    """The database answers for its people, and the cookie it grants signs out.
+
+    What the row carries is a hash, what the login compares is the hash, and
+    what the cookie carries is only the name. Signing out really signs out:
+    the jar is told to forget the cookie and the door closes behind — even
+    when a jar sends the value back wrapped in quotes, as some do.
+    """
+    import re as _re
+
+    from bench_ui import userstore
+
+    from akbench.storage.db import create_db_engine
+
+    engine = create_db_engine(database_url)
+    userstore.create_user(engine, "ada", "long-enough-word", "admin")
+    userstore.create_user(engine, "bo", "long-enough-word", "viewer")
+
+    app = create_app(
+        database_url=database_url,
+        security=SecuritySettings(enabled=True, users=()),
+    )
+    client = TestClient(app)
+
+    wrong = client.post("/login", data={"name": "ada", "password": "not-it"})
+    assert "Wrong name or password." in wrong.text
+
+    signed_in = client.post(
+        "/login",
+        data={"name": "ada", "password": "long-enough-word", "next": "/admin"},
+        follow_redirects=False,
+    )
+    assert signed_in.status_code == 303
+    assert signed_in.headers["location"] == "/admin"
+
+    admin_page = client.get("/admin")
+    assert admin_page.status_code == 200
+    assert "ada" in admin_page.text
+
+    # a value sent back wrapped in quotes, as some cookie jars do, verifies
+    value = _re.search(
+        r"akbench_session=([^;]*)", signed_in.headers["set-cookie"]
+    ).group(1)
+    quoted = TestClient(app)
+    home = quoted.get(
+        "/",
+        headers={"cookie": f'akbench_session="{value}"', "accept": "text/html"},
+    )
+    assert home.status_code == 200
+
+    out = client.get("/logout", follow_redirects=False)
+    assert out.status_code == 303
+    assert out.headers["location"] == "/login?signed_out=1"
+    assert "akbench_session=" in out.headers["set-cookie"]
+    assert "Max-Age=0" in out.headers["set-cookie"]
+    assert client.get("/api/runs").status_code == 401
+    assert "Signed out." in client.get("/login?signed_out=1").text
+
+    # a jar that kept the cookie anyway cannot spend it: the sign-out reached
+    # the server, not only the browser
+    replay = TestClient(app)
+    stale = replay.get(
+        "/",
+        headers={"cookie": f'akbench_session="{value}"', "accept": "text/html"},
+        follow_redirects=False,
+    )
+    assert stale.status_code == 303
+    assert stale.headers["location"].startswith("/login")
+
+    # the other database user keeps their own door and their own limits
+    viewer = TestClient(app)
+    viewer.post("/login", data={"name": "bo", "password": "long-enough-word"})
+    assert viewer.get("/admin").status_code == 403

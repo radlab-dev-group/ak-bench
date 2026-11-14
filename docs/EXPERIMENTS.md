@@ -168,6 +168,8 @@ file, not in a reader's memory.
 | `llm-router-selfhost-fast.yaml` | the same shape on an instance the run owns, with the knowledge plugin |
 | `knowledge-replay.yaml` | a memory experiment; the managed instance gives it its own namespace |
 | `arena-roadmap-knowledge.yaml` | the fifty arena and roadmap tasks, one arm: the routing alias over the 27B base model, knowledge on |
+| `easy-tasks-model-knowledge.yaml` | the easy stratum of every task type under six arms: three models, each with the knowledge plugin off and on, two repetitions each |
+| `medium-tasks-model-knowledge.yaml` | the same six arms on the medium stratum: seventeen tasks, two repetitions each |
 | `agent-comparison.yaml` | the second agent class: `codex` and `fake` on the same task, the agent as the only factor (plan 6.5, F3) |
 | `auto-codex-on-off.yaml` | the routing plugin alone: its two toggles, the model pinned to the trigger alias (plan 25, C) |
 | `full-matrix-12.yaml` | memory × routing × model as a real factorial — twelve configurations (plan 25, E) |

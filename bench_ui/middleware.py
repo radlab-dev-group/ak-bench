@@ -18,6 +18,8 @@ from bench_ui.security import (
     authenticate,
     authorization_challenge,
     public_paths,
+    session_identity,
+    session_key,
 )
 
 Scope = MutableMapping[str, Any]
@@ -57,9 +59,15 @@ class SecurityMiddleware:
         settings: SecuritySettings,
         *,
         extra_public: Sequence[str] = (),
+        user_resolver: Any = None,
+        session_secret: bytes | None = None,
     ) -> None:
         self.app = app
         self.settings = settings
+        self.user_resolver = user_resolver
+        self.session_key = (
+            session_secret if session_secret is not None else session_key(settings)
+        )
         self.extra_public = tuple(extra_public)
         self.headers = dict(SECURITY_HEADERS)
         if settings.csp:
@@ -81,8 +89,24 @@ class SecurityMiddleware:
             await self._refuse(send)
             return
 
-        identity = authenticate(self.settings, _header_pairs(scope.get("headers", [])))
+        headers = _header_pairs(scope.get("headers", []))
+        identity = authenticate(self.settings, headers, self.user_resolver)
         if identity is None:
+            # No Basic credentials and no proxy header: a browser may still be
+            # carrying the cookie the login page handed it.
+            identity = session_identity(
+                headers.get("cookie", ""),
+                self.settings,
+                self.session_key,
+                self.user_resolver,
+            )
+        if identity is None:
+            # A browser is shown the login page -- the credential box cannot
+            # explain itself and cannot be signed out of. A script keeps the
+            # 401 challenge it has always understood.
+            if scope.get("method") == "GET" and "text/html" in headers.get("accept", ""):
+                await self._to_login(send, scope.get("path", ""))
+                return
             await self._reject(send)
             return
 
@@ -128,6 +152,17 @@ class SecurityMiddleware:
             headers.append((name.lower().encode("latin-1"), value.encode()))
         await send({"type": "http.response.start", "status": 503, "headers": headers})
         await send({"type": "http.response.body", "body": body})
+
+    async def _to_login(self, send: Send, path: str) -> None:
+        """303 to the login page, remembering where the caller was headed."""
+        from urllib.parse import quote
+
+        location = f"/login?next={quote(path or '/', safe='')}"
+        headers = [(b"location", location.encode("latin-1")), (b"content-length", b"0")]
+        for name, value in self.headers.items():
+            headers.append((name.lower().encode("latin-1"), value.encode()))
+        await send({"type": "http.response.start", "status": 303, "headers": headers})
+        await send({"type": "http.response.body", "body": b""})
 
     async def _reject(self, send: Send) -> None:
         headers = [

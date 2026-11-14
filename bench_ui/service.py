@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 
 from akbench.config.loader import load_settings, resolve_database_url
@@ -22,6 +23,7 @@ from akbench.datasets import Dataset, TaskLoadError
 from akbench.datasets.dataset import DESCRIPTION_FILE, TASK_FILE
 from akbench.reporting.data import (
     HistoryData,
+    PASSED_VERDICT,
     build_experiment_report,
     build_task_report,
     collect_history,
@@ -42,8 +44,12 @@ from akbench.storage.db import (
 from akbench.storage.history import HistoryStore
 from akbench.storage.migrator import schema_status
 from akbench.storage.models import (
+    Agent,
     Artifact,
     EvaluationRecord,
+    Experiment,
+    Runtime,
+    Task,
     TaskRun,
 )
 from bench_ui.pricing import (
@@ -79,6 +85,12 @@ MAX_PAGE_SIZE = 1000
 #: one file. Reports this project's evaluators write never carry a DOCTYPE, so
 #: refusing one costs nothing and closes the whole class.
 _XML_FORBIDDEN = re.compile(r"<!DOCTYPE|<!ENTITY", re.IGNORECASE)
+
+
+#: How one run's outcome for a test ranks when its report names the test twice:
+#: a parameterised test that fails under one parameter has failed, however many
+#: of its cases passed.
+_TEST_STATUS_RANK = {"passed": 0, "failed": 1, "error": 2}
 
 
 def _read_text(path: Path) -> str | None:
@@ -555,6 +567,23 @@ def _split_configuration_label(label: str) -> dict[str, Any]:
     }
 
 
+def _variant_config_str(history: HistoryData, run: dict[str, Any]) -> str:
+    """The configuration label of one run: its variant's factor values, sorted.
+
+    The same label every page shows for a configuration, so a link from one
+    page to another matches by the name the reader has already seen. ``""``
+    when the run named no variant.
+    """
+    var_uid = run.get("variant_uid")
+    for variant in history.variants.get(str(run.get("experiment_uid")), []):
+        if variant.get("uid") == var_uid:
+            items = sorted(
+                f"{k}={val}" for k, val in (variant.get("values") or {}).items()
+            )
+            return ", ".join(items) if items else str(var_uid)
+    return var_uid or ""
+
+
 def wilson_interval(passed: int, total: int, z: float = 1.96) -> tuple[float, float] | None:
     """The Wilson score interval of a pass rate, as a pair of fractions.
 
@@ -744,6 +773,8 @@ class BenchDataService:
         self._lock = threading.Lock()
         self._history_cache: HistoryData | None = None
         self._history_cached_at = 0.0
+        self._failures_cache: dict[str, Any] | None = None
+        self._failures_cached_at = 0.0
         self._roots_cache: tuple[Path, ...] | None = None
 
     def connectivity(self) -> dict[str, Any]:
@@ -829,6 +860,8 @@ class BenchDataService:
         with self._lock:
             self._history_cache = None
             self._history_cached_at = 0.0
+            self._failures_cache = None
+            self._failures_cached_at = 0.0
 
     # ------------------------------------------------------------- Overview
     def get_model_comparison(self) -> list[dict[str, Any]]:
@@ -1181,19 +1214,13 @@ class BenchDataService:
         }
 
     # ---------------------------------------------------------- Run Details
-    def get_run_tests(self, run_uid: str) -> list[dict[str, Any]]:
-        """Every test the run's evaluator reported, with the outcome of each.
+    def _run_tests_from_artifacts(self, run: dict[str, Any]) -> list[dict[str, Any]]:
+        """The tests of one run's JUnit artifact — the first report that parses.
 
-        The counts alone — "9 of 10 passed" — leave the reader asking which one
-        failed. The evaluator writes a JUnit report next to the run's artifacts,
-        and that file names the tests and marks the failures, so the run can be
-        inspected test by test. ``[]`` when no report was written: an evaluator
-        that produced nothing is not reported as an empty list of passing tests
-        but as no information at all, which the caller shows as such.
+        ``[]`` when no report was written: an evaluator that produced nothing is
+        not reported as an empty list of passing tests but as no information at
+        all, which the callers show as such.
         """
-        run = self.store.run(run_uid)
-        if not run:
-            return []
         for artifact in run.get("artifacts") or []:
             if artifact.get("kind") != "junit":
                 continue
@@ -1201,6 +1228,19 @@ class BenchDataService:
             if tests:
                 return tests
         return []
+
+    def get_run_tests(self, run_uid: str) -> list[dict[str, Any]]:
+        """Every test the run's evaluator reported, with the outcome of each.
+
+        The counts alone — "9 of 10 passed" — leave the reader asking which one
+        failed. The evaluator writes a JUnit report next to the run's artifacts,
+        and that file names the tests and marks the failures, so the run can be
+        inspected test by test.
+        """
+        run = self.store.run(run_uid)
+        if not run:
+            return []
+        return self._run_tests_from_artifacts(run)
 
     def get_run_detail(self, run_uid: str) -> dict[str, Any] | None:
         run = self.store.run(run_uid)
@@ -1919,6 +1959,282 @@ class BenchDataService:
             rows.append(row)
         return {"rows": rows, "param_keys": sorted(param_keys)}
 
+    # ------------------------------------------------------ Failure analysis
+    def get_failures_dataset(self) -> dict[str, Any]:
+        """What failed, how, and where — the whole history read for its failures.
+
+        The other pages say how much; this one says what to fix. Three lists,
+        each with the question it answers: which tasks fail most (with the
+        interval that says whether "most" is measurable at this sample size),
+        which task-under-configuration pairs give contradictory verdicts across
+        repetitions — a regression and a coin flip look the same in an average —
+        and which evaluator tests kill the most runs, names a JUnit report
+        records and no summary counts.
+
+        Task and test rows are emitted twice: once pooled over all
+        configurations and once per configuration, so "under this arm only" is
+        a filter of precomputed numbers rather than a recomputation without
+        intervals. The cost of that is a longer list; the alternative is a
+        reader filtering by hand and comparing percentages on a screen.
+
+        Runs whose evaluator wrote no report contribute to the task rows and
+        the failure classes, not to the test rows: an absence of a report is no
+        information about tests, and this page does not invent it.
+        """
+        cached = self._failures_cache
+        if (
+            cached is not None
+            and (time.monotonic() - self._failures_cached_at) < HISTORY_CACHE_SECONDS
+        ):
+            return cached
+
+        history = self.get_history()
+        task_meta = {
+            str(t.get("uid")): t for t in history.tasks if t.get("uid") is not None
+        }
+
+        # One row per task overall and per task-under-configuration, counted
+        # from evaluated runs only: an unevaluated run did not pass, but it also
+        # did not fail a test, and mixing the two would flatter or slander a
+        # task depending on how often the harness crashed.
+        task_rows: dict[tuple[str, str | None], dict[str, Any]] = {}
+        # Repetitions of one task under one configuration, in the order they
+        # started: the evidence flakiness is read from.
+        pair_runs: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        test_rows: dict[tuple[str, str, str | None, str | None], dict[str, Any]] = {}
+        # Runs that did not pass, grouped by what the harness managed to say
+        # about why: the failure class, or the status when no class was set.
+        class_rows: dict[tuple[str, str], dict[str, Any]] = {}
+
+        for run in history.runs:
+            task_uid = str(run.get("task_uid") or "—")
+            label = _variant_config_str(history, run) or None
+            variant_uid = run.get("variant_uid")
+            verdict = verdict_of(run)
+            run_uid = str(run.get("uid") or "")
+
+            if verdict is not None:
+                row_keys = [(task_uid, None)]
+                if label:
+                    row_keys.append((task_uid, label))
+                for key in row_keys:
+                    row = task_rows.get(key)
+                    if row is None:
+                        meta = task_meta.get(task_uid) or {}
+                        row = {
+                            "task_uid": task_uid,
+                            "title": meta.get("title"),
+                            "category": meta.get("category"),
+                            "difficulty": meta.get("difficulty"),
+                            "config_str": key[1],
+                            "variant_uid": variant_uid if key[1] is not None else None,
+                            "evaluated": 0,
+                            "passed": 0,
+                            "verdicts": {},
+                        }
+                        task_rows[key] = row
+                    row["evaluated"] += 1
+                    row["verdicts"][verdict] = row["verdicts"].get(verdict, 0) + 1
+                    if verdict == PASSED_VERDICT:
+                        row["passed"] += 1
+                if label:
+                    pair_runs.setdefault((task_uid, label), []).append(run)
+
+            # Harness-level failures only: a run that completed and was
+            # evaluated as not-passed has its why in the test rows above —
+            # here a reader looks for crashes, timeouts and misconfiguration.
+            if verdict != PASSED_VERDICT and (
+                verdict is None or run.get("failure_class")
+            ):
+                class_key = (
+                    str(run.get("failure_class") or ""),
+                    str(run.get("status") or ""),
+                )
+                class_row = class_rows.get(class_key)
+                if class_row is None:
+                    error_message = run.get("error_message")
+                    class_row = {
+                        "failure_class": class_key[0] or None,
+                        "status": class_key[1] or None,
+                        "count": 0,
+                        "example_error": (
+                            str(error_message)[:200] if error_message else None
+                        ),
+                        "example_run_uid": run_uid or None,
+                    }
+                    class_rows[class_key] = class_row
+                class_row["count"] += 1
+
+            # Test rows: one outcome per test name per run, the worst of its
+            # cases.
+            outcomes: dict[tuple[str, str], tuple[str, str | None]] = {}
+            for test in self._run_tests_from_artifacts(run):
+                status = str(test.get("status") or "")
+                if status == "skipped":
+                    continue
+                name = str(test.get("name") or "—")
+                classname = test.get("classname")
+                previous = outcomes.get((name, classname))
+                if (
+                    previous is None
+                    or _TEST_STATUS_RANK.get(status, 0)
+                    > _TEST_STATUS_RANK.get(previous[0], 0)
+                ):
+                    outcomes[(name, classname)] = (status, test.get("detail"))
+            for (name, classname), (status, detail) in outcomes.items():
+                test_keys = [(name, classname, task_uid, None)]
+                if label:
+                    test_keys.append((name, classname, task_uid, label))
+                for key in test_keys:
+                    row = test_rows.get(key)
+                    if row is None:
+                        meta = task_meta.get(task_uid) or {}
+                        row = {
+                            "name": name,
+                            "classname": classname,
+                            "task_uid": task_uid,
+                            "title": meta.get("title"),
+                            "config_str": key[3],
+                            "variant_uid": variant_uid if key[3] is not None else None,
+                            "tested_runs": 0,
+                            "failed_runs": 0,
+                            "detail": None,
+                            "examples": [],
+                        }
+                        test_rows[key] = row
+                    row["tested_runs"] += 1
+                    if status in ("failed", "error"):
+                        row["failed_runs"] += 1
+                        if run_uid:
+                            row["examples"].append(run_uid)
+                            del row["examples"][:-5]
+                        if detail:
+                            row["detail"] = str(detail)[:240]
+
+        tasks: list[dict[str, Any]] = []
+        for row in task_rows.values():
+            evaluated, passed = row["evaluated"], row["passed"]
+            interval = wilson_interval(passed, evaluated)
+            row["pass_rate"] = round(passed / evaluated, 6) if evaluated else None
+            row["ci_low"] = interval[0] if interval else None
+            row["ci_high"] = interval[1] if interval else None
+            row["verdicts"] = dict(sorted(row["verdicts"].items()))
+            tasks.append(row)
+        tasks.sort(
+            key=lambda row: (
+                row["pass_rate"] if row["pass_rate"] is not None else 2,
+                -row["evaluated"],
+                row["task_uid"],
+                row["config_str"] or "",
+            )
+        )
+
+        flaky: list[dict[str, Any]] = []
+        for (task_uid, label), runs in pair_runs.items():
+            evaluated = len(runs)
+            passed = sum(1 for run in runs if verdict_of(run) == PASSED_VERDICT)
+            if evaluated < 2 or passed == 0 or passed == evaluated:
+                continue
+            meta = task_meta.get(task_uid) or {}
+            flaky.append(
+                {
+                    "task_uid": task_uid,
+                    "title": meta.get("title"),
+                    "category": meta.get("category"),
+                    "difficulty": meta.get("difficulty"),
+                    "config_str": label,
+                    "variant_uid": runs[0].get("variant_uid"),
+                    "evaluated": evaluated,
+                    "passed": passed,
+                    "pass_rate": round(passed / evaluated, 6),
+                    # The sequence is the evidence: "P P F P" says what an
+                    # average cannot. Sorted by start, as the runs were read.
+                    "sequence": [
+                        {
+                            "uid": run.get("uid"),
+                            "verdict": verdict_of(run),
+                            "started_at": run.get("started_at"),
+                        }
+                        for run in sorted(
+                            runs,
+                            key=lambda run: (
+                                str(run.get("started_at") or ""),
+                                str(run.get("uid") or ""),
+                            ),
+                        )
+                    ],
+                }
+            )
+        flaky.sort(
+            key=lambda row: (
+                -row["evaluated"] * (1 - abs(2 * row["passed"] / row["evaluated"] - 1)),
+                row["task_uid"],
+                row["config_str"],
+            )
+        )
+
+        tests = []
+        for row in test_rows.values():
+            if row["failed_runs"] == 0:
+                continue
+            row["fail_rate"] = round(row["failed_runs"] / row["tested_runs"], 6)
+            tests.append(row)
+        tests.sort(
+            key=lambda row: (-row["failed_runs"], -row["fail_rate"], row["name"])
+        )
+
+        failure_classes = sorted(
+            class_rows.values(), key=lambda row: (-row["count"], row["status"] or "")
+        )
+
+        evaluated_runs = sum(1 for run in history.runs if verdict_of(run) is not None)
+        passed_runs = sum(
+            1 for run in history.runs if verdict_of(run) == PASSED_VERDICT
+        )
+        summary = {
+            "runs": len(history.runs),
+            "evaluated": evaluated_runs,
+            "passed": passed_runs,
+            "not_passed": len(history.runs) - passed_runs,
+            "tasks_with_failures": len(
+                {
+                    row["task_uid"]
+                    for row in tasks
+                    if row["config_str"] is None
+                    and row["evaluated"] > row["passed"]
+                }
+            ),
+            "flaky_pairs": len(flaky),
+            "failing_tests": sum(1 for row in tests if row["config_str"] is None),
+        }
+
+        dataset = {
+            "summary": summary,
+            "configs": sorted({row["config_str"] for row in tasks if row["config_str"]}),
+            "categories": sorted(
+                {
+                    str(row["category"])
+                    for row in tasks
+                    if row["config_str"] is None and row["category"]
+                }
+            ),
+            "difficulties": sorted(
+                {
+                    str(row["difficulty"])
+                    for row in tasks
+                    if row["config_str"] is None and row["difficulty"]
+                }
+            ),
+            "tasks": tasks,
+            "flaky": flaky,
+            "tests": tests,
+            "failure_classes": failure_classes,
+        }
+        with self._lock:
+            self._failures_cache = dataset
+            self._failures_cached_at = time.monotonic()
+        return dataset
+
     def _format_run_summary(
         self,
         r: dict[str, Any],
@@ -1946,15 +2262,7 @@ class BenchDataService:
         )
 
         # Get variant configuration string
-        var_uid = r.get("variant_uid")
-        exp_uid = r.get("experiment_uid")
-        config_str = var_uid or ""
-        v_list = history.variants.get(str(exp_uid), [])
-        for v in v_list:
-            if v.get("uid") == var_uid:
-                items = sorted(f"{k}={val}" for k, val in (v.get("values") or {}).items())
-                config_str = ", ".join(items) if items else str(var_uid)
-                break
+        config_str = _variant_config_str(history, r)
 
         return {
             "uid": r.get("uid"),
@@ -1988,4 +2296,136 @@ class BenchDataService:
             ),
             "trend_index": trend_index,
             "baseline_score": baselines.get(str(r.get("task_uid"))),
+        }
+
+    # ------------------------------------------------------------- admin
+    def admin_delete_run(self, run_uid: str) -> dict[str, Any]:
+        """One run erased, and everything the schema keeps about it with it.
+
+        The foreign keys cascade — evaluations, artifacts, observations,
+        events — because a half-deleted run is worse than either keeping or
+        removing it. What the run left on disk outside the database (its
+        workspace, artifact files) is not touched: the database is this
+        dashboard's to manage, the filesystem is the operator's.
+        """
+        with session_scope(self.engine) as session:
+            run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
+            if run is None:
+                raise KeyError(run_uid)
+            session.delete(run)
+        self.invalidate_history()
+        return {"deleted": run_uid, "kind": "run"}
+
+    def admin_delete_experiment(self, experiment_uid: str) -> dict[str, Any]:
+        """One experiment with its whole recorded history.
+
+        The runs go with it — variants, metrics and snapshots are theirs, and
+        an experiment whose runs were kept would be a claim without its
+        evidence. The admin page shows the caller that count before asking for
+        the confirmation; this method is the second half of that sentence.
+        """
+        with session_scope(self.engine) as session:
+            experiment = session.scalar(
+                select(Experiment).where(Experiment.uid == experiment_uid)
+            )
+            if experiment is None:
+                raise KeyError(experiment_uid)
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.experiment_id == experiment.id)
+                )
+                or 0
+            )
+            session.delete(experiment)
+        self.invalidate_history()
+        return {
+            "deleted": experiment_uid,
+            "kind": "experiment",
+            "runs_deleted": int(runs),
+        }
+
+    def admin_delete_task(self, task_uid: str) -> dict[str, Any]:
+        """One task out of the catalog; its runs stay, without the link.
+
+        A run is evidence of what happened, and deleting the task does not
+        un-happen it: the runs keep their scores and lose only the name they
+        ran under (the foreign key says SET NULL, not CASCADE).
+        """
+        with session_scope(self.engine) as session:
+            task = session.scalar(select(Task).where(Task.uid == task_uid))
+            if task is None:
+                raise KeyError(task_uid)
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.task_uid == task_uid)
+                )
+                or 0
+            )
+            session.delete(task)
+        self.invalidate_history()
+        return {"deleted": task_uid, "kind": "task", "runs_kept": int(runs)}
+
+    def admin_delete_agent(self, agent_id: str) -> dict[str, Any]:
+        """One agent's catalog entries go; its runs stay as they were.
+
+        A run names its agent by string, not by foreign key, and a run is
+        evidence of what happened: removing the instrument from the catalog
+        does not un-happen its results. Every recorded version of this agent
+        goes together — the admin page shows the caller both counts before it
+        asks for the confirmation.
+        """
+        with session_scope(self.engine) as session:
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.agent_id == agent_id)
+                )
+                or 0
+            )
+            result = session.execute(
+                sa_delete(Agent).where(Agent.agent_id == agent_id)
+            )
+            versions = int(result.rowcount or 0)
+            if not versions:
+                raise KeyError(agent_id)
+        self.invalidate_history()
+        return {
+            "deleted": agent_id,
+            "kind": "agent",
+            "versions_deleted": versions,
+            "runs_kept": int(runs),
+        }
+
+    def admin_delete_runtime(self, runtime_id: str) -> dict[str, Any]:
+        """One runtime's catalog entries go; its runs stay as they were.
+
+        The same promise as :meth:`admin_delete_agent`: scores are evidence,
+        descriptors are a catalog, and only the catalog shrinks here.
+        """
+        with session_scope(self.engine) as session:
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.runtime_id == runtime_id)
+                )
+                or 0
+            )
+            result = session.execute(
+                sa_delete(Runtime).where(Runtime.runtime_id == runtime_id)
+            )
+            versions = int(result.rowcount or 0)
+            if not versions:
+                raise KeyError(runtime_id)
+        self.invalidate_history()
+        return {
+            "deleted": runtime_id,
+            "kind": "runtime",
+            "versions_deleted": versions,
+            "runs_kept": int(runs),
         }

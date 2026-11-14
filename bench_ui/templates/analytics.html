@@ -18,9 +18,23 @@
     </div>
   </div>
 
-  <!-- Controls -->
-  <div class="panel">
-    <div class="panel-header"><div class="panel-title">Controls</div><span class="badge badge-info" id="anCount">0 runs</span></div>
+  <!-- Controls (pinned: stays visible while scrolling; the pin toggles it) -->
+  <div class="panel pinned-controls" id="anControls">
+    <div class="panel-header">
+      <div class="panel-title">Controls</div>
+      <div class="panel-header-right">
+        <button type="button" id="anPin" class="pin-toggle" aria-pressed="true"
+                title="Pinned: stays at the top while scrolling. Click to unpin.">
+          <svg class="pin-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 17v5"/>
+            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+          </svg>
+          <span class="pin-label">Pinned</span>
+        </button>
+        <span class="badge badge-info" id="anCount">0 runs</span>
+      </div>
+    </div>
     <div class="panel-body">
       <div class="an-controls">
         <label>Group by <select id="anGroup" class="select"></select></label>

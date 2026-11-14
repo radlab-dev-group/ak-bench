@@ -562,3 +562,28 @@ class EventLog(Base, TimestampMixin):
     level: Mapped[str] = mapped_column(String(16), nullable=False, default="info")
     message: Mapped[str | None] = mapped_column(Text)
     details_json: Mapped[str | None] = mapped_column(Text)
+
+
+class UiUser(Base, TimestampMixin):
+    """Who may sign in to the dashboard, kept as a password hash.
+
+    The users of this database used to live in its process environment, with
+    the secrets in plain text beside it. Here a name carries a salted, iterated
+    digest of its secret and a role — ``viewer``, ``judge`` or ``admin`` — and
+    nothing else; the secret itself is never stored, only the hash that can
+    prove a later guess was right.
+    """
+
+    __tablename__ = "ui_users"
+    __table_args__ = (Index("ix_ui_users_name", "name", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="viewer")
+    #: When this person last signed out. A session cookie issued before this
+    #: moment is dead even if some cookie jar kept it and still sends it —
+    #: signing out must reach the server, not only the browser.
+    session_cutoff: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

@@ -83,11 +83,15 @@ runtime:
     # its own in-memory state, and a run whose routing decision depended on
     # which worker answered it is not reproducible.
     env:
-      LLM_ROUTER_MODELS_CONFIG: resources/configs/models-config-full-with-llamaindex-mapping-pkedzia.json
+      LLM_ROUTER_MODELS_CONFIG: /mnt/data2/dev/develop/llm-router/resources/configs/models-config-full-with-llamaindex-mapping-pkedzia.json
       LLM_ROUTER_PROMPTS_DIR: resources/prompts
       LLM_ROUTER_AUTH_ENABLED: "false"
-      LLM_ROUTER_BALANCE_STRATEGY: balanced
       LLM_ROUTER_USE_PROMETHEUS: "0"
+      # Balancing strategy
+      LLM_ROUTER_BALANCE_STRATEGY: "first_available_optim_nworkers"
+      LLM_ROUTER_LB_SLOT_LEASE_SECONDS: "120"
+      LLM_ROUTER_LB_SLOT_MAX_AGE_SECONDS: "1800"
+      LLM_ROUTER_LB_HOST_PIN_TTL_SECONDS: "3600"
       # No plugin pipeline here, on purpose. The pipeline is read once when the
       # process starts, so a pipeline in this static block would load its
       # plugins in EVERY run of this runtime, including the arm that measures
@@ -95,7 +99,14 @@ runtime:
       # runtime_env, which is applied last (docs/RUNTIME_MANAGER.md).
       LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_TRIGGER: auto_codex
       LLM_ROUTER_REDIS_HOST: 192.168.100.67
+      LLM_ROUTER_REDIS_PORT: "6379"
+      LLM_ROUTER_REDIS_DB: "0"
+      LLM_ROUTER_REDIS_PASSWORD: ""
+      LLM_ROUTER_REDIS_PROTOCOL: "2"
+      # Semantic-Codex routing
       LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_HOST: 192.168.100.67
+      LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PORT: "6379"
+      LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PROTOCOL: "2"
       LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_HOST: http://192.168.100.70:8271
       # A namespace of its own, so a benchmark run never reads or overwrites
       # the collections the shared instance works with.

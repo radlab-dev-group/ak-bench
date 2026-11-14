@@ -1,0 +1,164 @@
+# Every medium task in the dataset, under six arms: three requested models,
+# each of them with the knowledge layer off and on.
+#
+# WHY THE MEDIUM STRATUM. The selection is a difficulty, not a category: the
+# question is whether the knowledge layer helps at all, and it cannot be
+# answered from a task the arm fails for a different reason. Every medium
+# task is in, whichever type it belongs to: seven categories contribute two
+# each, performance three, and architecture contributes nothing, because the
+# dataset holds no medium task of that type. The eight categories named
+# below are what the medium stratum is today, not a narrowing of the intent.
+#
+# SIX ARMS, TWO FACTORS. model and knowledge_enabled vary together, and the
+# matrix is written out rather than crossed, because the two factors are not
+# independent: auto_codex is a routing trigger, so the arms that request it
+# load the routing plugin and the arms that name a model explicitly do not.
+# Arms pair up — (1,3), (2,4), (5,6) — and each pair differs in one fact about
+# the process its runs executed in.
+#
+# THE PIPELINE IS THE ARM'S. Which plugins a router process loads is read once,
+# when the process starts, so it belongs to the arm and not to the experiment:
+# a pipeline in the runtime descriptor's own block would load its plugins in
+# every arm, including the two that measure their absence. The toggle alone is
+# not enough either — it enables a plugin that is present, and loading it is
+# the pipeline's decision. Hence: arms 1 and 2 start with no pipeline at all,
+# arms 3 and 4 load the knowledge plugin, and arms 5 and 6 load the routing
+# plugin that resolves the alias, plus the knowledge plugin in arm 6.
+#
+# WHY A MANAGED RUNTIME. A knowledge arm has to be an arm whose router this
+# run started, which is why the runtime is the instance AK-Bench launches and
+# stops per run: on the shared external instance the toggle can be neither
+# pinned nor verified, and an arm that only asked for knowledge measured
+# nothing. The pipeline is refused on that instance for the same reason.
+#
+# WHAT AUTO_CODEX ARMS MEASURE. The requested model is the alias in arms 5 and
+# 6, and the agent only ever reports that alias back; what really served each
+# request is recorded per run by routed_model, so the routing decision is a
+# measured outcome of those arms rather than an assumption of this file.
+#
+# AN OPERATOR PRECONDITION. The knowledge arms read a vector engine that
+# authenticates by password, and the password is deliberately not in any file:
+# export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD before the run. Without
+# it arms 3, 4 and 6 start enabled, read nothing, fail open, and score as
+# though the memory layer had been there.
+schema_version: "1.0"
+id: medium-tasks-model-knowledge
+version: "1.0.0"
+title: Every medium task under three models, knowledge on and off
+description: >-
+  All seventeen medium tasks of the dataset — two in each of seven types, three
+  in performance — under six arms: qwen/Qwen3.8-27B, qwen/Qwen3.8-Flash-Next and
+  the auto_codex routing alias, each with the knowledge plugin off and on. Two
+  repetitions per task and arm, on the router instance this run starts, so a
+  knowledge arm is a run whose process really loaded the plugin rather than a
+  run that asked for it.
+
+experiment:
+  type: configuration
+
+  agent:
+    id: codex
+    version: "1.0.0"
+    config:
+      sandbox_mode: workspace-write
+
+  execution:
+    mode: router
+    runtime:
+      id: llm-router-ak-bench
+      lifecycle: managed
+
+  dataset:
+    filters:
+      # Every medium task, whatever its type. The limit below is what keeps this
+      # honest: a medium task added to the dataset makes the plan refuse to run
+      # rather than quietly widening the matrix and its cost.
+      difficulties: [medium]
+      # Today: bug_fix (garden-watering-001, quiz-streak-001), code_review
+      # (review-pr-multi-001, review-race-001), debugging (indexer-stale-entry-001,
+      # retryq-retry-order-001), new_feature (garden-plan-001, quiz-ranking-001),
+      # performance (dedup-linear-001, index-lookup-001, sorted-search-001),
+      # refactoring (billing-split-function-001, session-explicit-state-001),
+      # security (filebox-path-traversal-001, shopdb-sql-injection-001) and
+      # testing (quiz-streak-tests-001, timetable-overlap-tests-001).
+
+  factors:
+    strategy: custom_matrix
+    dimensions:
+      - id: model
+        values:
+          - qwen/Qwen3.8-27B
+          - qwen/Qwen3.8-Flash-Next
+          - auto_codex
+      - id: knowledge_enabled
+    # The reference is the strongest explicitly named model with no memory
+    # layer: every other arm then reads as one change from a fixed base.
+    baseline:
+      model: qwen/Qwen3.8-27B
+      knowledge_enabled: false
+    combinations:
+      # 1 — baseline: the 27B, no plugin loaded, nothing injected.
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: false
+      # 2 — the flash model under the same empty pipeline.
+      - model: qwen/Qwen3.8-Flash-Next
+        knowledge_enabled: false
+      # 3 — the 27B with the knowledge plugin loaded and enabled.
+      - model: qwen/Qwen3.8-27B
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
+      # 4 — the flash model with the same plugin.
+      - model: qwen/Qwen3.8-Flash-Next
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_knowledge
+      # 5 — the routing alias with routing on and no memory: what the alias
+      # does on its own. Routing must be loaded here or the alias is sent
+      # literally to a router that has no such model.
+      - model: auto_codex
+        knowledge_enabled: false
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex
+      # 6 — the routing alias with both plugins: the arm the shipped
+      # arena-roadmap-knowledge experiment runs, on the medium stratum.
+      - model: auto_codex
+        knowledge_enabled: true
+        runtime_env:
+          LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
+
+  execution_policy:
+    repetitions: 2
+    # One instance per run, and one run at a time: the router this run starts
+    # is a process of its own, and two runs sharing a machine share its rate
+    # limits, which is what a timing comparison cannot afford.
+    concurrency: 1
+    # The agent's own deadline (this becomes the run's agent_timeout), not a
+    # wall clock over the whole run: every medium task declares 600s, and the
+    # arms are given twice that, which is the room a code_review with six files
+    # to cite or a performance task with a benchmark to run needs.
+    timeout_seconds: 1200
+    # The evaluation gets its own deadline, separate from the agent's.
+    evaluation_timeout_seconds: 300
+    retry_infrastructure_errors: 1
+
+  isolation:
+    workspace_per_run: true
+    fresh_agent_session: true
+    clean_agent_context: true
+
+  evaluation:
+    evaluators: [pytest_evaluator]
+
+  metrics:
+    - task_success_rate
+    - hidden_test_pass_rate
+    - execution_time
+    - total_tokens
+
+  limits:
+    # 17 tasks x 6 arms x 2 repetitions, exactly. An eighteenth medium task,
+    # a seventh arm or a third repetition has to be a decision, not a drift.
+    max_tasks: 17
+    max_variants: 6
+    max_runs: 204

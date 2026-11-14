@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Failure Analysis{% endblock %}
+
+{% block content %}
+<div id="failuresRoot">
+  <div style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px;">
+    <div>
+      <h1 style="margin:0 0 4px;">Failure Analysis</h1>
+      <div style="color:var(--fg-dim); font-size:13.5px;">
+        What failed and where to look: the hardest tasks, repetitions that contradict each other,
+        and the evaluator tests that kill the most runs.
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls (pinned: stays visible while scrolling; the pin toggles it) -->
+  <div class="panel pinned-controls" id="flControls">
+    <div class="panel-header">
+      <div class="panel-title">Controls</div>
+      <div class="panel-header-right">
+        <button type="button" id="flPin" class="pin-toggle" aria-pressed="true"
+                title="Pinned: stays at the top while scrolling. Click to unpin.">
+          <svg class="pin-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 17v5"/>
+            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>
+          </svg>
+          <span class="pin-label">Pinned</span>
+        </button>
+        <span class="badge badge-info" id="flCount">—</span>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="an-controls">
+        <label>Configuration <select id="flConfig" class="select"></select></label>
+        <label>Category <select id="flCategory" class="select"></select></label>
+        <label>Min. runs per task <select id="flMinRuns" class="select">
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option>
+        </select></label>
+        <label>Fully passed tasks <select id="flShowPassed" class="select">
+          <option value="hide">hide</option><option value="show">show</option>
+        </select></label>
+        <label>Search <input id="flSearch" class="input" type="search" placeholder="task, test, config…"></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="grid-cards" id="flKpis"></div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Hardest tasks — pass rate with 95% interval</div>
+      <span class="badge badge-neutral" id="flTasksCount">—</span>
+    </div>
+    <div class="table-responsive" id="flTasks"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Contradictory repetitions — one task, one configuration</div>
+      <span class="badge badge-neutral" id="flFlakyCount">—</span>
+    </div>
+    <div class="table-responsive" id="flFlaky"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Failing tests — what the evaluator reports</div>
+      <span class="badge badge-neutral" id="flTestsCount">—</span>
+    </div>
+    <div class="table-responsive" id="flTests"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><div class="panel-title">Why runs failed — harness classes</div></div>
+    <div class="panel-body" id="flClasses"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/failures.js"></script>
+{% endblock %}
