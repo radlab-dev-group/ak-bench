@@ -23,10 +23,11 @@
   </form>
 {%- endmacro %}
 
-{% macro stat_card(key, label) -%}
-  <a class="stat-card {% if tab == key %}active{% endif %}" href="/admin?tab={{ key }}">
-    <div class="stat-num">{{ counts[key] }}</div>
-    <div class="stat-label">{{ label }}</div>
+{% macro stat_card(key, label, accent='') -%}
+  <a href="/admin?tab={{ key }}" class="card {{ accent }} {% if tab == key %}is-active{% endif %}" style="text-decoration:none; cursor:pointer; {% if tab == key %}border-color:var(--mint-border); box-shadow:0 0 0 1px var(--mint-border);{% endif %}">
+    <div class="card-title">{{ label }}</div>
+    <div class="card-value">{{ counts[key] }}</div>
+    <div class="card-sub">{{ counts[key] }} total · manage →</div>
   </a>
 {%- endmacro %}
 
@@ -40,12 +41,12 @@
     </div>
   </div>
 
-  <div class="admin-stats">
-    {{ stat_card('runs', 'Runs') }}
+  <div class="grid-cards">
+    {{ stat_card('runs', 'Runs', 'card-mint') }}
     {{ stat_card('experiments', 'Experiments') }}
     {{ stat_card('tasks', 'Tasks') }}
-    {{ stat_card('agents', 'Agents') }}
-    {{ stat_card('runtimes', 'Runtimes') }}
+    {{ stat_card('agents', 'Agents', 'card-amber') }}
+    {{ stat_card('runtimes', 'Runtimes', 'card-blue') }}
   </div>
 
   <div class="panel">
