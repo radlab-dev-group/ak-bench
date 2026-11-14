@@ -462,6 +462,141 @@ def test_analytics_page_and_data_api(database_url: str) -> None:
     assert isinstance(data["param_keys"], list)
 
 
+def test_failure_page_and_data_api(database_url: str, tmp_path) -> None:
+    """The failures page reads the history for what failed and where to look.
+
+    Three things must survive the trip through the database and back: a task
+    whose repetitions under one configuration contradict each other (the pair a
+    mean hides), the evaluator tests that failed (named only in JUnit reports),
+    and a run the harness never got a verdict from (whose why is the harness's
+    own classification, not a test result).
+    """
+    store = _seeded_store(database_url)
+
+    # A third repetition under the base arm contradicts the first: same task,
+    # same configuration, two verdicts — the flaky pair.
+    store.record_run(
+        {
+            "run_uid": "run-003",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "runtime_id": "llm-router-ak-bench",
+            "state": "completed",
+            "started_at": "2026-11-06T10:20:00+00:00",
+            "finished_at": "2026-11-06T10:22:00+00:00",
+            "evaluation": {
+                "verdict": "failed",
+                "score": 0.0,
+                "passed": 8,
+                "failed": 2,
+                "total": 10,
+            },
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+    # A run the harness itself gave up on: no verdict, one failure class.
+    store.record_run(
+        {
+            "run_uid": "run-004",
+            "task_uid": "wordcount-001@1.0.0",
+            "agent_id": "codex",
+            "agent_version": "1.0",
+            "runtime_id": "llm-router-ak-bench",
+            "state": "error",
+            "failure_class": "infrastructure",
+            "error_message": "the sandbox died",
+            "started_at": "2026-11-06T10:30:00+00:00",
+            "finished_at": "2026-11-06T10:31:00+00:00",
+        },
+        experiment_uid="test-exp@1.0.0",
+        variant_uid="v-base",
+        task=_task_stub(),
+    )
+    # JUnit reports name the tests: the same test failed both failing runs.
+    for run_uid in ("run-002", "run-003"):
+        report = tmp_path / run_uid
+        report.mkdir()
+        (report / "junit.xml").write_text(
+            "<testsuite>"
+            '<testcase name="test_repeated_whitespace"/>'
+            '<testcase name="test_counts_words"><failure message="assert failed"/></testcase>'
+            "</testsuite>",
+            encoding="utf-8",
+        )
+        _record_junit_artifact(store, run_uid, report / "junit.xml")
+
+    client = TestClient(create_app(database_url=database_url))
+
+    page = client.get("/failures")
+    assert page.status_code == 200
+    assert "Failure Analysis" in page.text
+    assert "/static/js/failures.js" in page.text
+
+    data = client.get("/api/failures/data").json()
+    assert data["summary"]["runs"] == 4
+    assert data["summary"]["evaluated"] == 3
+    assert data["summary"]["not_passed"] == 3
+    assert data["summary"]["tasks_with_failures"] == 1
+    assert data["summary"]["flaky_pairs"] == 1
+    assert data["summary"]["failing_tests"] == 1
+
+    # Task rows arrive pooled and per configuration, worst first.
+    overall = next(r for r in data["tasks"] if r["config_str"] is None)
+    assert overall["task_uid"] == "wordcount-001@1.0.0"
+    assert overall["category"] == "bug_fix"
+    assert (overall["evaluated"], overall["passed"]) == (3, 1)
+    assert overall["verdicts"] == {"failed": 1, "partial": 1, "passed": 1}
+    assert overall["ci_low"] is not None and overall["ci_low"] <= overall["pass_rate"]
+
+    flaky = data["flaky"]
+    assert len(flaky) == 1
+    assert flaky[0]["config_str"] == "knowledge=False, model=base-model"
+    assert (flaky[0]["evaluated"], flaky[0]["passed"]) == (2, 1)
+    assert [s["verdict"] for s in flaky[0]["sequence"]] == ["passed", "failed"]
+
+    failing = next(t for t in data["tests"] if t["config_str"] is None)
+    assert failing["name"] == "test_counts_words"
+    assert (failing["tested_runs"], failing["failed_runs"]) == (2, 2)
+    assert failing["examples"] == ["run-002", "run-003"]
+    assert not any(t["name"] == "test_repeated_whitespace" for t in data["tests"])
+
+    assert data["failure_classes"] == [
+        {
+            "failure_class": "infrastructure",
+            "status": "error",
+            "count": 1,
+            "example_error": "the sandbox died",
+            "example_run_uid": "run-004",
+        }
+    ]
+
+
+def test_the_controls_panel_can_be_pinned_and_unpinned(database_url: str) -> None:
+    """A pin on the controls panel of both explorers, wired in one place.
+
+    Pinned is the default a reader gets without choosing anything; the button
+    is what unpins the panel when it is in the way, and the choice is kept per
+    page in the browser. The markup is what this asserts — the behaviour lives
+    in the browser, so the test only checks that both pages carry the button
+    and that the shared wiring is served.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+    for page, panel, button in (
+        ("/analytics", "anControls", "anPin"),
+        ("/failures", "flControls", "flPin"),
+    ):
+        body = client.get(page).text
+        assert f'id="{panel}"' in body, page
+        assert f'id="{button}"' in body, page
+        assert 'class="pin-toggle"' in body, page
+        assert 'aria-pressed="true"' in body, page
+    assert "initPinToggle" in client.get("/static/js/app.js").text
+
+
 def test_single_run_api(database_url: str) -> None:
     _seeded_store(database_url)
     app = create_app(database_url=database_url)
@@ -570,7 +705,7 @@ def test_the_catalog_pages_are_reachable_from_the_navigation(database_url: str) 
     client = TestClient(create_app(database_url=database_url))
 
     body = client.get("/").text
-    for href in ("/tasks", "/agents", "/runtimes", "/experiments", "/runs", "/analytics"):
+    for href in ("/tasks", "/agents", "/runtimes", "/experiments", "/runs", "/analytics", "/failures"):
         assert f'href="{href}"' in body, href
 
 
@@ -580,7 +715,7 @@ def test_every_page_carries_the_page_load_indicator(database_url: str) -> None:
 
     _seeded_store(database_url)
     client = TestClient(create_app(database_url=database_url))
-    for page in ("/", "/runs", "/analytics", "/compare", "/experiments", "/tasks"):
+    for page in ("/", "/runs", "/analytics", "/failures", "/compare", "/experiments", "/tasks"):
         body = client.get(page).text
         assert 'id="pageLoader"' in body, page
         assert 'id="pageLoaderBar"' in body, page
