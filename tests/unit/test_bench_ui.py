@@ -761,6 +761,53 @@ def test_the_catalog_pages_are_reachable_from_the_navigation(database_url: str) 
         assert f'href="{href}"' in body, href
 
 
+def test_the_navigation_folds_its_pages_into_menus(database_url: str) -> None:
+    """Eleven links in a row is a row nobody reads: the pages are grouped.
+
+    The two daily pages stay in the bar; the analysis pages and the catalog
+    pages each sit in a menu, and the settings sit in a third. The bar still
+    says where the reader is: the group holding the current page is lit and
+    names it.
+    """
+    _seeded_store(database_url)
+    client = TestClient(create_app(database_url=database_url))
+
+    body = client.get("/best-match").text
+    nav = body[body.index('id="navLinks"') : body.index('class="nav-right"')]
+
+    def menu(group: str) -> str:
+        start = nav.index(f'id="navMenu-{group}"')
+        return nav[start : nav.index("</div>", start)]
+
+    for href in ("/analytics", "/failures", "/compare", "/best-match"):
+        assert f'href="{href}"' in menu("analysis"), href
+        assert f'href="{href}"' not in menu("catalog"), href
+    for href in ("/experiments", "/tasks", "/agents", "/runtimes"):
+        assert f'href="{href}"' in menu("catalog"), href
+
+    # every menu has a button that says what it controls and that it is shut
+    for group in ("analysis", "catalog", "settings"):
+        assert f'aria-controls="navMenu-{group}"' in body, group
+    assert body.count("data-nav-toggle") == body.count('aria-expanded="false"')
+
+    # the current page is marked once, and its group names it in the bar
+    assert nav.count('aria-current="page"') == 1
+    assert 'href="/best-match" class="active" aria-current="page"' in nav
+    assert "nav-group-toggle active" in nav
+    assert "nav-group-current" in nav
+    assert "nav-group-toggle active" not in client.get("/runs").text
+
+    # the settings moved into their menu and kept the ids the script reads
+    settings = body[body.index('id="navMenu-settings"') :]
+    assert 'id="themeToggle"' in settings
+    assert 'id="refreshInterval"' in settings
+
+    assert "initNavMenus" in client.get("/static/js/app.js").text
+    css = client.get("/static/css/style.css").text
+    assert ".nav-group.open > .nav-menu" in css
+    assert ".nav-burger" in css
+
+
 def test_every_page_carries_the_page_load_indicator(database_url: str) -> None:
     """One markup in the base template: the ramp belongs to the shell, not a page."""
     from bench_ui.app import create_app

@@ -203,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (copyMarkdown) copyMarkdown.addEventListener('click', () => copyRunsTable('markdown'));
   initRunsKeyNav();
   initThemeToggle();
+  initNavMenus();
 
   initTaskCodeTree();
   initRunDiffPicker();
@@ -1146,6 +1147,100 @@ function initThemeToggle() {
   button.addEventListener('click', () => {
     setTheme(currentTheme() === 'light' ? 'dark' : 'light');
   });
+}
+
+// ============================================================ Navigation menus
+// A group in the navigation is a button and the menu it opens. The markup says
+// which is which — [data-nav-group] wraps a [data-nav-toggle] and the element
+// its aria-controls names — so one handler serves the page menus, the settings
+// menu and the burger that holds all the links on a narrow screen. Groups
+// nest (the page menus live inside the burger's), so "close the others" means
+// the ones this group is not inside of.
+function initNavMenus() {
+  const groups = Array.from(document.querySelectorAll('[data-nav-group]'));
+  if (!groups.length) return;
+
+  const toggleOf = (group) => {
+    const toggle = group.querySelector('[data-nav-toggle]');
+    return toggle && toggle.closest('[data-nav-group]') === group ? toggle : null;
+  };
+  const menuOf = (group) => {
+    const toggle = toggleOf(group);
+    return toggle ? document.getElementById(toggle.getAttribute('aria-controls')) : null;
+  };
+  const setOpen = (group, open) => {
+    group.classList.toggle('open', open);
+    const toggle = toggleOf(group);
+    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  // Close every group that does not contain `keep`; with no `keep`, all.
+  const closeOthers = (keep) => {
+    groups.forEach((group) => {
+      if (keep && group.contains(keep)) return;
+      if (group.classList.contains('open')) setOpen(group, false);
+    });
+  };
+  // What the arrow keys walk: the links and buttons of a menu, but not the
+  // toggles of groups nested in it, which a narrow screen lays out open.
+  const itemsOf = (group) => {
+    const menu = menuOf(group);
+    if (!menu) return [];
+    return Array.from(menu.querySelectorAll('a[href], button:not([data-nav-toggle]), select'))
+      .filter((item) => item.offsetParent !== null);
+  };
+
+  groups.forEach((group) => {
+    const toggle = toggleOf(group);
+    if (!toggle) return;
+
+    toggle.addEventListener('click', () => {
+      const open = !group.classList.contains('open');
+      closeOthers(group);
+      setOpen(group, open);
+    });
+
+    group.addEventListener('keydown', (event) => {
+      if (event.target.closest('[data-nav-group]') !== group) return;
+      const isOpen = group.classList.contains('open');
+
+      if (event.key === 'Escape' && isOpen) {
+        event.stopPropagation();
+        setOpen(group, false);
+        toggle.focus();
+        return;
+      }
+      // a select keeps its own arrow keys
+      if (event.target.tagName === 'SELECT') return;
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp'
+          && event.key !== 'Home' && event.key !== 'End') return;
+      if (event.target === toggle && event.key !== 'ArrowDown') return;
+
+      event.preventDefault();
+      if (!isOpen) {
+        closeOthers(group);
+        setOpen(group, true);
+      }
+      const items = itemsOf(group);
+      if (!items.length) return;
+      const at = items.indexOf(document.activeElement);
+      let next;
+      if (event.key === 'Home' || at === -1) next = 0;
+      else if (event.key === 'End') next = items.length - 1;
+      else if (event.key === 'ArrowDown') next = (at + 1) % items.length;
+      else next = (at - 1 + items.length) % items.length;
+      items[next].focus();
+    });
+
+    // Tabbing out of a menu closes it. A click that moves focus nowhere
+    // (relatedTarget is null) is left to the document handler below.
+    group.addEventListener('focusout', (event) => {
+      if (event.relatedTarget && !group.contains(event.relatedTarget)) setOpen(group, false);
+    });
+  });
+
+  document.addEventListener('click', (event) => closeOthers(event.target));
+  // A page restored from the back/forward cache comes back as it was left.
+  window.addEventListener('pageshow', (event) => { if (event.persisted) closeOthers(null); });
 }
 
 // ============================================================ Controls pin

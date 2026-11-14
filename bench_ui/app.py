@@ -380,6 +380,21 @@ def create_app(
     def api_analytics_data():
         return service.get_analytics_dataset()
 
+    @app.get("/best-match", response_class=HTMLResponse)
+    def best_match_page(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="best_match.html",
+            context={
+                "active_page": "best-match",
+                "database": database,
+            },
+        )
+
+    @app.get("/api/best-match")
+    def api_best_match(min_runs: int = Query(3, ge=1, le=20)):
+        return service.get_best_match(min_runs=min_runs)
+
     @app.get("/failures", response_class=HTMLResponse)
     def failures_page(request: Request):
         return templates.TemplateResponse(
@@ -466,10 +481,21 @@ def create_app(
         ]
         all_tasks = service.get_tasks()
         tasks = [t for t in all_tasks if _matches(q, t.get("uid"), t.get("title"))]
-        all_agents = _group_catalog(service.get_agents())
-        agents = [a for a in all_agents if _matches(q, a["id"], a["title"])]
-        all_runtimes = _group_catalog(service.get_runtimes())
-        runtimes = [r for r in all_runtimes if _matches(q, r["id"], r["title"])]
+        # Agents and runtimes are shown per-version, exactly as the
+        # public /agents and /runtimes pages do — one row per version, so a
+        # concrete agent@version / runtime@version can be removed.
+        all_agents = service.get_agents()
+        agents = [
+            a
+            for a in all_agents
+            if _matches(q, a.get("id"), a.get("title"), a.get("version"), a.get("uid"))
+        ]
+        all_runtimes = service.get_runtimes()
+        runtimes = [
+            r
+            for r in all_runtimes
+            if _matches(q, r.get("id"), r.get("title"), r.get("version"), r.get("uid"))
+        ]
         return templates.TemplateResponse(
             request=request,
             name="admin.html",
@@ -528,6 +554,17 @@ def create_app(
         except KeyError:
             raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
 
+    @app.delete("/api/admin/agents/{agent_id}/versions/{version}")
+    def admin_delete_agent_version(request: Request, agent_id: str, version: str):
+        _require_admin_call(request)
+        try:
+            return service.admin_delete_agent_version(agent_id, version)
+        except KeyError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Agent '{agent_id}@{version}' not found",
+            )
+
     @app.delete("/api/admin/runtimes/{runtime_id}")
     def admin_delete_runtime(request: Request, runtime_id: str):
         _require_admin_call(request)
@@ -536,6 +573,17 @@ def create_app(
         except KeyError:
             raise HTTPException(
                 status_code=404, detail=f"Runtime '{runtime_id}' not found"
+            )
+
+    @app.delete("/api/admin/runtimes/{runtime_id}/versions/{version}")
+    def admin_delete_runtime_version(request: Request, runtime_id: str, version: str):
+        _require_admin_call(request)
+        try:
+            return service.admin_delete_runtime_version(runtime_id, version)
+        except KeyError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Runtime '{runtime_id}@{version}' not found",
             )
 
     @app.get("/compare", response_class=HTMLResponse)

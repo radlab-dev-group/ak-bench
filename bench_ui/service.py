@@ -2035,6 +2035,324 @@ class BenchDataService:
             rows.append(row)
         return {"rows": rows, "param_keys": sorted(param_keys)}
 
+    # ------------------------------------------------------ Best match
+    def get_best_match(self, min_runs: int = 3) -> dict[str, Any]:
+        """Where ``auto_codex+knowledge=True`` wins — the maximal quality slice.
+
+        The report answers in which situation the target configuration
+        (auto_codex with the agentic knowledge layer) beats every other
+        configuration, and where the advantage is largest.  Quality is
+        ``success_rate`` (task_success_rate) and ``mean_score`` (evaluator_score);
+        a slice wins when the target is ahead on both, ranked by the sum of
+        the deltas so that maximising all quality indicators at once is a single
+        number to sort by.
+
+        The search is exhaustive over:
+
+        * every category, difficulty and category×difficulty,
+        * every task,
+        * every subset of categories and of difficulties (2^n brute force),
+        * the task set that aggregates all individually winning tasks.
+
+        ``min_runs`` guards a slice: fewer than that many target *and* baseline
+        evaluated runs is not enough evidence to call it a win, and the slice
+        is listed as insufficient rather than as a zero.
+        """
+        history = self.get_history()
+        runs = history.runs
+
+        # ---- identify target runs: auto_codex + agentic_knowledge
+        def _is_target(run: dict[str, Any]) -> bool:
+            label = configuration_of(run)
+            if label:
+                try:
+                    parsed = _split_configuration_label(label)
+                except Exception:
+                    parsed = {}
+                if parsed.get("base_model") == "auto_codex" and parsed.get("knowledge_enabled"):
+                    return True
+            exp_uid = str(run.get("experiment_uid") or "")
+            var_uid = run.get("variant_uid")
+            for variant in history.variants.get(exp_uid, []):
+                if variant.get("uid") == var_uid:
+                    vals = variant.get("values") or {}
+                    model_is_auto = vals.get("model") == "auto_codex"
+                    know_true = vals.get("knowledge_enabled") is True
+                    if model_is_auto and know_true:
+                        return True
+                    break
+            return False
+
+        task_meta: dict[str, dict[str, Any]] = {
+            str(t.get("uid")): t for t in history.tasks if t.get("uid")
+        }
+        target_runs = [r for r in runs if _is_target(r)]
+        other_runs = [r for r in runs if not _is_target(r)]
+
+        def _summ(runs_slice: list[dict[str, Any]]) -> dict[str, Any]:
+            return summarize_runs(runs_slice)
+
+        def _delta(target_summary: dict[str, Any], other_summary: dict[str, Any]) -> dict[str, Any]:
+            ts = target_summary.get("success_rate")
+            os_ = other_summary.get("success_rate")
+            ds = (ts - os_) if (ts is not None and os_ is not None) else None
+            tsc = target_summary.get("mean_score")
+            osc = other_summary.get("mean_score")
+            dsc = (tsc - osc) if (tsc is not None and osc is not None) else None
+            wins_both = (
+                ds is not None and dsc is not None and ds > 0 and dsc > 0
+            )
+            composite = None
+            if ds is not None and dsc is not None:
+                composite = round(ds + dsc, 6)
+            elif ds is not None:
+                composite = round(ds, 6)
+            elif dsc is not None:
+                composite = round(dsc, 6)
+            return {
+                "delta_success_rate": round(ds, 6) if ds is not None else None,
+                "delta_mean_score": round(dsc, 6) if dsc is not None else None,
+                "wins_both": wins_both,
+                "composite": composite,
+            }
+
+        def _slice_comparison(
+            key: str,
+            label: str,
+            target_slice: list[dict[str, Any]],
+            other_slice: list[dict[str, Any]],
+            extra: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            t_s = _summ(target_slice)
+            o_s = _summ(other_slice)
+            d = _delta(t_s, o_s)
+            interval_t = wilson_interval(t_s["passed"], t_s["evaluated"])
+            interval_o = wilson_interval(o_s["passed"], o_s["evaluated"])
+            enough = (t_s["evaluated"] >= min_runs and o_s["evaluated"] >= min_runs)
+            return {
+                "key": key,
+                "label": label,
+                "filter": extra or {},
+                "target_summary": t_s,
+                "other_summary": o_s,
+                "target_ci": {"low": interval_t[0] if interval_t else None, "high": interval_t[1] if interval_t else None},
+                "other_ci": {"low": interval_o[0] if interval_o else None, "high": interval_o[1] if interval_o else None},
+                "delta": d,
+                "enough_data": enough,
+                "target_runs": t_s["runs"],
+                "other_runs": o_s["runs"],
+            }
+
+        overall = _slice_comparison("overall", "All tasks", target_runs, other_runs, {"scope": "overall"})
+
+        categories = sorted({str(m.get("category") or "unknown") for m in task_meta.values() if m.get("category")})
+        if not categories:
+            categories = sorted({str(task_meta.get(str(r.get("task_uid")), {}).get("category") or "unknown") for r in runs if r.get("task_uid")})
+            categories = [c for c in categories if c != "unknown"]
+        difficulties = sorted({str(m.get("difficulty") or "unknown") for m in task_meta.values() if m.get("difficulty")})
+        if not difficulties:
+            difficulties = sorted({str(task_meta.get(str(r.get("task_uid")), {}).get("difficulty") or "unknown") for r in runs if r.get("task_uid")})
+            difficulties = [d for d in difficulties if d != "unknown"]
+        task_uids = sorted({str(r.get("task_uid")) for r in runs if r.get("task_uid")})
+
+        by_category: list[dict[str, Any]] = []
+        for cat in categories:
+            t_slice = [r for r in target_runs if str(task_meta.get(str(r.get("task_uid")), {}).get("category") or "") == cat]
+            o_slice = [r for r in other_runs if str(task_meta.get(str(r.get("task_uid")), {}).get("category") or "") == cat]
+            by_category.append(_slice_comparison(f"category:{cat}", cat, t_slice, o_slice, {"category": cat}))
+
+        by_difficulty: list[dict[str, Any]] = []
+        for diff in difficulties:
+            t_slice = [r for r in target_runs if str(task_meta.get(str(r.get("task_uid")), {}).get("difficulty") or "") == diff]
+            o_slice = [r for r in other_runs if str(task_meta.get(str(r.get("task_uid")), {}).get("difficulty") or "") == diff]
+            by_difficulty.append(_slice_comparison(f"difficulty:{diff}", diff, t_slice, o_slice, {"difficulty": diff}))
+
+        by_cat_diff: list[dict[str, Any]] = []
+        for cat in categories:
+            for diff in difficulties:
+                t_slice = [
+                    r for r in target_runs
+                    if str(task_meta.get(str(r.get("task_uid")), {}).get("category") or "") == cat
+                    and str(task_meta.get(str(r.get("task_uid")), {}).get("difficulty") or "") == diff
+                ]
+                o_slice = [
+                    r for r in other_runs
+                    if str(task_meta.get(str(r.get("task_uid")), {}).get("category") or "") == cat
+                    and str(task_meta.get(str(r.get("task_uid")), {}).get("difficulty") or "") == diff
+                ]
+                if t_slice or o_slice:
+                    by_cat_diff.append(_slice_comparison(f"cat:{cat} × diff:{diff}", f"{cat} · {diff}", t_slice, o_slice, {"category": cat, "difficulty": diff}))
+
+        by_task: list[dict[str, Any]] = []
+        for tid in task_uids:
+            meta = task_meta.get(tid, {})
+            t_slice = [r for r in target_runs if str(r.get("task_uid")) == tid]
+            o_slice = [r for r in other_runs if str(r.get("task_uid")) == tid]
+            label = meta.get("title") or tid
+            by_task.append(_slice_comparison(f"task:{tid}", tid, t_slice, o_slice, {"task_uid": tid, "title": label, "category": meta.get("category"), "difficulty": meta.get("difficulty")}))
+
+        best_cat_subset = None
+        cat_subsets_ranked: list[dict[str, Any]] = []
+        if 1 < len(categories) <= 10:
+            n = len(categories)
+            for mask in range(1, 1 << n):
+                subset = [categories[i] for i in range(n) if (mask >> i) & 1]
+                t_slice = [r for r in target_runs if str(task_meta.get(str(r.get("task_uid")), {}).get("category") or "") in subset]
+                o_slice = [r for r in other_runs if str(task_meta.get(str(r.get("task_uid")), {}).get("category") or "") in subset]
+                comp = _slice_comparison(
+                    f"cat-subset:{'+'.join(subset)}",
+                    " + ".join(subset),
+                    t_slice, o_slice,
+                    {"categories": subset},
+                )
+                cat_subsets_ranked.append(comp)
+            cat_subsets_ranked.sort(key=lambda c: (c["delta"]["composite"] is None, -(c["delta"]["composite"] or -9e9), c["label"]))
+            if cat_subsets_ranked:
+                best_cat_subset = cat_subsets_ranked[0]
+
+        best_diff_subset = None
+        diff_subsets_ranked: list[dict[str, Any]] = []
+        if 1 < len(difficulties) <= 10:
+            n = len(difficulties)
+            for mask in range(1, 1 << n):
+                subset = [difficulties[i] for i in range(n) if (mask >> i) & 1]
+                t_slice = [r for r in target_runs if str(task_meta.get(str(r.get("task_uid")), {}).get("difficulty") or "") in subset]
+                o_slice = [r for r in other_runs if str(task_meta.get(str(r.get("task_uid")), {}).get("difficulty") or "") in subset]
+                comp = _slice_comparison(
+                    f"diff-subset:{'+'.join(subset)}",
+                    " + ".join(subset),
+                    t_slice, o_slice,
+                    {"difficulties": subset},
+                )
+                diff_subsets_ranked.append(comp)
+            diff_subsets_ranked.sort(key=lambda c: (c["delta"]["composite"] is None, -(c["delta"]["composite"] or -9e9), c["label"]))
+            if diff_subsets_ranked:
+                best_diff_subset = diff_subsets_ranked[0]
+
+        all_slices = by_category + by_difficulty + by_cat_diff + by_task
+        all_slices_sorted = sorted(
+            [s for s in all_slices if s["delta"]["composite"] is not None],
+            key=lambda s: (-(s["delta"]["composite"] or 0), s["label"]),
+        )
+
+        winning = [s for s in all_slices_sorted if s["delta"]["wins_both"] and s["enough_data"]]
+
+        def _best_of(lst: list[dict[str, Any]]) -> dict[str, Any] | None:
+            cands = [s for s in lst if s["delta"]["composite"] is not None]
+            if not cands:
+                return None
+            cands.sort(key=lambda s: (-(s["delta"]["composite"] or -9e9), s["label"]))
+            return cands[0]
+
+        best_category = _best_of(by_category)
+        best_difficulty = _best_of(by_difficulty)
+        best_catdiff = _best_of(by_cat_diff)
+        best_task_single = _best_of(by_task)
+
+        winning_task_ids = [s["filter"].get("task_uid") for s in by_task if s["delta"]["wins_both"] and s["enough_data"]]
+        task_set_slice = None
+        if winning_task_ids:
+            t_slice = [r for r in target_runs if str(r.get("task_uid")) in winning_task_ids]
+            o_slice = [r for r in other_runs if str(r.get("task_uid")) in winning_task_ids]
+            task_set_slice = _slice_comparison(
+                "task-set:winning-tasks",
+                f"{len(winning_task_ids)} tasks where target wins",
+                t_slice, o_slice,
+                {"task_uids": winning_task_ids},
+            )
+        winning_task_ids_all = [s["filter"].get("task_uid") for s in by_task if s["delta"]["wins_both"]]
+        task_set_slice_all = None
+        if winning_task_ids_all:
+            t_slice = [r for r in target_runs if str(r.get("task_uid")) in winning_task_ids_all]
+            o_slice = [r for r in other_runs if str(r.get("task_uid")) in winning_task_ids_all]
+            task_set_slice_all = _slice_comparison(
+                "task-set:winning-tasks-all",
+                f"{len(winning_task_ids_all)} tasks where target wins (incl. low-sample)",
+                t_slice, o_slice,
+                {"task_uids": winning_task_ids_all},
+            )
+
+        from collections import Counter
+        other_labels = [configuration_of(r) or "unknown" for r in other_runs]
+        other_top = Counter(other_labels).most_common(8)
+        competitors = []
+        for label, cnt in other_top:
+            group = [r for r in other_runs if (configuration_of(r) or "unknown") == label]
+            competitors.append({"config": label, "runs": cnt, "summary": _summ(group)})
+
+        vs_competitors = []
+        for comp in competitors:
+            label = comp["config"]
+            group = [r for r in other_runs if (configuration_of(r) or "unknown") == label]
+            comp_slice = _slice_comparison(f"vs:{label}", f"vs {label}", target_runs, group, {"competitor": label})
+            vs_competitors.append(comp_slice)
+        vs_competitors.sort(key=lambda s: (-(s["delta"]["composite"] or -9e9)))
+
+        interpretation: dict[str, Any] = {}
+        if overall["delta"]["wins_both"] and overall["enough_data"]:
+            interpretation["overall_verdict"] = "Target wins overall on both quality indicators."
+        elif overall["delta"]["delta_success_rate"] is not None and overall["delta"]["delta_success_rate"] > 0:
+            interpretation["overall_verdict"] = "Target is ahead on success rate overall, but not on mean score — check slices for the maximised win."
+        elif overall["delta"]["delta_success_rate"] is not None and overall["delta"]["delta_success_rate"] < 0:
+            interpretation["overall_verdict"] = "Target does not win overall; it needs a sliced view to shine — see optimal slices below."
+        else:
+            interpretation["overall_verdict"] = "No overall data to judge."
+
+        return {
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "target": {
+                "description": "auto_codex + agentic_knowledge (knowledge=True)",
+                "predicate": "base_model == 'auto_codex' and 'agentic_knowledge' in plugins OR variant knowledge_enabled==True with model==auto_codex",
+                "runs": len(target_runs),
+                "evaluated": overall["target_summary"]["evaluated"],
+                "summary": overall["target_summary"],
+                "ci": overall["target_ci"],
+            },
+            "baseline": {
+                "description": "All other configurations pooled",
+                "runs": len(other_runs),
+                "evaluated": overall["other_summary"]["evaluated"],
+                "summary": overall["other_summary"],
+                "ci": overall["other_ci"],
+            },
+            "overall": overall,
+            "competitors": competitors,
+            "vs_competitors": vs_competitors,
+            "slices": {
+                "by_category": sorted(by_category, key=lambda s: (-(s["delta"]["composite"] or -9e9), s["label"])),
+                "by_difficulty": sorted(by_difficulty, key=lambda s: (-(s["delta"]["composite"] or -9e9), s["label"])),
+                "by_category_difficulty": sorted(by_cat_diff, key=lambda s: (-(s["delta"]["composite"] or -9e9), s["label"])),
+                "by_task": sorted(by_task, key=lambda s: (-(s["delta"]["composite"] or -9e9), s["label"])),
+            },
+            "optimal": {
+                "best_category": best_category,
+                "best_difficulty": best_difficulty,
+                "best_category_difficulty": best_catdiff,
+                "best_task": best_task_single,
+                "best_category_subset": best_cat_subset,
+                "best_category_subsets_ranked": cat_subsets_ranked[:10],
+                "best_difficulty_subset": best_diff_subset,
+                "best_difficulty_subsets_ranked": diff_subsets_ranked[:10],
+                "winning_slices": winning[:20],
+                "winning_slices_all": all_slices_sorted[:30],
+                "task_set_winning": task_set_slice,
+                "task_set_winning_all": task_set_slice_all,
+                "winning_task_ids": winning_task_ids,
+            },
+            "meta": {
+                "min_runs": min_runs,
+                "categories": categories,
+                "difficulties": difficulties,
+                "total_tasks": len(task_uids),
+                "total_runs": len(runs),
+                "target_runs": len(target_runs),
+                "other_runs": len(other_runs),
+                "history_tasks": len(task_meta),
+            },
+            "interpretation": interpretation,
+        }
+
+
     # ------------------------------------------------------ Failure analysis
     def get_failures_dataset(self) -> dict[str, Any]:
         """What failed, how, and where — the whole history read for its failures.
@@ -2480,6 +2798,40 @@ class BenchDataService:
             "runs_kept": int(runs),
         }
 
+    def admin_delete_agent_version(self, agent_id: str, version: str) -> dict[str, Any]:
+        """One agent version leaves the catalog; the others stay.
+
+        Like :meth:`admin_delete_agent`, runs keep their scores and their
+        recorded ``agent_id`` — a run is evidence of what happened, the
+        catalog is what is shown. This is the per-version twin of the bulk
+        delete, so the admin list can mirror the Agents page (one row per
+        version) and let a concrete ``agent@version`` be removed.
+        """
+        with session_scope(self.engine) as session:
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.agent_id == agent_id)
+                )
+                or 0
+            )
+            result = session.execute(
+                sa_delete(Agent).where(
+                    Agent.agent_id == agent_id, Agent.version == version
+                )
+            )
+            if not result.rowcount:
+                raise KeyError(f"{agent_id}@{version}")
+        self.invalidate_history()
+        return {
+            "deleted": f"{agent_id}@{version}",
+            "kind": "agent",
+            "agent_id": agent_id,
+            "version": version,
+            "runs_kept": int(runs),
+        }
+
     def admin_delete_runtime(self, runtime_id: str) -> dict[str, Any]:
         """One runtime's catalog entries go; its runs stay as they were.
 
@@ -2506,5 +2858,37 @@ class BenchDataService:
             "deleted": runtime_id,
             "kind": "runtime",
             "versions_deleted": versions,
+            "runs_kept": int(runs),
+        }
+
+    def admin_delete_runtime_version(self, runtime_id: str, version: str) -> dict[str, Any]:
+        """One runtime version leaves the catalog; the others stay.
+
+        The per-version twin of :meth:`admin_delete_runtime`, mirroring the
+        Runtimes page (one row per version) so a concrete ``runtime@version``
+        can be removed from the admin.
+        """
+        with session_scope(self.engine) as session:
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.runtime_id == runtime_id)
+                )
+                or 0
+            )
+            result = session.execute(
+                sa_delete(Runtime).where(
+                    Runtime.runtime_id == runtime_id, Runtime.version == version
+                )
+            )
+            if not result.rowcount:
+                raise KeyError(f"{runtime_id}@{version}")
+        self.invalidate_history()
+        return {
+            "deleted": f"{runtime_id}@{version}",
+            "kind": "runtime",
+            "runtime_id": runtime_id,
+            "version": version,
             "runs_kept": int(runs),
         }

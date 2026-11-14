@@ -38,6 +38,16 @@ release tagged as `v<version>`.
   The database half of the answer is read when the app starts, so the
   first user added to a running dashboard takes effect at the next restart;
   the log then says `auth: on -- the database has dashboard users`.
+- **The navigation is grouped into menus.** Eleven links and five controls
+  no longer share one row. Dashboard and Runs stay in the bar; Analytics,
+  Failures, Comparison Studio and Best Match open from **Analysis**;
+  Experiments, Tasks, Agents and Runtimes from **Catalog**; the theme, the
+  auto-refresh interval and Sign out / Login from a menu under the signed-in
+  name. The group that holds the current page is lit and names it
+  ("Analysis / Best Match"). The menus open on a click, close on Escape, on
+  a click elsewhere and on tabbing out, and answer to the arrow keys. Below
+  860px the links move into a panel behind a burger button, with the groups
+  laid out open. No URL changed.
 - **Signing out lands on the results.** With public results there is a
   dashboard to go back to, so that is where the sign-out redirects; behind
   a full gate it still lands on the login form with its "Signed out" note.
