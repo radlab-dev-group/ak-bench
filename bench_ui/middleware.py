@@ -100,6 +100,18 @@ class SecurityMiddleware:
                 self.session_key,
                 self.user_resolver,
             )
+        if (
+            identity is None
+            and not self.settings.requires_sign_in(path)
+            and "authorization" not in headers
+        ):
+            # Results are public: an anonymous reader gets the pages, with no
+            # identity on the request -- so no admin tab, no deletes and no
+            # answer key. Credentials that were offered and did not hold are
+            # not waved through as "anonymous": that caller is told they failed.
+            extra = {"Cache-Control": "no-store", "Vary": "Cookie, Authorization"}
+            await self.app(scope, receive, self._send_with_headers(send, extra))
+            return
         if identity is None:
             # A browser is shown the login page -- the credential box cannot
             # explain itself and cannot be signed out of. A script keeps the

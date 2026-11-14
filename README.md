@@ -332,14 +332,15 @@ the environment:
 
 | variable | default | what it decides |
 | --- | --- | --- |
-| `AKBENCH_UI_AUTH` | `auto` | `on`, `off`, or `auto` — authenticate unless the bind address is loopback. An unset address counts as exposed, not as private. |
+| `AKBENCH_UI_AUTH` | `auto` | `on`, `off`, or `auto` — authenticate unless the bind address is loopback **and** no user is configured (in the database, `AKBENCH_UI_USERS`/`_USERS_FILE`, or a proxy header). An unset address counts as exposed, not as private. Set `off` to keep a loopback instance open even with users. |
+| `AKBENCH_UI_PUBLIC_READ` | `on` | `on` — results are readable without signing in and only the Admin page and its deletes need a sign-in (the answer key still needs a judge or admin); `off` — every page needs a sign-in. |
 | `AKBENCH_UI_USERS` | — | `name:secret[:role],…`, roles `viewer` (default) and `judge`. |
 | `AKBENCH_UI_USERS_FILE` | — | the same entries, one per line, for a secret that should not sit in `ps` or a shell history |
 | `AKBENCH_UI_JUDGE_USERS` | — | names that are judges, when the proxy supplies them |
 | `AKBENCH_UI_USER_HEADER` | — | trust a proxy's header (e.g. `X-Forwarded-User`) instead of HTTP Basic |
 | `AKBENCH_UI_CSP` | a same-origin policy | the `Content-Security-Policy` sent with every response |
 | `AKBENCH_UI_SHOW_GROUND_TRUTH` | `auto` | who may see a task's hidden tests and planted defect: `auto` (judges only when authenticated), `always`, `never` |
-| `AKBENCH_UI_ARTIFACT_ROOTS` | the configured data dirs | the only directories an artifact's recorded path may be read from |
+| `AKBENCH_UI_ARTIFACT_ROOTS` | the configured data dirs | the only directories an artifact's recorded path may be read from; test reports stored in the database are read from there first, so this only matters for artifacts registered without their content |
 
 Authentication on with nobody configured is a startup error on the command line
 and a 503 from a served app: a gate with nobody behind it lets nobody through,

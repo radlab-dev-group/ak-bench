@@ -59,6 +59,11 @@ ENV_USER_HEADER = f"{ENV_PREFIX}USER_HEADER"
 ENV_CSP = f"{ENV_PREFIX}CSP"
 ENV_SHOW_GROUND_TRUTH = f"{ENV_PREFIX}SHOW_GROUND_TRUTH"
 ENV_SESSION_SECRET = f"{ENV_PREFIX}SESSION_SECRET"
+ENV_PUBLIC_READ = f"{ENV_PREFIX}PUBLIC_READ"
+
+#: What stays behind a sign-in when the results are public: the page that
+#: erases history and the calls it makes.
+MANAGEMENT_PREFIXES: tuple[str, ...] = ("/admin", "/api/admin")
 
 #: The addresses that mean "this box only". Binding any of these still lets a
 #: local process in, which is the accepted trust model of a developer machine.
@@ -164,6 +169,13 @@ class SecuritySettings:
     #: and records the answer here, because the table — not the environment —
     #: is where the login form looks first.
     database_users: bool = False
+    #: Whether the results are shown to a caller who has not signed in. On by
+    #: default: the scores, charts and run pages are what a benchmark is for,
+    #: and only managing them -- the Admin page and its deletes -- asks who is
+    #: asking. An anonymous reader is never shown the answer key (hidden tests,
+    #: the planted defect); that still needs a judge or an admin. Off restores
+    #: the gate in front of every page.
+    public_read: bool = True
     #: Anything that went wrong while reading the environment, kept as a value
     #: rather than raised because ``bench_ui.app`` builds the app at import time
     #: -- that is how uvicorn loads an import string -- and a module that cannot
@@ -228,6 +240,15 @@ class SecuritySettings:
             return True
         return bool(identity and identity.is_judge)
 
+    def requires_sign_in(self, path: str) -> bool:
+        """Whether this path is closed to a caller who has not signed in."""
+        if not self.public_read:
+            return True
+        return any(
+            path == prefix or path.startswith(f"{prefix}/")
+            for prefix in MANAGEMENT_PREFIXES
+        )
+
     def describe(self) -> str:
         if self.misconfiguration:
             return f"refusing requests: {self.misconfiguration}"
@@ -240,7 +261,12 @@ class SecuritySettings:
             return f"off ({ENV_AUTH}=off: every caller is trusted)"
         names = ", ".join(f"{u.name}:{u.role}" for u in self.users) or "none"
         via = f" via {self.user_header}" if self.user_header else " via HTTP Basic"
-        return f"on{via}; users: {names}"
+        scope = (
+            "results are public, managing them needs a sign-in"
+            if self.public_read
+            else "every page needs a sign-in"
+        )
+        return f"on{via}; {scope}; users: {names}"
 
 
 def is_loopback(host: str | None) -> bool:
@@ -390,8 +416,18 @@ def load_security_settings(
             f"not {ground_truth!r}"
         )
 
+    public_raw = (env.get(ENV_PUBLIC_READ) or "on").strip().lower()
+    if public_raw in {"on", "true", "1", "yes"}:
+        public_read = True
+    elif public_raw in {"off", "false", "0", "no"}:
+        public_read = False
+    else:
+        public_read = False
+        problems.append(f"{ENV_PUBLIC_READ} must be on or off, not {public_raw!r}")
+
     return SecuritySettings(
         enabled=enabled,
+        public_read=public_read,
         auth_mode=mode,
         users=users,
         judge_users=judge_users,

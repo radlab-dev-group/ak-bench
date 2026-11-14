@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
@@ -121,7 +120,14 @@ def create_app(
     # the environment always was: "nobody is configured" is only true when the
     # environment, the users file AND the table are all empty.
     if userstore.material(service.engine):
-        settings = replace(settings, database_users=True)
+        was_enabled = settings.enabled
+        settings = settings.with_database_users()
+        if settings.enabled and not was_enabled:
+            log.warning(
+                "auth: on -- the database has dashboard users, so sign-in "
+                "applies even on a loopback address (AKBENCH_UI_AUTH=off "
+                "turns it off)"
+            )
 
     app.state.security = settings
     if settings.misconfiguration:
@@ -170,6 +176,8 @@ def create_app(
         return {
             "nav_identity": identity_from_scope(request.scope),
             "auth_enabled": settings.enabled,
+            # Where "Sign in" comes back to: the page the reader is on.
+            "nav_path": request.url.path,
         }
 
     templates = Jinja2Templates(
@@ -204,6 +212,7 @@ def create_app(
             name="login.html",
             context={
                 "realm": settings.realm,
+                "public_read": settings.public_read,
                 "next": _safe_next(next),
                 "error": None,
                 "signed_out": signed_out == "1",
@@ -232,6 +241,7 @@ def create_app(
                 name="login.html",
                 context={
                     "realm": settings.realm,
+                    "public_read": settings.public_read,
                     "next": target,
                     "error": "Wrong name or password.",
                     "database": database,
@@ -261,7 +271,13 @@ def create_app(
         )
         if identity is not None:
             userstore.revoke_sessions(service.engine, identity.name)
-        target = "/login?signed_out=1" if settings.enabled else "/"
+        # With public results there is a dashboard to go back to; behind a full
+        # gate the only page left is the login form.
+        target = (
+            "/login?signed_out=1"
+            if settings.enabled and not settings.public_read
+            else "/"
+        )
         response = RedirectResponse(target, status_code=303)
         response.set_cookie(
             SESSION_COOKIE,
