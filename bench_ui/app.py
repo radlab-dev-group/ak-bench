@@ -380,6 +380,21 @@ def create_app(
     def api_analytics_data():
         return service.get_analytics_dataset()
 
+    @app.get("/best-match", response_class=HTMLResponse)
+    def best_match_page(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="best_match.html",
+            context={
+                "active_page": "best-match",
+                "database": database,
+            },
+        )
+
+    @app.get("/api/best-match")
+    def api_best_match(min_runs: int = Query(3, ge=1, le=20)):
+        return service.get_best_match(min_runs=min_runs)
+
     @app.get("/failures", response_class=HTMLResponse)
     def failures_page(request: Request):
         return templates.TemplateResponse(

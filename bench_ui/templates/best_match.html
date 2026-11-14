@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Best Match{% endblock %}
+
+{% block content %}
+<div id="bmRoot">
+  <div style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px;">
+    <div>
+      <h1 style="margin:0 0 4px;">Best Match — <span style="color:var(--mint);">auto_codex</span> + <span style="color:var(--mint);">knowledge</span></h1>
+      <div style="color:var(--fg-dim); font-size:13.5px; max-width:860px;">
+        W jakich zadaniach, kategoriach i poziomach trudności konfiguracja <code>auto_codex</code> z <code>knowledge=True</code>
+        <strong style="color:var(--mint);">maksymalizuje wszystkie wskaźniki jakości</strong> i bije inne konfiguracje.
+        Wyliczane <strong>po wejściu w zakładkę</strong> — przeszukiwany jest każdy podzbiór kategorii/trudności i każde zadanie osobno,
+        a zwycięzca to ten, kto wygrywa <em>jednocześnie</em> w <code>success_rate</code> i <code>mean_score</code>.
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <label style="font-family:var(--mono); font-size:11.5px; color:var(--fg-faint);">Min. runs
+        <select id="bmMinRuns" class="select" style="padding:4px 8px;">
+          <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option><option value="10">10</option>
+        </select>
+      </label>
+      <button class="btn" id="bmReload">↻ Przelicz</button>
+      <button class="btn" id="bmCopyLink">Copy link</button>
+    </div>
+  </div>
+
+  <!-- Controls pinned -->
+  <div class="panel pinned-controls" id="bmControls">
+    <div class="panel-header">
+      <div class="panel-title">Konfiguracja docelowa</div>
+      <div class="panel-header-right">
+        <button type="button" id="bmPin" class="pin-toggle" aria-pressed="true" title="Pinned">
+          <svg class="pin-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+          <span class="pin-label">Pinned</span>
+        </button>
+        <span class="badge badge-info" id="bmMeta">—</span>
+      </div>
+    </div>
+    <div class="panel-body" style="display:flex; gap:16px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+      <div style="font-family:var(--mono); font-size:12px; color:var(--fg-dim);">
+        Predykat: <code>base_model == 'auto_codex' AND 'agentic_knowledge' in plugins</code>
+        <span style="color:var(--fg-faint);"> lub variant <code>knowledge_enabled==True + model==auto_codex</code></span>
+        <div style="margin-top:4px;"><span id="bmTargetDesc"></span></div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <label style="font-family:var(--mono); font-size:11px; color:var(--fg-faint);">Sortowanie
+          <select id="bmSort" class="select"><option value="composite_desc">composite ↓</option><option value="success_desc">Δ success ↓</option><option value="score_desc">Δ score ↓</option><option value="name">nazwa</option></select>
+        </label>
+        <label style="font-family:var(--mono); font-size:11px; color:var(--fg-faint); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="bmOnlyWinning" checked> tylko wygrywające (oba wskaźniki &gt;0)</label>
+        <label style="font-family:var(--mono); font-size:11px; color:var(--fg-faint); display:flex; align-items:center; gap:6px;"><input type="checkbox" id="bmOnlyEnough" checked> tylko z danymi ≥ min_runs</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="bmLoading" class="fl-loading">
+    <div class="an-spin"></div>
+    <span>Wyliczam najlepszy podzbiór — przeszukiwanie wszystkich kategorii, trudności i zadań…</span>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="grid-cards" id="bmKpis" style="display:none;"></div>
+
+  <!-- Verdict banner -->
+  <div id="bmVerdict" class="panel" style="display:none;"></div>
+
+  <!-- Maximised situation hero -->
+  <div id="bmHero" style="display:none;">
+    <div class="panel" style="border:1px solid var(--mint-border); background:linear-gradient(180deg, rgba(0,229,155,.08), transparent);">
+      <div class="panel-header">
+        <div class="panel-title">⭐ Zmaksymalizowana sytuacja — gdzie <code>auto_codex+knowledge</code> bije najmocniej</div>
+        <span class="badge badge-passed">BEST MATCH</span>
+      </div>
+      <div class="panel-body" id="bmHeroBody"></div>
+    </div>
+  </div>
+
+  <!-- Optimal cards grid -->
+  <div id="bmOptimalGrid" class="grid-cards" style="display:none;"></div>
+
+  <!-- Charts -->
+  <div id="bmCharts" style="display:none;">
+    <div class="an-grid">
+      <div class="panel"><div class="panel-header"><div class="panel-title">Deltas per category — composite (Δsuccess + Δscore)</div></div><div class="panel-body"><div class="an-chart" style="height:300px;"><canvas id="chCat"></canvas></div></div></div>
+      <div class="panel"><div class="panel-header"><div class="panel-title">Deltas per difficulty</div></div><div class="panel-body"><div class="an-chart" style="height:300px;"><canvas id="chDiff"></canvas></div></div></div>
+      <div class="panel"><div class="panel-header"><div class="panel-title">Heatmap — category × difficulty (composite)</div></div><div class="panel-body" id="bmHeat"></div></div>
+      <div class="panel"><div class="panel-header"><div class="panel-title">Top 12 tasks — target vs pooled (success_rate)</div></div><div class="panel-body"><div class="an-chart" style="height:420px;"><canvas id="chTasks"></canvas></div></div></div>
+      <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Brute-force — wszystkie podzbiory kategorii (top 10)</div></div><div class="table-responsive" id="bmCatSubsets"></div></div>
+      <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Porównanie z każdym konkurentem (overall target vs pojedynczy konkurent)</div></div><div class="table-responsive" id="bmVsComp"></div></div>
+    </div>
+  </div>
+
+  <!-- Tables -->
+  <div class="panel" id="panelCat" style="display:none;">
+    <div class="panel-header"><div class="panel-title">Szczegół — wszystkie kategorie</div><span class="badge badge-neutral" id="bmCatCount">—</span></div>
+    <div class="table-responsive" id="bmCatTable"></div>
+  </div>
+  <div class="panel" id="panelDiff" style="display:none;">
+    <div class="panel-header"><div class="panel-title">Szczegół — wszystkie trudności</div><span class="badge badge-neutral" id="bmDiffCount">—</span></div>
+    <div class="table-responsive" id="bmDiffTable"></div>
+  </div>
+  <div class="panel" id="panelCatDiff" style="display:none;">
+    <div class="panel-header"><div class="panel-title">Szczegół — kategoria × trudność</div><span class="badge badge-neutral" id="bmCatDiffCount">—</span></div>
+    <div class="table-responsive" id="bmCatDiffTable"></div>
+  </div>
+  <div class="panel" id="panelTasks" style="display:none;">
+    <div class="panel-header"><div class="panel-title">Szczegół — wszystkie zadania (task-by-task)</div><span class="badge badge-neutral" id="bmTasksCount">—</span></div>
+    <div class="table-responsive" id="bmTasksTable"></div>
+  </div>
+  <div class="panel" id="panelTaskSet" style="display:none;">
+    <div class="panel-header"><div class="panel-title">Zmaksymalizowany zestaw zadań — wszystkie wygrywające zadania razem</div><span class="badge badge-info" id="bmTaskSetBadge">—</span></div>
+    <div class="panel-body" id="bmTaskSetBody"></div>
+  </div>
+  <div class="panel" id="panelWinning" style="display:none;">
+    <div class="panel-header"><div class="panel-title">Top winning slices — kompletny ranking (oba wskaźniki &gt;0)</div><span class="badge badge-neutral" id="bmWinningCount">—</span></div>
+    <div class="table-responsive" id="bmWinningTable"></div>
+  </div>
+
+  <div class="panel" style="display:none;" id="bmEmpty">
+    <div class="panel-body fl-empty">Brak danych do porównania — historia jest pusta lub nie zawiera <code>auto_codex+knowledge</code>.</div>
+  </div>
+</div>
+
+<style>
+.bm-hero-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap:14px; }
+.bm-hero-card { background: var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
+.bm-hero-card.best { border-color: var(--mint-border); background: rgba(0,229,155,.07); }
+.bm-delta-plus { color: var(--mint); font-weight:700; }
+.bm-delta-minus { color: var(--red); font-weight:700; }
+.bm-delta-zero { color: var(--fg-faint); }
+#bmHeat table { width:100%; border-collapse:separate; border-spacing:3px; font-family:var(--mono); font-size:11.5px; }
+#bmHeat th { font-size:11px; color:var(--fg-dim); text-align:center; padding:4px; }
+#bmHeat td { text-align:center; padding:8px 6px; border-radius:4px; font-weight:600; min-width:70px; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/best_match.js"></script>
+{% endblock %}
