@@ -1781,3 +1781,28 @@ pre {
   border-top-color:var(--mint); animation:an-spin 0.9s linear infinite; }
 @keyframes an-spin { to { transform:rotate(360deg); } }
 @media (max-width:640px) { .an-grid { grid-template-columns:1fr; } }
+
+/* Pinned Controls panel: sticks just below the sticky nav (.nav is z-index 60)
+   so filters stay reachable while scrolling the charts and tables below.
+   The max-height cap keeps it from swallowing the viewport on short screens
+   (an expanded filter chip can make it tall — it scrolls inside instead). */
+.an-controls-panel {
+  position: sticky;
+  top: calc(var(--nav-h) + 12px);
+  z-index: 50;
+  margin-bottom: 0;
+  max-height: calc(100vh - var(--nav-h) - 24px);
+  max-height: calc(100dvh - var(--nav-h) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: 0 14px 28px -14px var(--modal-shadow);
+}
+/* keep the panel title visible while the body scrolls internally */
+.an-controls-panel .panel-header { position: sticky; top: 0; z-index: 1; }
+/* keep the 24px rhythm below the panel without a transparent margin gap —
+   content would otherwise flash through the gap under the stuck panel */
+.an-controls-panel + .grid-cards { margin-top: 24px; }
+@media (max-width:720px) {
+  /* stacked selects get too tall to pin — it would hide the content it filters */
+  .an-controls-panel { position: static; max-height: none; overflow-y: hidden; box-shadow: none; }
+}
