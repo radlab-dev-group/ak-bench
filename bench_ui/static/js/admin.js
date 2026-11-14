@@ -119,7 +119,13 @@
       uid,
       warning,
       onConfirm: () => {
+        // The row is gone the instant the delete lands, so the button only
+        // needs to spin for the round trip in between: the same "data is on
+        // its way" signal as everywhere else, sized for a button instead of
+        // a panel.
+        const originalLabel = button.innerHTML;
         button.disabled = true;
+        button.innerHTML = '<span class="btn-spin" aria-hidden="true"></span>Deleting…';
         fetch(endpoint, { method: 'DELETE', headers: { [ADMIN_HEADER]: '1' } })
           .then((response) => {
             if (!response.ok) {
@@ -132,6 +138,7 @@
           .then(() => removeRowAndNote(button, kind, uid))
           .catch((error) => {
             button.disabled = false;
+            button.innerHTML = originalLabel;
             window.alert('Delete failed: ' + error.message);
           });
       },

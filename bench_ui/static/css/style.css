@@ -1837,6 +1837,13 @@ pre {
 /* ===== Failure analysis ===== */
 .fl-empty { padding: 26px 20px; color: var(--fg-faint); font-family: var(--mono); font-size: 12.5px; }
 
+/* A block that has not received its data yet spins in place, the same way an
+   Analytics chart does while it waits: the reader sees the data is on its
+   way instead of a panel that looks empty or broken. */
+.fl-loading { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 40px 20px; }
+.fl-loading span { font-family: var(--mono); font-size: 11px; color: var(--fg-dim); letter-spacing: 0.04em; }
+
 .fl-rate { display: flex; align-items: center; gap: 8px; min-width: 130px; }
 .fl-rate-fill { height: 6px; min-width: 2px; border-radius: 3px; flex: 0 1 90px; }
 .fl-rate-label { font-family: var(--mono); font-size: 11.5px; color: var(--fg-dim); white-space: nowrap; }
@@ -1943,6 +1950,12 @@ pre {
   border-color: var(--red);
 }
 .btn-danger:disabled { opacity: 0.5; cursor: default; }
+/* The confirm button spins in its own colour while a delete is in flight:
+   the same "data is on its way" language as the rest of the page, scaled
+   down to sit inline in a small button instead of filling a panel. */
+.btn-spin { display: inline-block; width: 11px; height: 11px; margin-right: 6px;
+  vertical-align: -1px; border-radius: 50%; border: 2px solid currentColor;
+  border-top-color: transparent; opacity: 0.9; animation: an-spin 0.7s linear infinite; }
 .admin-search { display: flex; gap: 8px; margin-bottom: 14px; }
 .admin-search .input { max-width: 340px; }
 .admin-notice {

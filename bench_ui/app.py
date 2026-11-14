@@ -449,25 +449,27 @@ def create_app(
     ):
         _require_admin(request)
         tab = tab if tab in ADMIN_TABS else "runs"
+        # Each catalog is read once and reused for both its filtered table and
+        # its stat-card count. The page used to call every one of these twice
+        # (once per list, once per count), which doubled the query load on
+        # every visit and held the response — spinner included, since nothing
+        # is sent to the browser until this handler returns — back behind it.
         runs_data = service.get_filtered_runs(search=q or None, limit=200)
+        runs_total_all = (
+            runs_data["total"]
+            if not q
+            else service.get_filtered_runs(limit=1)["total"]
+        )
+        all_experiments = service.get_experiments()
         experiments = [
-            e
-            for e in service.get_experiments()
-            if _matches(q, e.get("uid"), e.get("title"))
+            e for e in all_experiments if _matches(q, e.get("uid"), e.get("title"))
         ]
-        tasks = [
-            t
-            for t in service.get_tasks()
-            if _matches(q, t.get("uid"), t.get("title"))
-        ]
-        agents = [
-            a for a in _group_catalog(service.get_agents()) if _matches(q, a["id"], a["title"])
-        ]
-        runtimes = [
-            r
-            for r in _group_catalog(service.get_runtimes())
-            if _matches(q, r["id"], r["title"])
-        ]
+        all_tasks = service.get_tasks()
+        tasks = [t for t in all_tasks if _matches(q, t.get("uid"), t.get("title"))]
+        all_agents = _group_catalog(service.get_agents())
+        agents = [a for a in all_agents if _matches(q, a["id"], a["title"])]
+        all_runtimes = _group_catalog(service.get_runtimes())
+        runtimes = [r for r in all_runtimes if _matches(q, r["id"], r["title"])]
         return templates.TemplateResponse(
             request=request,
             name="admin.html",
@@ -483,11 +485,11 @@ def create_app(
                 "agents": agents,
                 "runtimes": runtimes,
                 "counts": {
-                    "runs": service.get_filtered_runs(limit=1)["total"],
-                    "experiments": len(service.get_experiments()),
-                    "tasks": len(service.get_tasks()),
-                    "agents": len(_group_catalog(service.get_agents())),
-                    "runtimes": len(_group_catalog(service.get_runtimes())),
+                    "runs": runs_total_all,
+                    "experiments": len(all_experiments),
+                    "tasks": len(all_tasks),
+                    "agents": len(all_agents),
+                    "runtimes": len(all_runtimes),
                 },
             },
         )

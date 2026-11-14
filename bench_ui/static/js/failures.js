@@ -11,6 +11,17 @@
   const TESTS_SHOWN = 25;
   let testsExpanded = false;
 
+  // Every block spins while its data is on its way, exactly like a chart on
+  // the Analytics page: a reader sees the data is coming instead of a panel
+  // that looks empty, broken, or finished loading.
+  const LOADING_BLOCKS = ['flKpis', 'flTasks', 'flFlaky', 'flTests', 'flClasses'];
+  function showLoading() {
+    const spinner = '<div class="fl-loading"><div class="an-spin"></div><span>loading…</span></div>';
+    LOADING_BLOCKS.forEach(id => { const el = $(id); if (el) el.innerHTML = spinner; });
+    ['flTasksCount', 'flFlakyCount', 'flTestsCount'].forEach(id => { const el = $(id); if (el) el.textContent = '—'; });
+    $('flCount').textContent = 'loading…';
+  }
+
   function fmtPct(v) { return v == null ? '—' : (v * 100).toFixed(1) + '%'; }
   function fmtNum(v) { return v == null ? '—' : Number(v).toLocaleString(); }
   function verdictBadge(v) {
@@ -251,9 +262,15 @@
     el.value = value;
   }
 
-  function buildControls() {
+  function fillControlOptions() {
     fillSelect($('flConfig'), DATA.configs, state.config, 'all configurations');
     fillSelect($('flCategory'), DATA.categories, state.category, 'all categories');
+  }
+
+  // Listeners are wired once: a live refresh only refills the <option> lists,
+  // it never re-arms these, so a refresh never stacks a second handler on top
+  // of the first.
+  function armControlListeners() {
     $('flConfig').addEventListener('change', e => { state.config = e.target.value; render(); });
     $('flCategory').addEventListener('change', e => { state.category = e.target.value; render(); });
     $('flMinRuns').addEventListener('change', e => { state.minRuns = Number(e.target.value) || 1; render(); });
@@ -265,14 +282,24 @@
     });
   }
 
-  fetch('/api/failures/data')
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(data => {
-      DATA = data;
-      buildControls();
-      render();
-    })
-    .catch(err => {
-      $('flKpis').innerHTML = `<div class="card"><div class="card-title">The failure data could not be read</div><div class="card-sub">${esc(err.message)}</div></div>`;
-    });
+  function load(first) {
+    showLoading();
+    fetch('/api/failures/data')
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(data => {
+        DATA = data;
+        fillControlOptions();
+        if (first) armControlListeners();
+        render();
+      })
+      .catch(err => {
+        $('flKpis').innerHTML = `<div class="card"><div class="card-title">The failure data could not be read</div><div class="card-sub">${esc(err.message)}</div></div>`;
+      });
+  }
+
+  load(true);
+  // live refresh integration: the auto-refresh dropdown in the nav calls this
+  // global hook, the same way the Analytics page re-arms its spinners on
+  // every refresh instead of only on the first load.
+  window.triggerLiveUpdate = () => load(false);
 })();
