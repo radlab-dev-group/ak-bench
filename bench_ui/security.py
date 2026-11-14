@@ -29,7 +29,7 @@ import hmac
 import os
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +59,11 @@ ENV_USER_HEADER = f"{ENV_PREFIX}USER_HEADER"
 ENV_CSP = f"{ENV_PREFIX}CSP"
 ENV_SHOW_GROUND_TRUTH = f"{ENV_PREFIX}SHOW_GROUND_TRUTH"
 ENV_SESSION_SECRET = f"{ENV_PREFIX}SESSION_SECRET"
+ENV_PUBLIC_READ = f"{ENV_PREFIX}PUBLIC_READ"
+
+#: What stays behind a sign-in when the results are public: the page that
+#: erases history and the calls it makes.
+MANAGEMENT_PREFIXES: tuple[str, ...] = ("/admin", "/api/admin")
 
 #: The addresses that mean "this box only". Binding any of these still lets a
 #: local process in, which is the accepted trust model of a developer machine.
@@ -146,6 +151,11 @@ class SecuritySettings:
     """
 
     enabled: bool
+    #: What ``AKBENCH_UI_AUTH`` asked for: ``on``, ``off`` or ``auto``. Kept
+    #: next to the answer because ``auto`` is not finished being answered here:
+    #: the user table of the database is read later, by ``bench_ui.app``, and
+    #: people found there turn an ``auto`` gate on (see :meth:`with_database_users`).
+    auth_mode: str = "auto"
     users: tuple[User, ...] = ()
     judge_users: frozenset[str] = frozenset()
     realm: str = DEFAULT_REALM
@@ -159,6 +169,13 @@ class SecuritySettings:
     #: and records the answer here, because the table — not the environment —
     #: is where the login form looks first.
     database_users: bool = False
+    #: Whether the results are shown to a caller who has not signed in. On by
+    #: default: the scores, charts and run pages are what a benchmark is for,
+    #: and only managing them -- the Admin page and its deletes -- asks who is
+    #: asking. An anonymous reader is never shown the answer key (hidden tests,
+    #: the planted defect); that still needs a judge or an admin. Off restores
+    #: the gate in front of every page.
+    public_read: bool = True
     #: Anything that went wrong while reading the environment, kept as a value
     #: rather than raised because ``bench_ui.app`` builds the app at import time
     #: -- that is how uvicorn loads an import string -- and a module that cannot
@@ -194,6 +211,18 @@ class SecuritySettings:
             )
         return "; ".join(problems) if problems else None
 
+    def with_database_users(self) -> SecuritySettings:
+        """This posture, once the database turned out to have users in it.
+
+        Somebody who created an account expects to be asked for it. Under
+        ``auto`` the bind address alone used to decide, so a dashboard on
+        ``127.0.0.1`` -- which is also where every reverse proxy points --
+        signed everyone in as the local admin and the login page redirected
+        straight back to ``/``. An explicit ``off`` is still honoured.
+        """
+        enabled = self.enabled or self.auth_mode == "auto"
+        return replace(self, database_users=True, enabled=enabled)
+
     def role_for(self, name: str) -> str:
         """The role a name gets: its own if listed, judge if named as one."""
         for user in self.users:
@@ -211,14 +240,33 @@ class SecuritySettings:
             return True
         return bool(identity and identity.is_judge)
 
+    def requires_sign_in(self, path: str) -> bool:
+        """Whether this path is closed to a caller who has not signed in."""
+        if not self.public_read:
+            return True
+        return any(
+            path == prefix or path.startswith(f"{prefix}/")
+            for prefix in MANAGEMENT_PREFIXES
+        )
+
     def describe(self) -> str:
         if self.misconfiguration:
             return f"refusing requests: {self.misconfiguration}"
         if not self.enabled:
-            return "off (loopback instance: every caller is trusted)"
+            if self.auth_mode == "auto":
+                return (
+                    "off (loopback instance and nobody configured: every caller "
+                    "is trusted; turns on by itself once a user exists)"
+                )
+            return f"off ({ENV_AUTH}=off: every caller is trusted)"
         names = ", ".join(f"{u.name}:{u.role}" for u in self.users) or "none"
         via = f" via {self.user_header}" if self.user_header else " via HTTP Basic"
-        return f"on{via}; users: {names}"
+        scope = (
+            "results are public, managing them needs a sign-in"
+            if self.public_read
+            else "every page needs a sign-in"
+        )
+        return f"on{via}; {scope}; users: {names}"
 
 
 def is_loopback(host: str | None) -> bool:
@@ -302,9 +350,11 @@ def load_security_settings(
     """Resolve the ``AKBENCH_UI_*`` environment into a posture.
 
     ``AKBENCH_UI_AUTH`` takes ``on``, ``off``, or ``auto`` (the default).
-    ``auto`` enables authentication unless the bind address is loopback, which
-    keeps ``./run-ui.sh`` working on a laptop while making any real deployment
-    ask for a name and a secret.
+    ``auto`` enables authentication unless the bind address is loopback *and*
+    nobody is configured, which keeps ``./run-ui.sh`` working on a fresh laptop
+    while making any real deployment -- and any instance somebody bothered to
+    create a user for -- ask for a name and a secret. Users in the database
+    count too; that half is decided in ``bench_ui.app``, which can read it.
 
     Nothing here raises. A dashboard that has been told to authenticate but has
     no users records that as :attr:`SecuritySettings.misconfiguration` and then
@@ -320,12 +370,15 @@ def load_security_settings(
     mode = (env.get(ENV_AUTH) or "auto").strip().lower()
     if mode in {"off", "false", "0"}:
         enabled = False
+        mode = "off"
     elif mode in {"on", "true", "1"}:
         enabled = True
+        mode = "on"
     elif mode == "auto":
         enabled = not is_loopback(bind_host)
     else:
         enabled = True
+        mode = "on"
         problems.append(
             f"{ENV_AUTH} must be on, off or auto, not {mode!r}; refusing to serve"
         )
@@ -349,6 +402,10 @@ def load_security_settings(
     judge_users = frozenset(_split_list(env.get(ENV_JUDGE_USERS)))
     realm = (env.get(ENV_REALM) or DEFAULT_REALM).strip() or DEFAULT_REALM
     header = (env.get(ENV_USER_HEADER) or "").strip() or None
+    if mode == "auto" and (users or header):
+        # Configured people are a request to be asked who is asking, wherever
+        # the socket is bound: loopback is also where a reverse proxy points.
+        enabled = True
     csp = env.get(ENV_CSP)
     csp = DEFAULT_CSP if csp is None else csp.strip()
 
@@ -359,8 +416,19 @@ def load_security_settings(
             f"not {ground_truth!r}"
         )
 
+    public_raw = (env.get(ENV_PUBLIC_READ) or "on").strip().lower()
+    if public_raw in {"on", "true", "1", "yes"}:
+        public_read = True
+    elif public_raw in {"off", "false", "0", "no"}:
+        public_read = False
+    else:
+        public_read = False
+        problems.append(f"{ENV_PUBLIC_READ} must be on or off, not {public_raw!r}")
+
     return SecuritySettings(
         enabled=enabled,
+        public_read=public_read,
+        auth_mode=mode,
         users=users,
         judge_users=judge_users,
         realm=realm,

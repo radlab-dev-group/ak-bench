@@ -15,7 +15,7 @@
       </div>
       <div class="panel-body">
         <div class="login-lede">
-          This dashboard shows benchmark history, so it asks who is asking.
+          {% if public_read %}Sign in to manage the recorded results.{% else %}This dashboard shows benchmark history, so it asks who is asking.{% endif %}
         </div>
         {% if signed_out %}<div class="login-notice">Signed out. The door is closed behind you.</div>{% endif %}
         {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
@@ -31,6 +31,7 @@
           </label>
           <button class="btn btn-primary" type="submit">Sign in</button>
         </form>
+        {% if public_read %}<div class="login-lede" style="margin-top:12px;"><a href="/">&larr; Back to the results</a></div>{% endif %}
       </div>
     </div>
   </main>

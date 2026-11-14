@@ -776,6 +776,8 @@ class BenchDataService:
         self._failures_cache: dict[str, Any] | None = None
         self._failures_cached_at = 0.0
         self._roots_cache: tuple[Path, ...] | None = None
+        self._refused_artifacts = 0
+        self._refused_lock = threading.Lock()
 
     def connectivity(self) -> dict[str, Any]:
         """What the UI is looking at: the backend, the namespace, the error."""
@@ -1214,15 +1216,68 @@ class BenchDataService:
         }
 
     # ---------------------------------------------------------- Run Details
-    def _run_tests_from_artifacts(self, run: dict[str, Any]) -> list[dict[str, Any]]:
+    def _stored_junit_reports(self, run_uid: str | None = None) -> dict[str, list[str]]:
+        """The JUnit reports the database itself carries, by run uid.
+
+        A run's artifacts are registered with their bytes, so the report is in
+        the row; the recorded path is only where the file was on the machine
+        that ran the benchmark. Reading the row first is what lets a dashboard
+        on another host -- or the same host after ``data/`` moved -- still name
+        the tests. One query for every run when ``run_uid`` is not given: the
+        failures page asks for all of them, and one per run is a thousand trips.
+        """
+        query = (
+            select(TaskRun.uid, Artifact.data)
+            .join(Artifact, Artifact.run_id == TaskRun.id)
+            .where(Artifact.kind == "junit", Artifact.data.is_not(None))
+            .order_by(Artifact.id)
+        )
+        if run_uid is not None:
+            query = query.where(TaskRun.uid == run_uid)
+        reports: dict[str, list[str]] = {}
+        try:
+            with session_scope(self.engine) as session:
+                for uid, data in session.execute(query):
+                    reports.setdefault(str(uid), []).append(
+                        bytes(data).decode("utf-8", errors="replace")
+                    )
+        except Exception:  # an unreadable history has no reports, not a crash
+            log.warning("cannot read the stored test reports from the database")
+        return reports
+
+    def _run_tests_from_artifacts(
+        self,
+        run: dict[str, Any],
+        stored: dict[str, list[str]] | None = None,
+    ) -> list[dict[str, Any]]:
         """The tests of one run's JUnit artifact — the first report that parses.
+
+        The copy stored in the database is read first, the recorded path only
+        for a report registered without its bytes. ``stored`` is the result of
+        :meth:`_stored_junit_reports` when the caller already fetched it for
+        many runs at once.
 
         ``[]`` when no report was written: an evaluator that produced nothing is
         not reported as an empty list of passing tests but as no information at
         all, which the callers show as such.
         """
-        for artifact in run.get("artifacts") or []:
-            if artifact.get("kind") != "junit":
+        junit = [
+            artifact
+            for artifact in run.get("artifacts") or []
+            if artifact.get("kind") == "junit"
+        ]
+        if not junit:
+            return []
+        run_uid = str(run.get("uid") or "")
+        if stored is None:
+            stored = self._stored_junit_reports(run_uid) if run_uid else {}
+        for text in stored.get(run_uid, ()):
+            tests = _parse_junit(text)
+            if tests:
+                return tests
+        for artifact in junit:
+            if artifact.get("has_data"):
+                # Its bytes were tried above; the path is the same content.
                 continue
             tests = _parse_junit(self._read_artifact_file(artifact.get("path")))
             if tests:
@@ -1372,12 +1427,33 @@ class BenchDataService:
             resolved = Path(path).expanduser().resolve()
         except OSError:
             return None
+        inside = False
         for root in roots:
             with contextlib.suppress(ValueError):
                 resolved.relative_to(root)
+                inside = True
                 if resolved.is_file():
                     return resolved
-        log.warning("refused to read an artifact recorded outside the data dirs")
+        if inside:
+            # Under a permitted root and simply not there any more: a cleaned
+            # data directory, not a refusal, and not worth a warning per page.
+            log.debug("the artifact at the recorded path no longer exists")
+            return None
+        # Said once, with the remedy, and counted afterwards: a history recorded
+        # on another machine has this for every run, and a line per artifact per
+        # page load buries everything else the log has to say.
+        with self._refused_lock:
+            self._refused_artifacts += 1
+            first = self._refused_artifacts == 1
+        if first:
+            log.warning(
+                "refused to read an artifact recorded outside the data dirs; "
+                "further refusals are logged at debug level. If the artifacts "
+                "were recorded on another machine or moved, name their "
+                "directory in AKBENCH_UI_ARTIFACT_ROOTS"
+            )
+        else:
+            log.debug("refused to read an artifact recorded outside the data dirs")
         return None
 
     def _read_artifact_file(self, path: str | None) -> str | None:
@@ -2006,6 +2082,9 @@ class BenchDataService:
         # about why: the failure class, or the status when no class was set.
         class_rows: dict[tuple[str, str], dict[str, Any]] = {}
 
+        # Every stored JUnit report in one query, rather than one read per run.
+        stored_reports = self._stored_junit_reports()
+
         for run in history.runs:
             task_uid = str(run.get("task_uid") or "—")
             label = _variant_config_str(history, run) or None
@@ -2068,7 +2147,7 @@ class BenchDataService:
             # Test rows: one outcome per test name per run, the worst of its
             # cases.
             outcomes: dict[tuple[str, str], tuple[str, str | None]] = {}
-            for test in self._run_tests_from_artifacts(run):
+            for test in self._run_tests_from_artifacts(run, stored_reports):
                 status = str(test.get("status") or "")
                 if status == "skipped":
                     continue

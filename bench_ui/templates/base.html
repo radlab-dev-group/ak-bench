@@ -97,6 +97,8 @@
         {% endif %}
         {% if nav_identity and auth_enabled %}
         <a href="/logout" class="btn btn-sm" title="Sign out">Sign out</a>
+        {% elif auth_enabled %}
+        <a href="/login?next={{ (nav_path or '/') | urlencode }}" class="btn btn-sm" title="Sign in to manage the results">Login</a>
         {% endif %}
       </div>
     </div>

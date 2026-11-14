@@ -161,7 +161,10 @@ def test_an_exposed_dashboard_demands_credentials(database_url: str) -> None:
     app = create_app(
         database_url=database_url,
         security=SecuritySettings(
-            enabled=True, users=(User("ops", "long-enough-word"),), realm="AK-Bench"
+            enabled=True,
+            users=(User("ops", "long-enough-word"),),
+            realm="AK-Bench",
+            public_read=False,
         ),
     )
     client = TestClient(app)
@@ -295,6 +298,7 @@ def test_the_login_page_signs_a_caller_in(database_url: str) -> None:
                 User("ops", "long-enough-word", ADMIN),
                 User("reader", "long-enough-word", VIEWER),
             ),
+            public_read=False,
         ),
     )
     client = TestClient(app)
@@ -506,7 +510,7 @@ def test_a_database_user_signs_in_with_their_hash_and_signs_out(database_url: st
 
     app = create_app(
         database_url=database_url,
-        security=SecuritySettings(enabled=True, users=()),
+        security=SecuritySettings(enabled=True, users=(), public_read=False),
     )
     client = TestClient(app)
 
@@ -559,3 +563,162 @@ def test_a_database_user_signs_in_with_their_hash_and_signs_out(database_url: st
     viewer = TestClient(app)
     viewer.post("/login", data={"name": "bo", "password": "long-enough-word"})
     assert viewer.get("/admin").status_code == 403
+
+
+# ------------------------------------------- auto auth follows configured users
+def test_auto_auth_turns_on_for_configured_users_even_on_loopback() -> None:
+    """Loopback is also where a reverse proxy points; a user list is a request."""
+    settings = load_security_settings(
+        {"AKBENCH_UI_BIND_HOST": "127.0.0.1", "AKBENCH_UI_USERS": "ops:s3cret-s3cret"}
+    )
+    assert settings.enabled is True
+
+    off = load_security_settings(
+        {
+            "AKBENCH_UI_BIND_HOST": "127.0.0.1",
+            "AKBENCH_UI_USERS": "ops:s3cret-s3cret",
+            "AKBENCH_UI_AUTH": "off",
+        }
+    )
+    assert off.enabled is False
+
+
+def test_a_database_user_makes_a_loopback_dashboard_ask_and_sign_out(
+    database_url: str,
+) -> None:
+    """Sign-in and sign-out work on 127.0.0.1 once somebody has an account.
+
+    Before, ``auto`` looked at the bind address only: the caller was the local
+    admin on every request, ``/login`` bounced back to ``/`` and there was no
+    way to be signed out.
+    """
+    from bench_ui import userstore
+
+    from akbench.storage.db import create_db_engine
+
+    userstore.create_user(
+        create_db_engine(database_url), "ada", "long-enough-word", "admin"
+    )
+    settings = load_security_settings({"AKBENCH_UI_BIND_HOST": "127.0.0.1"})
+    assert settings.enabled is False  # the environment alone says "local"
+    app = create_app(database_url=database_url, security=settings)
+    assert app.state.security.enabled is True
+    client = TestClient(app, follow_redirects=False)
+    html = {"Accept": "text/html"}
+
+    refused = client.get("/admin", headers=html)
+    assert refused.status_code == 303
+    assert refused.headers["location"].startswith("/login")
+    assert client.get("/login", headers=html).status_code == 200
+
+    wrong = client.post("/login", content="name=ada&password=nope&next=/")
+    assert "akbench_session" not in wrong.cookies
+    signed_in = client.post(
+        "/login", content="name=ada&password=long-enough-word&next=/admin"
+    )
+    assert signed_in.status_code == 303
+    assert client.get("/admin", headers=html).status_code == 200
+
+    out = client.get("/logout", headers=html)
+    # Results are public by default, so signing out lands on them.
+    assert out.headers["location"] == "/"
+    assert client.get("/admin", headers=html).status_code == 303
+
+    # An explicit "off" still means off, users or not.
+    open_app = create_app(
+        database_url=database_url,
+        security=load_security_settings(
+            {"AKBENCH_UI_BIND_HOST": "127.0.0.1", "AKBENCH_UI_AUTH": "off"}
+        ),
+    )
+    assert TestClient(open_app).get("/admin", headers=html).status_code == 200
+
+
+# ------------------------------------------------ public results, gated admin
+def _public_app(database_url: str):
+    return create_app(
+        database_url=database_url,
+        security=SecuritySettings(
+            enabled=True,
+            users=(
+                User("ops", "long-enough-word", ADMIN),
+                User("reader", "long-enough-word", VIEWER),
+            ),
+        ),
+    )
+
+
+def test_results_are_public_and_only_managing_them_needs_a_sign_in(
+    database_url: str,
+) -> None:
+    """A reader sees the results; the Admin tab appears after signing in.
+
+    Nothing asks an anonymous caller for a name: the pages and the read API
+    answer, the navigation offers "Login", and only the Admin page and its
+    deletes are closed.
+    """
+    client = TestClient(_public_app(database_url), follow_redirects=False)
+    html = {"Accept": "text/html"}
+
+    home = client.get("/", headers=html)
+    assert home.status_code == 200
+    assert 'href="/login?next=/"' in home.text
+    assert 'href="/admin"' not in home.text
+    assert 'href="/logout"' not in home.text
+    assert client.get("/api/runs").status_code == 200
+    assert client.get("/failures", headers=html).status_code == 200
+
+    # Managing is closed: a browser is sent to sign in, a script gets the 401.
+    page = client.get("/admin", headers=html)
+    assert page.status_code == 303
+    assert page.headers["location"] == "/login?next=%2Fadmin"
+    refused = client.delete("/api/admin/runs/run-001", headers={"X-Akbench-Admin": "1"})
+    assert refused.status_code == 401
+
+    signed_in = client.post(
+        "/login", content="name=ops&password=long-enough-word&next=/admin"
+    )
+    assert signed_in.headers["location"] == "/admin"
+    home = client.get("/", headers=html)
+    assert 'href="/admin"' in home.text
+    assert 'href="/logout"' in home.text
+    assert 'href="/login' not in home.text
+    assert client.get("/admin", headers=html).status_code == 200
+
+    out = client.get("/logout", headers=html)
+    assert out.headers["location"] == "/"
+    home = client.get("/", headers=html)
+    assert home.status_code == 200
+    assert 'href="/admin"' not in home.text
+    assert client.get("/admin", headers=html).status_code == 303
+
+
+def test_a_public_reader_is_not_an_admin_a_judge_or_a_failed_login(
+    database_url: str,
+) -> None:
+    app = _public_app(database_url)
+    client = TestClient(app, follow_redirects=False)
+
+    # The answer key stays with judges and admins.
+    assert app.state.security.shows_ground_truth(None) is False
+    # Credentials that were offered and are wrong are refused, not ignored.
+    wrong = client.get("/", headers=_basic("ops", "not-the-password"))
+    assert wrong.status_code == 401
+    # A signed-in viewer still cannot manage.
+    as_reader = client.get("/admin", headers=_basic("reader", "long-enough-word"))
+    assert as_reader.status_code == 403
+    as_admin = client.get("/admin", headers=_basic("ops", "long-enough-word"))
+    assert as_admin.status_code == 200
+
+
+def test_public_read_can_be_switched_off() -> None:
+    assert load_security_settings({}).public_read is True
+    closed = load_security_settings({"AKBENCH_UI_PUBLIC_READ": "off"})
+    assert closed.public_read is False
+    assert closed.requires_sign_in("/") is True
+    opened = load_security_settings({"AKBENCH_UI_PUBLIC_READ": "on"})
+    assert opened.requires_sign_in("/runs") is False
+    assert opened.requires_sign_in("/admin") is True
+    assert opened.requires_sign_in("/api/admin/runs/x") is True
+    assert opened.requires_sign_in("/administrator") is False
+    assert load_security_settings({"AKBENCH_UI_PUBLIC_READ": "maybe"}).misconfiguration
