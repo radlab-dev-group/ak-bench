@@ -128,7 +128,7 @@ experiment:
           LLM_ROUTER_UTILS_PLUGINS_PIPELINE: agentic_routing_codex,agentic_knowledge
 
   execution_policy:
-    repetitions: 4
+    repetitions: 2
     # One instance per run, and one run at a time: the router this run starts
     # is a process of its own, and two runs sharing a machine share its rate
     # limits, which is what a timing comparison cannot afford.
@@ -154,8 +154,8 @@ experiment:
     - total_tokens
 
   limits:
-    # 12 tasks x 6 arms x 4 repetitions, exactly. A thirteenth easy task, a
-    # seventh arm or a fifth repetition has to be a decision, not a drift.
+    # 12 tasks x 6 arms x 2 repetitions, exactly. A thirteenth easy task, a
+    # seventh arm or a third repetition has to be a decision, not a drift.
     max_tasks: 12
     max_variants: 6
-    max_runs: 288
+    max_runs: 144
