@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}AK-Bench — Administration{% endblock %}
+
+{% macro verdict_badge(v) -%}
+  <span class="badge {% if v == 'passed' %}badge-passed{% elif v == 'partial' %}badge-partial{% elif v == 'failed' %}badge-failed{% elif v == 'error' %}badge-error{% else %}badge-neutral{% endif %}">{{ v or "unverified" }}</span>
+{%- endmacro %}
+
+{% macro delete_button(kind, uid, warning) -%}
+  <button type="button" class="btn btn-sm btn-danger admin-delete"
+          data-endpoint="/api/admin/{{ kind }}s/{{ uid }}"
+          data-kind="{{ kind }}" data-uid="{{ uid }}"
+          data-warning="{{ warning }}">Delete</button>
+{%- endmacro %}
+
+{% macro search_form(tab, placeholder) -%}
+  <form method="get" action="/admin" class="admin-search">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input class="input" type="search" name="q" value="{{ q }}" maxlength="200"
+           placeholder="{{ placeholder }}" spellcheck="false">
+    <button class="btn btn-sm" type="submit">Search</button>
+    {% if q %}<a class="btn btn-sm" href="/admin?tab={{ tab }}">Clear</a>{% endif %}
+  </form>
+{%- endmacro %}
+
+{% macro stat_card(key, label) -%}
+  <a class="stat-card {% if tab == key %}active{% endif %}" href="/admin?tab={{ key }}">
+    <div class="stat-num">{{ counts[key] }}</div>
+    <div class="stat-label">{{ label }}</div>
+  </a>
+{%- endmacro %}
+
+{% block content %}
+<div>
+  <div class="admin-head">
+    <h1>Administration</h1>
+    <div class="admin-lede">
+      The recorded history, managed by an admin. Every delete here is permanent
+      and says what goes with it — the last step asks you to retype the name.
+    </div>
+  </div>
+
+  <div class="admin-stats">
+    {{ stat_card('runs', 'Runs') }}
+    {{ stat_card('experiments', 'Experiments') }}
+    {{ stat_card('tasks', 'Tasks') }}
+    {{ stat_card('agents', 'Agents') }}
+    {{ stat_card('runtimes', 'Runtimes') }}
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">{{ tab|capitalize }}</div>
+      <span class="badge badge-neutral">
+        {% if tab == 'runs' %}{{ runs|length }} shown{% if runs_total > runs|length %} of {{ runs_total }}{% endif %}
+        {% elif tab == 'experiments' %}{{ experiments|length }} shown
+        {% elif tab == 'tasks' %}{{ tasks|length }} shown
+        {% elif tab == 'agents' %}{{ agents|length }} shown
+        {% else %}{{ runtimes|length }} shown{% endif %}
+      </span>
+    </div>
+    <div class="panel-body" style="padding-bottom:0;">
+      {% if tab == 'runs' %}
+        {{ search_form('runs', 'search uid, task, experiment, agent…') }}
+      {% elif tab == 'experiments' %}
+        {{ search_form('experiments', 'search uid or title') }}
+      {% elif tab == 'tasks' %}
+        {{ search_form('tasks', 'search uid or title') }}
+      {% elif tab == 'agents' %}
+        {{ search_form('agents', 'search agent id or title') }}
+      {% else %}
+        {{ search_form('runtimes', 'search runtime id or title') }}
+      {% endif %}
+    </div>
+
+    {% if tab == 'runs' %}
+    <div class="table-responsive">
+      <table class="table-wide">
+        <thead><tr>
+          <th>Run</th><th>Task</th><th>Experiment</th>
+          <th>Verdict</th><th>Started</th><th style="text-align:right;">Actions</th>
+        </tr></thead>
+        <tbody>
+          {% for r in runs %}
+          <tr>
+            <td><div class="mono" style="font-weight:600;">{{ r.uid }}</div>
+              {% if r.status %}<div style="font-size:11px; color:var(--fg-faint);">{{ r.status }}</div>{% endif %}</td>
+            <td class="mono" style="font-size:12px;">{{ r.task_uid or "—" }}</td>
+            <td class="mono" style="font-size:12px;">{{ r.experiment_uid or "—" }}</td>
+            <td>{{ verdict_badge(r.verdict) }}</td>
+            <td class="mono" style="font-size:11.5px; color:var(--fg-dim);">{{ (r.started_at or "—")[:16].replace("T", " ") }}</td>
+            <td style="text-align:right;">{{ delete_button('run', r.uid, 'Its evaluation, artifacts and observations go with it.') }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6"><div class="fl-empty">No run matches.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% elif tab == 'experiments' %}
+    <div class="table-responsive">
+      <table class="table-wide">
+        <thead><tr>
+          <th>Experiment</th><th>Type</th><th class="num">Runs</th>
+          <th>Statuses</th><th style="text-align:right;">Actions</th>
+        </tr></thead>
+        <tbody>
+          {% for e in experiments %}
+          <tr>
+            <td>
+              <div class="mono" style="font-weight:600;">{{ e.uid }}</div>
+              {% if e.title %}<div style="font-size:12px; color:var(--fg-dim); max-width:320px;">{{ e.title }}</div>{% endif %}
+            </td>
+            <td><span class="badge badge-neutral">{{ e.type or "—" }}</span></td>
+            <td class="num mono">{{ e.runs }}</td>
+            <td>{% for s in e.statuses %}<span class="badge badge-neutral" style="font-size:11px;">{{ s }}</span> {% else %}<span style="color:var(--fg-faint);">—</span>{% endfor %}</td>
+            <td style="text-align:right;">{{ delete_button('experiment', e.uid, 'This also deletes its ' ~ e.runs ~ ' run(s) and everything recorded with them.') }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5"><div class="fl-empty">No experiment matches.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% elif tab == 'tasks' %}
+    <div class="table-responsive">
+      <table class="table-wide">
+        <thead><tr>
+          <th>Task</th><th>Category</th><th>Difficulty</th>
+          <th class="num">Runs</th><th class="num">Passed</th><th style="text-align:right;">Actions</th>
+        </tr></thead>
+        <tbody>
+          {% for t in tasks %}
+          <tr>
+            <td>
+              <div class="mono" style="font-weight:600;">{{ t.uid }}</div>
+              {% if t.title %}<div style="font-size:12px; color:var(--fg-dim); max-width:320px;">{{ t.title }}</div>{% endif %}
+            </td>
+            <td><span class="badge badge-info">{{ t.category or "general" }}</span></td>
+            <td><span class="badge badge-neutral">{{ t.difficulty or "—" }}</span></td>
+            <td class="num mono">{{ t.runs_count }}</td>
+            <td class="num mono">{{ t.passed_count }}</td>
+            <td style="text-align:right;">{{ delete_button('task', t.uid, 'Its ' ~ t.runs_count ~ ' run(s) keep their scores and lose the task link.') }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6"><div class="fl-empty">No task matches.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% elif tab == 'agents' %}
+    <div class="table-responsive">
+      <table class="table-wide">
+        <thead><tr>
+          <th>Agent</th><th>Versions</th><th class="num">Runs</th>
+          <th style="text-align:right;">Actions</th>
+        </tr></thead>
+        <tbody>
+          {% for a in agents %}
+          <tr>
+            <td>
+              <div class="mono" style="font-weight:600;">{{ a.id }}</div>
+              {% if a.title %}<div style="font-size:12px; color:var(--fg-dim); max-width:320px;">{{ a.title }}</div>{% endif %}
+            </td>
+            <td>{% for v in a.versions %}<span class="badge badge-neutral" style="font-size:11px;">{{ v }}</span> {% endfor %}</td>
+            <td class="num mono">{{ a.runs_count }}</td>
+            <td style="text-align:right;">{{ delete_button('agent', a.id, 'Every recorded version of this agent leaves the catalog. Its ' ~ a.runs_count ~ ' run(s) keep their scores and their recorded agent id.') }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4"><div class="fl-empty">No agent matches.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% else %}
+    <div class="table-responsive">
+      <table class="table-wide">
+        <thead><tr>
+          <th>Runtime</th><th>Versions</th><th class="num">Runs</th>
+          <th style="text-align:right;">Actions</th>
+        </tr></thead>
+        <tbody>
+          {% for r in runtimes %}
+          <tr>
+            <td>
+              <div class="mono" style="font-weight:600;">{{ r.id }}</div>
+              {% if r.title %}<div style="font-size:12px; color:var(--fg-dim); max-width:320px;">{{ r.title }}</div>{% endif %}
+            </td>
+            <td>{% for v in r.versions %}<span class="badge badge-neutral" style="font-size:11px;">{{ v }}</span> {% endfor %}</td>
+            <td class="num mono">{{ r.runs_count }}</td>
+            <td style="text-align:right;">{{ delete_button('runtime', r.id, 'Every recorded version of this runtime leaves the catalog. Its ' ~ r.runs_count ~ ' run(s) keep their scores and their recorded runtime id.') }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4"><div class="fl-empty">No runtime matches.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin.js"></script>
+{% endblock %}

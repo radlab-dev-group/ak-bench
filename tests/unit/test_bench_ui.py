@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -9,9 +10,10 @@ from bench_ui.app import create_app
 from bench_ui.service import BenchDataService
 from starlette.testclient import TestClient
 
-from akbench.storage.db import create_db_engine
+from akbench.storage.db import create_db_engine, session_scope
 from akbench.storage.history import HistoryStore
 from akbench.storage.migrator import upgrade
+from akbench.storage.models import Agent, Runtime
 
 
 @pytest.fixture(autouse=True)
@@ -597,6 +599,56 @@ def test_the_controls_panel_can_be_pinned_and_unpinned(database_url: str) -> Non
     assert "initPinToggle" in client.get("/static/js/app.js").text
 
 
+def test_the_admin_page_lists_and_deletes_history(database_url: str) -> None:
+    """Deletion, entity by entity: what goes with it and what stays.
+
+    A run goes with its evaluation; a task goes and leaves its runs without the
+    link; an experiment takes its runs with it. Each of the three is the
+    foreign key's promise, kept end to end through the page's API.
+    """
+    _seeded_store(database_url)  # run-001 and run-002 under one experiment
+    client = TestClient(create_app(database_url=database_url))
+    header = {"X-Akbench-Admin": "1"}
+
+    # a loopback instance trusts its one caller, who is an admin and is told
+    # so in the nav; the login form would be a door painted on a wall
+    assert client.get("/login", follow_redirects=False).status_code == 303
+
+    page = client.get("/admin")
+    assert page.status_code == 200
+    assert "run-001" in page.text
+    assert "test-exp@1.0.0" in page.text
+    assert "wordcount-001@1.0.0" in page.text
+
+    deleted = client.delete("/api/admin/runs/run-001", headers=header)
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": "run-001", "kind": "run"}
+    remaining = {r["uid"] for r in client.get("/api/runs").json()["runs"]}
+    assert "run-001" not in remaining
+    assert "run-002" in remaining
+
+    gone_task = client.delete("/api/admin/tasks/wordcount-001@1.0.0", headers=header)
+    assert gone_task.status_code == 200
+    assert gone_task.json() == {
+        "deleted": "wordcount-001@1.0.0",
+        "kind": "task",
+        "runs_kept": 1,
+    }
+    survivor = next(
+        r for r in client.get("/api/runs").json()["runs"] if r["uid"] == "run-002"
+    )
+    assert survivor["task_uid"] is None  # the run keeps its scores, loses the name
+
+    gone_exp = client.delete("/api/admin/experiments/test-exp@1.0.0", headers=header)
+    assert gone_exp.status_code == 200
+    assert gone_exp.json() == {
+        "deleted": "test-exp@1.0.0",
+        "kind": "experiment",
+        "runs_deleted": 1,
+    }
+    assert client.get("/api/runs").json()["total"] == 0
+
+
 def test_single_run_api(database_url: str) -> None:
     _seeded_store(database_url)
     app = create_app(database_url=database_url)
@@ -705,7 +757,7 @@ def test_the_catalog_pages_are_reachable_from_the_navigation(database_url: str) 
     client = TestClient(create_app(database_url=database_url))
 
     body = client.get("/").text
-    for href in ("/tasks", "/agents", "/runtimes", "/experiments", "/runs", "/analytics", "/failures"):
+    for href in ("/tasks", "/agents", "/runtimes", "/experiments", "/runs", "/analytics", "/failures", "/admin"):
         assert f'href="{href}"' in body, href
 
 
@@ -715,7 +767,7 @@ def test_every_page_carries_the_page_load_indicator(database_url: str) -> None:
 
     _seeded_store(database_url)
     client = TestClient(create_app(database_url=database_url))
-    for page in ("/", "/runs", "/analytics", "/failures", "/compare", "/experiments", "/tasks"):
+    for page in ("/", "/runs", "/analytics", "/failures", "/compare", "/experiments", "/tasks", "/admin"):
         body = client.get(page).text
         assert 'id="pageLoader"' in body, page
         assert 'id="pageLoaderBar"' in body, page
@@ -1928,3 +1980,82 @@ def test_every_subpage_renders_the_loading_spinner(database_url: str) -> None:
         assert 'id="pageSpinner"' in resp.text, f"Route {route} missing pageSpinner"
         assert 'class="page-spinner-ring"' in resp.text, f"Route {route} missing spinner ring"
         assert 'id="pageLoader"' in resp.text, f"Route {route} missing pageLoader"
+
+
+def test_the_admin_page_deletes_agents_and_runtimes_and_keeps_scores(database_url: str) -> None:
+    """Agents and runtimes leave the catalog; the runs stay as evidence.
+
+    A run names its agent and runtime by string, not by foreign key, so the
+    catalog rows go and the scores remain — exactly what the confirmation
+    states before it asks for the name to be retyped.
+    """
+    _seeded_store(database_url)  # both runs by agent "codex"
+    engine = create_db_engine(database_url)
+    now = datetime.now(timezone.utc)
+    with session_scope(engine) as session:
+        session.add(
+            Agent(
+                agent_id="codex",
+                version="1.0",
+                title="Codex",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.add(
+            Runtime(
+                runtime_id="llm-router-ak-bench",
+                version="1.0",
+                title="LLM Router",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    client = TestClient(create_app(database_url=database_url))
+    header = {"X-Akbench-Admin": "1"}
+
+    agents_page = client.get("/admin?tab=agents")
+    assert agents_page.status_code == 200
+    assert "codex" in agents_page.text
+
+    # the confirmation is drawn by the page's own script, in the page's own
+    # language — no browser confirm box, and the name must be retyped
+    js = client.get("/static/js/admin.js").text
+    assert "window.confirm" not in js
+    assert "confirm-overlay" in js
+    assert "to confirm" in js
+
+    # the run inspector's overlay keeps its own class names and its
+    # hide-by-default rule: a confirmation dialog that redefined
+    # `.modal-overlay` pinned the inspector open on every page
+    css = client.get("/static/css/style.css").text
+    assert css.count(".modal-overlay {") == 1
+    inspector = css.index(".modal-overlay {")
+    assert "display: none" in css[inspector : inspector + 60]
+    assert ".confirm-overlay" in css
+
+    gone_agent = client.delete("/api/admin/agents/codex", headers=header)
+    assert gone_agent.status_code == 200
+    assert gone_agent.json() == {
+        "deleted": "codex",
+        "kind": "agent",
+        "versions_deleted": 1,
+        "runs_kept": 2,
+    }
+    assert "No agent matches." in client.get("/admin?tab=agents").text
+    assert client.get("/api/runs").json()["total"] == 2  # scores untouched
+
+    gone_runtime = client.delete(
+        "/api/admin/runtimes/llm-router-ak-bench", headers=header
+    )
+    assert gone_runtime.status_code == 200
+    assert gone_runtime.json() == {
+        "deleted": "llm-router-ak-bench",
+        "kind": "runtime",
+        "versions_deleted": 1,
+        "runs_kept": 1,
+    }
+    assert client.get("/api/runs").json()["total"] == 2
+
+    missing = client.delete("/api/admin/agents/codex", headers=header)
+    assert missing.status_code == 404

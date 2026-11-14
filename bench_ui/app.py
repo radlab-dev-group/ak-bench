@@ -3,19 +3,31 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from bench_ui.middleware import SecurityMiddleware
 from bench_ui.security import (
+    ADMIN_HEADER,
+    SESSION_COOKIE,
+    SESSION_TTL_SECONDS,
+    Identity,
     SecuritySettings,
+    admin_from_scope,
+    identity_from_scope,
+    issue_session,
     load_security_settings,
     request_shows_ground_truth,
+    session_identity,
+    session_key,
+    verify_credentials,
 )
 from bench_ui.service import MAX_PAGE_SIZE, BenchDataService
 
@@ -90,17 +102,6 @@ def create_app(
         redoc_url="/redoc" if api_docs else None,
         openapi_url="/openapi.json" if api_docs else None,
     )
-    app.state.security = settings
-    if settings.misconfiguration:
-        log.error("the dashboard will refuse every request: %s", settings.misconfiguration)
-
-    # Credentials and the security headers, before any of the routes below and
-    # before the 404 Starlette produces for a path that is not there.
-    app.add_middleware(SecurityMiddleware, settings=settings)
-
-    # Static files & templates
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
     # Shared data service instance. The connection comes from the project
     # configuration (.env), so the UI and the CLI read the same database.
@@ -114,10 +115,165 @@ def create_app(
     database = service.connectivity_public()
     service.database_info = database
 
+    from bench_ui import userstore
+
+    # Users live in the database now, so the table is a source of people like
+    # the environment always was: "nobody is configured" is only true when the
+    # environment, the users file AND the table are all empty.
+    if userstore.material(service.engine):
+        settings = replace(settings, database_users=True)
+
+    app.state.security = settings
+    if settings.misconfiguration:
+        log.error("the dashboard will refuse every request: %s", settings.misconfiguration)
+
+    def _user_resolver(
+        name: str, secret: str | None, issued_at: float | None = None
+    ):
+        """Who the user table says this is — with a hash answering for a secret.
+
+        ``secret=None`` is a name-only lookup, which is all a session cookie
+        needs: it already proved the name was signed in, and the role is read
+        again here so a demotion takes effect before the next click. The
+        cookie's issue time is weighed against the last sign-out, so a jar
+        that kept a cookie it was told to drop still cannot use it.
+        """
+        if secret is None:
+            role = userstore.role_of(service.engine, name, issued_at)
+            return Identity(name=name, role=role) if role else None
+        role = userstore.authenticate_user(service.engine, name, secret)
+        return Identity(name=name, role=role) if role else None
+
+    # One key signs every login cookie, derived from every user the dashboard
+    # has (configured and in the database), so a restart signs nobody out and
+    # a removed user's old cookie stops proving anything.
+    cookie_key = session_key(
+        settings, extra_material=userstore.material(service.engine)
+    )
+
+    # Credentials and the security headers, before any of the routes below and
+    # before the 404 Starlette produces for a path that is not there. The login
+    # page itself is served before sign-in, so it is public like the stylesheets.
+    app.add_middleware(
+        SecurityMiddleware,
+        settings=settings,
+        extra_public=("/login",),
+        user_resolver=_user_resolver,
+        session_secret=cookie_key,
+    )
+
+    # Static files & templates
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    def _nav_identity(request: Request) -> dict[str, Any]:
+        """Who the caller is, and whether there is anyone to sign out at all."""
+        return {
+            "nav_identity": identity_from_scope(request.scope),
+            "auth_enabled": settings.enabled,
+        }
+
+    templates = Jinja2Templates(
+        directory=str(TEMPLATES_DIR), context_processors=[_nav_identity]
+    )
+
     # ------------------------------------------------------------- HTML Web Pages
     @app.get("/api/database")
     def api_database():
         return database
+
+    # ------------------------------------------------------------- sign in
+    def _safe_next(target: str | None) -> str:
+        """Where signing in lands: a path on this site, or the root.
+
+        An open redirect is a phishing page's best friend, so anything that
+        leaves this origin -- a full URL, a protocol-relative ``//`` -- is
+        ignored rather than followed.
+        """
+        if target and target.startswith("/") and not target.startswith("//"):
+            return target
+        return "/"
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login_page(request: Request, next: str = "/", signed_out: str = ""):
+        if not settings.enabled:
+            # A loopback instance trusts its one caller; there is nothing to
+            # sign in to, and a login form would be a door painted on a wall.
+            return RedirectResponse("/", status_code=303)
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={
+                "realm": settings.realm,
+                "next": _safe_next(next),
+                "error": None,
+                "signed_out": signed_out == "1",
+                "database": database,
+            },
+        )
+
+    @app.post("/login")
+    async def login_submit(request: Request):
+        if not settings.enabled:
+            return RedirectResponse("/", status_code=303)
+        # The form is read from the body directly: one content type, three
+        # fields, no dependency on a multipart parser to serve a login.
+        form = parse_qs(
+            (await request.body()).decode("utf-8", "replace"), keep_blank_values=True
+        )
+        name = (form.get("name") or [""])[0]
+        secret = (form.get("password") or [""])[0]
+        target = _safe_next((form.get("next") or ["/"])[0])
+        identity = verify_credentials(settings, name, secret, _user_resolver)
+        if identity is None:
+            # The message names neither the name nor the password: which one
+            # was wrong is the caller's to guess, not this page's to say.
+            return templates.TemplateResponse(
+                request=request,
+                name="login.html",
+                context={
+                    "realm": settings.realm,
+                    "next": target,
+                    "error": "Wrong name or password.",
+                    "database": database,
+                },
+            )
+        response = RedirectResponse(target, status_code=303)
+        response.set_cookie(
+            SESSION_COOKIE,
+            issue_session(identity.name, cookie_key),
+            max_age=SESSION_TTL_SECONDS,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.scheme == "https",
+            path="/",
+        )
+        return response
+
+    @app.get("/logout")
+    def logout(request: Request):
+        # Signing out reaches the server too: the cookie is cleared here and
+        # now, with every attribute it was set with, *and* any cookie issued
+        # before this moment dies at the resolver — a jar that kept the value
+        # cannot spend it. A name outside the user table keeps the old
+        # meaning: their cookie dies when the jar lets go of it.
+        identity = session_identity(
+            request.headers.get("cookie", ""), settings, cookie_key, _user_resolver
+        )
+        if identity is not None:
+            userstore.revoke_sessions(service.engine, identity.name)
+        target = "/login?signed_out=1" if settings.enabled else "/"
+        response = RedirectResponse(target, status_code=303)
+        response.set_cookie(
+            SESSION_COOKIE,
+            "",
+            max_age=0,
+            expires=0,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.scheme == "https",
+            path="/",
+        )
+        return response
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard_page(request: Request):
@@ -222,6 +378,147 @@ def create_app(
     @app.get("/api/failures/data")
     def api_failures_data():
         return service.get_failures_dataset()
+
+    # ------------------------------------------------------------- admin
+    def _require_admin(request: Request) -> None:
+        """403 unless the caller manages the history: the page and its deletes."""
+        if admin_from_scope(request.scope) is None:
+            raise HTTPException(
+                status_code=403, detail="administration is for admins"
+            )
+
+    def _require_admin_call(request: Request) -> None:
+        """A delete must also carry the header only this page's own scripts send.
+
+        A form on another site cannot set a custom header and a fetch from
+        another origin cannot add one without a CORS preflight this app never
+        grants, so the header is what keeps a delete an act of this page.
+        """
+        _require_admin(request)
+        if request.headers.get(ADMIN_HEADER) != "1":
+            raise HTTPException(
+                status_code=403, detail="missing admin confirmation header"
+            )
+
+    def _matches(query: str, *fields: Any) -> bool:
+        if not query:
+            return True
+        haystack = " ".join(str(field or "") for field in fields).lower()
+        return query.lower() in haystack
+
+    def _group_catalog(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Per-version rows into one row per id, the unit the delete acts on."""
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            entry = grouped.setdefault(
+                str(row.get("id") or ""),
+                {"id": str(row.get("id") or ""), "title": row.get("title"),
+                 "versions": [], "runs_count": 0},
+            )
+            if row.get("title") and not entry["title"]:
+                entry["title"] = row["title"]
+            entry["versions"].append(str(row.get("version") or ""))
+            entry["runs_count"] += int(row.get("runs_count") or 0)
+        for entry in grouped.values():
+            entry["versions"].sort(reverse=True)
+        return sorted(grouped.values(), key=lambda e: e["id"])
+
+    ADMIN_TABS = ("runs", "experiments", "tasks", "agents", "runtimes")
+
+    @app.get("/admin", response_class=HTMLResponse)
+    def admin_page(
+        request: Request,
+        tab: str = Query("runs", max_length=32),
+        q: str = Query("", max_length=200),
+    ):
+        _require_admin(request)
+        tab = tab if tab in ADMIN_TABS else "runs"
+        runs_data = service.get_filtered_runs(search=q or None, limit=200)
+        experiments = [
+            e
+            for e in service.get_experiments()
+            if _matches(q, e.get("uid"), e.get("title"))
+        ]
+        tasks = [
+            t
+            for t in service.get_tasks()
+            if _matches(q, t.get("uid"), t.get("title"))
+        ]
+        agents = [
+            a for a in _group_catalog(service.get_agents()) if _matches(q, a["id"], a["title"])
+        ]
+        runtimes = [
+            r
+            for r in _group_catalog(service.get_runtimes())
+            if _matches(q, r["id"], r["title"])
+        ]
+        return templates.TemplateResponse(
+            request=request,
+            name="admin.html",
+            context={
+                "active_page": "admin",
+                "database": database,
+                "tab": tab,
+                "q": q,
+                "runs": runs_data["runs"],
+                "runs_total": runs_data["total"],
+                "experiments": experiments,
+                "tasks": tasks,
+                "agents": agents,
+                "runtimes": runtimes,
+                "counts": {
+                    "runs": service.get_filtered_runs(limit=1)["total"],
+                    "experiments": len(service.get_experiments()),
+                    "tasks": len(service.get_tasks()),
+                    "agents": len(_group_catalog(service.get_agents())),
+                    "runtimes": len(_group_catalog(service.get_runtimes())),
+                },
+            },
+        )
+
+    @app.delete("/api/admin/runs/{run_uid}")
+    def admin_delete_run(request: Request, run_uid: str):
+        _require_admin_call(request)
+        try:
+            return service.admin_delete_run(run_uid)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Run '{run_uid}' not found")
+
+    @app.delete("/api/admin/experiments/{experiment_uid}")
+    def admin_delete_experiment(request: Request, experiment_uid: str):
+        _require_admin_call(request)
+        try:
+            return service.admin_delete_experiment(experiment_uid)
+        except KeyError:
+            raise HTTPException(
+                status_code=404, detail=f"Experiment '{experiment_uid}' not found"
+            )
+
+    @app.delete("/api/admin/tasks/{task_uid}")
+    def admin_delete_task(request: Request, task_uid: str):
+        _require_admin_call(request)
+        try:
+            return service.admin_delete_task(task_uid)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Task '{task_uid}' not found")
+
+    @app.delete("/api/admin/agents/{agent_id}")
+    def admin_delete_agent(request: Request, agent_id: str):
+        _require_admin_call(request)
+        try:
+            return service.admin_delete_agent(agent_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    @app.delete("/api/admin/runtimes/{runtime_id}")
+    def admin_delete_runtime(request: Request, runtime_id: str):
+        _require_admin_call(request)
+        try:
+            return service.admin_delete_runtime(runtime_id)
+        except KeyError:
+            raise HTTPException(
+                status_code=404, detail=f"Runtime '{runtime_id}' not found"
+            )
 
     @app.get("/compare", response_class=HTMLResponse)
     def compare_page(

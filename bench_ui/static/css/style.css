@@ -1898,3 +1898,153 @@ pre {
   .fl-class-row { grid-template-columns: 1fr auto; }
   .fl-class-bar, .fl-class-example { grid-column: 1 / -1; }
 }
+
+/* ===== Login ===== */
+.login-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 70vh;
+  padding: 24px;
+}
+.login-card { width: 100%; max-width: 380px; margin-bottom: 0; }
+.login-lede { color: var(--fg-dim); font-size: 13px; margin-bottom: 16px; }
+.login-error {
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+}
+.login-form { display: flex; flex-direction: column; gap: 12px; }
+.login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.login-form .input { width: 100%; text-transform: none; }
+
+/* ===== Administration ===== */
+.btn-danger {
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+}
+.btn-danger:hover {
+  background: var(--red);
+  color: var(--on-accent);
+  border-color: var(--red);
+}
+.btn-danger:disabled { opacity: 0.5; cursor: default; }
+.admin-search { display: flex; gap: 8px; margin-bottom: 14px; }
+.admin-search .input { max-width: 340px; }
+.admin-notice {
+  margin-top: 12px;
+  background: var(--mint-bg);
+  color: var(--mint);
+  border: 1px solid var(--mint-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.login-notice {
+  background: var(--mint-bg);
+  color: var(--mint);
+  border: 1px solid var(--mint-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+}
+.admin-head { margin-bottom: 16px; }
+.admin-head h1 { margin: 0 0 4px; }
+.admin-lede { color: var(--fg-dim); font-size: 13.5px; max-width: 640px; }
+
+/* ===== Admin: stat cards double as the section tabs ===== */
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  display: block;
+  background: var(--bg-elevated, var(--bg-inset));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  text-decoration: none;
+  color: var(--fg);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.stat-card:hover { border-color: var(--accent, var(--mint)); transform: translateY(-1px); }
+.stat-card.active { border-color: var(--accent, var(--mint)); box-shadow: 0 0 0 1px var(--accent, var(--mint)); }
+.stat-num {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.stat-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-faint);
+  margin-top: 2px;
+}
+
+/* ===== Admin: the confirmation dialog, drawn like the rest of the page ===== */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 12, 0.62);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 200;
+}
+.confirm-card {
+  width: 100%;
+  max-width: 440px;
+  margin-bottom: 0;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+.confirm-uid { color: var(--red); word-break: break-all; }
+.confirm-warning {
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+}
+.confirm-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.confirm-label .confirm-uid { text-transform: none; }
+.confirm-input { width: 100%; text-transform: none; font-family: var(--mono); }
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}

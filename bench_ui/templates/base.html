@@ -65,6 +65,9 @@
         <a href="/tasks" class="{% if active_page == 'tasks' %}active{% endif %}">Tasks</a>
         <a href="/agents" class="{% if active_page == 'agents' %}active{% endif %}">Agents</a>
         <a href="/runtimes" class="{% if active_page == 'runtimes' %}active{% endif %}">Runtimes</a>
+        {% if nav_identity and nav_identity.is_admin %}
+        <a href="/admin" class="{% if active_page == 'admin' %}active{% endif %}">Admin</a>
+        {% endif %}
       </nav>
 
       <div class="nav-right">
@@ -86,6 +89,15 @@
             <option value="30">30s</option>
           </select>
         </div>
+        {% if nav_identity %}
+        <span class="chip" title="signed in as {{ nav_identity.name }} · {{ nav_identity.role }}">
+          <span>{{ nav_identity.name }}</span>
+          <span style="color:var(--fg-faint);">{{ nav_identity.role }}</span>
+        </span>
+        {% endif %}
+        {% if nav_identity and auth_enabled %}
+        <a href="/logout" class="btn btn-sm" title="Sign out">Sign out</a>
+        {% endif %}
       </div>
     </div>
   </header>

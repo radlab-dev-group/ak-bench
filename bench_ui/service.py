@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 
 from akbench.config.loader import load_settings, resolve_database_url
@@ -43,8 +44,12 @@ from akbench.storage.db import (
 from akbench.storage.history import HistoryStore
 from akbench.storage.migrator import schema_status
 from akbench.storage.models import (
+    Agent,
     Artifact,
     EvaluationRecord,
+    Experiment,
+    Runtime,
+    Task,
     TaskRun,
 )
 from bench_ui.pricing import (
@@ -2291,4 +2296,136 @@ class BenchDataService:
             ),
             "trend_index": trend_index,
             "baseline_score": baselines.get(str(r.get("task_uid"))),
+        }
+
+    # ------------------------------------------------------------- admin
+    def admin_delete_run(self, run_uid: str) -> dict[str, Any]:
+        """One run erased, and everything the schema keeps about it with it.
+
+        The foreign keys cascade — evaluations, artifacts, observations,
+        events — because a half-deleted run is worse than either keeping or
+        removing it. What the run left on disk outside the database (its
+        workspace, artifact files) is not touched: the database is this
+        dashboard's to manage, the filesystem is the operator's.
+        """
+        with session_scope(self.engine) as session:
+            run = session.scalar(select(TaskRun).where(TaskRun.uid == run_uid))
+            if run is None:
+                raise KeyError(run_uid)
+            session.delete(run)
+        self.invalidate_history()
+        return {"deleted": run_uid, "kind": "run"}
+
+    def admin_delete_experiment(self, experiment_uid: str) -> dict[str, Any]:
+        """One experiment with its whole recorded history.
+
+        The runs go with it — variants, metrics and snapshots are theirs, and
+        an experiment whose runs were kept would be a claim without its
+        evidence. The admin page shows the caller that count before asking for
+        the confirmation; this method is the second half of that sentence.
+        """
+        with session_scope(self.engine) as session:
+            experiment = session.scalar(
+                select(Experiment).where(Experiment.uid == experiment_uid)
+            )
+            if experiment is None:
+                raise KeyError(experiment_uid)
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.experiment_id == experiment.id)
+                )
+                or 0
+            )
+            session.delete(experiment)
+        self.invalidate_history()
+        return {
+            "deleted": experiment_uid,
+            "kind": "experiment",
+            "runs_deleted": int(runs),
+        }
+
+    def admin_delete_task(self, task_uid: str) -> dict[str, Any]:
+        """One task out of the catalog; its runs stay, without the link.
+
+        A run is evidence of what happened, and deleting the task does not
+        un-happen it: the runs keep their scores and lose only the name they
+        ran under (the foreign key says SET NULL, not CASCADE).
+        """
+        with session_scope(self.engine) as session:
+            task = session.scalar(select(Task).where(Task.uid == task_uid))
+            if task is None:
+                raise KeyError(task_uid)
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.task_uid == task_uid)
+                )
+                or 0
+            )
+            session.delete(task)
+        self.invalidate_history()
+        return {"deleted": task_uid, "kind": "task", "runs_kept": int(runs)}
+
+    def admin_delete_agent(self, agent_id: str) -> dict[str, Any]:
+        """One agent's catalog entries go; its runs stay as they were.
+
+        A run names its agent by string, not by foreign key, and a run is
+        evidence of what happened: removing the instrument from the catalog
+        does not un-happen its results. Every recorded version of this agent
+        goes together — the admin page shows the caller both counts before it
+        asks for the confirmation.
+        """
+        with session_scope(self.engine) as session:
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.agent_id == agent_id)
+                )
+                or 0
+            )
+            result = session.execute(
+                sa_delete(Agent).where(Agent.agent_id == agent_id)
+            )
+            versions = int(result.rowcount or 0)
+            if not versions:
+                raise KeyError(agent_id)
+        self.invalidate_history()
+        return {
+            "deleted": agent_id,
+            "kind": "agent",
+            "versions_deleted": versions,
+            "runs_kept": int(runs),
+        }
+
+    def admin_delete_runtime(self, runtime_id: str) -> dict[str, Any]:
+        """One runtime's catalog entries go; its runs stay as they were.
+
+        The same promise as :meth:`admin_delete_agent`: scores are evidence,
+        descriptors are a catalog, and only the catalog shrinks here.
+        """
+        with session_scope(self.engine) as session:
+            runs = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(TaskRun)
+                    .where(TaskRun.runtime_id == runtime_id)
+                )
+                or 0
+            )
+            result = session.execute(
+                sa_delete(Runtime).where(Runtime.runtime_id == runtime_id)
+            )
+            versions = int(result.rowcount or 0)
+            if not versions:
+                raise KeyError(runtime_id)
+        self.invalidate_history()
+        return {
+            "deleted": runtime_id,
+            "kind": "runtime",
+            "versions_deleted": versions,
+            "runs_kept": int(runs),
         }
