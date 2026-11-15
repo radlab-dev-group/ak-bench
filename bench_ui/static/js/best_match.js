@@ -12,6 +12,7 @@
     coverageBadge: $('#bmCoverageBadge'),
     catMetric: $('#bmCatMetric'),
     diffMetric: $('#bmDiffMetric'),
+    winGroup: $('#bmWinGroup'),
     charts: $('#bmCharts'),
     panelCat: $('#panelCat'),
     panelDiff: $('#panelDiff'),
@@ -310,11 +311,91 @@
     });
   }
 
+  // Bars beside the win-diagram scatter: the exact same task set, but counted
+  // instead of plotted — per group (category / difficulty) how many tasks the
+  // target wins on both indicators, how many stay undecided, how many it loses.
+  function buildWinBarsChart(){
+    const ctx = document.getElementById('chWinBars');
+    if(!ctx) return;
+    if(charts.chWinBars){ charts.chWinBars.destroy(); charts.chWinBars = null; }
+    const groupBy = (el.winGroup && el.winGroup.value) || 'category';
+    const tasks = raw.slices.by_task || [];
+    const groups = new Map();
+    tasks.forEach(t=>{
+      const raw_key = groupBy === 'difficulty' ? t.filter.difficulty : t.filter.category;
+      const key = raw_key || 'brak';
+      if(!groups.has(key)) groups.set(key, { key, win:0, tie:0, loss:0, total:0 });
+      const g = groups.get(key);
+      g.total += 1;
+      if(t.delta.wins_both && t.enough_data) g.win += 1;
+      else if(t.delta.composite != null && t.delta.composite < 0) g.loss += 1;
+      else g.tie += 1;
+    });
+    const rows = [...groups.values()].sort((a,b)=> (b.win - a.win) || (b.total - a.total) || a.key.localeCompare(b.key));
+    if(!rows.length){
+      ctx.parentElement.innerHTML = '<div class="fl-empty">Brak zadań do policzenia.</div>';
+      return;
+    }
+    const totalWin = rows.reduce((s,r)=> s + r.win, 0);
+    const totalAll = rows.reduce((s,r)=> s + r.total, 0);
+    // leave room to the right of the longest bar for the "won / all" label
+    const maxTotal = Math.max(...rows.map(r=> r.total)) + 1;
+    const titleEl = document.getElementById('bmWinBarsTitle');
+    if(titleEl) titleEl.textContent = groupBy === 'difficulty' ? 'Bilans wygranych — zadania wg trudności' : 'Bilans wygranych — zadania wg kategorii';
+    charts.chWinBars = new Chart(ctx, {
+      type:'bar',
+      data:{ labels:rows.map(r=> r.key), datasets:[
+        { label:'wygrywa oba', data:rows.map(r=> r.win), backgroundColor:'#00e59b', stack:'s' },
+        { label:'nierozstrzygnięte', data:rows.map(r=> r.tie), backgroundColor:'#ffb44a', stack:'s' },
+        { label:'przegrywa', data:rows.map(r=> r.loss), backgroundColor:'#ff6b7a', stack:'s' },
+      ]},
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{ labels:{color:'#c6d3df', boxWidth:12} },
+          title:{ display:true, text:`${totalWin} z ${totalAll} zadań wygrywa oba wskaźniki`, color:'#c6d3df', font:{size:12, weight:'600'}, padding:{bottom:10} },
+          tooltip:{ callbacks:{
+            label:(c)=> ` ${c.dataset.label}: ${c.parsed.x} z ${rows[c.dataIndex].total} zadań`,
+            footer:(items)=>{
+              const r = rows[items[0].dataIndex];
+              const pct = r.total ? (r.win / r.total * 100).toFixed(0) : '0';
+              return `wygrane ${r.win}/${r.total} (${pct}%)`;
+            },
+          } },
+        },
+        scales:{
+          x:{ stacked:true, beginAtZero:true, suggestedMax:maxTotal, ticks:{ color:'#a5b3c2', precision:0, callback:(v)=> Number.isInteger(v)? v : '' }, grid:{color:'rgba(255,255,255,.06)'}, title:{display:true, text:'liczba zadań', color:'#a5b3c2'} },
+          y:{ stacked:true, ticks:{ color:'#a5b3c2', font:{family:'ui-monospace', size:10} }, grid:{display:false} },
+        },
+      },
+      plugins:[{
+        // "wygrane / wszystkie" at the end of every stacked bar — the count alone
+        // hides how big the group is, the ratio is what makes groups comparable
+        id:'bmWinRatio',
+        afterDatasetsDraw(chart){
+          const { ctx:c, scales:{ x } } = chart;
+          c.save();
+          c.font = '10px ui-monospace, monospace';
+          c.textAlign = 'left';
+          c.textBaseline = 'middle';
+          rows.forEach((r, i)=>{
+            const meta = chart.getDatasetMeta(0).data[i];
+            if(!meta) return;
+            c.fillStyle = r.win ? '#c6d3df' : '#8d9daf';
+            c.fillText(`${r.win}/${r.total}`, x.getPixelForValue(r.total) + 5, meta.y);
+          });
+          c.restore();
+        },
+      }],
+    });
+  }
+
   function renderCharts(){
     el.charts.style.display='block';
     buildCatChart();
     buildDiffChart();
     buildScatterChart();
+    buildWinBarsChart();
+    if(el.winGroup) el.winGroup.onchange = ()=> buildWinBarsChart();
     if(el.catMetric) el.catMetric.onchange = ()=> buildCatChart();
     if(el.diffMetric) el.diffMetric.onchange = ()=> buildDiffChart();
     // tasks bar top 12

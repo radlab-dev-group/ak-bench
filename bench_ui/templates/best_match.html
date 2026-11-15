@@ -89,7 +89,10 @@
       <div class="panel"><div class="panel-header"><div class="panel-title">Deltas per difficulty — Δsuccess · Δscore + composite</div><div class="panel-header-right"><label style="font-family:var(--mono); font-size:11px; color:var(--fg-faint);">Metryka <select id="bmDiffMetric" class="select" style="padding:3px 6px;"><option value="all" selected>wszystko</option><option value="composite">composite</option><option value="success">Δ success</option><option value="score">Δ score</option></select></label></div></div><div class="panel-body"><div class="an-chart" style="height:340px;"><canvas id="chDiff"></canvas></div></div></div>
       <div class="panel"><div class="panel-header"><div class="panel-title">Heatmap — category × difficulty (composite)</div></div><div class="panel-body" id="bmHeat"></div></div>
       <div class="panel"><div class="panel-header"><div class="panel-title">Top 12 tasks — target vs pooled (success_rate)</div></div><div class="panel-body"><div class="an-chart" style="height:420px;"><canvas id="chTasks"></canvas></div></div></div>
-      <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Diagram wygranych — target vs others (success_rate na zadanie)</div></div><div class="panel-body"><div class="an-chart" style="height:440px;"><canvas id="chScatter"></canvas></div><div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono); margin-top:6px;">Każdy punkt = zadanie. Nad linią parytetu (przekątna) = target wygrywa. Zielone = wygrywa na oba wskaźniki i ma dane; niebieskie = composite &gt; 0; czerwone = przegrywa.</div></div></div>
+      <div class="bm-chart-pair" style="grid-column:1/-1;">
+        <div class="panel"><div class="panel-header"><div class="panel-title">Diagram wygranych — target vs others (success_rate na zadanie)</div></div><div class="panel-body"><div class="an-chart" style="height:440px;"><canvas id="chScatter"></canvas></div><div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono); margin-top:6px;">Każdy punkt = zadanie. Nad linią parytetu (przekątna) = target wygrywa. Zielone = wygrywa na oba wskaźniki i ma dane; niebieskie = composite &gt; 0; czerwone = przegrywa.</div></div></div>
+        <div class="panel"><div class="panel-header"><div class="panel-title" id="bmWinBarsTitle">Bilans wygranych — zadania wg kategorii</div><div class="panel-header-right"><label style="font-family:var(--mono); font-size:11px; color:var(--fg-faint);">Grupuj <select id="bmWinGroup" class="select" style="padding:3px 6px;"><option value="category" selected>kategoria</option><option value="difficulty">trudność</option></select></label></div></div><div class="panel-body"><div class="an-chart" style="height:440px;"><canvas id="chWinBars"></canvas></div><div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono); margin-top:6px;">Ten sam zbiór zadań co po lewej, tylko policzony: ile zadań w danej grupie target <strong style="color:var(--mint);">wygrywa oba wskaźniki</strong>, ile jest <strong style="color:var(--amber);">nierozstrzygniętych</strong> (remis / brak danych), a ile <strong style="color:var(--red);">przegrywa</strong>. Liczby nad słupkiem = wygrane / wszystkie.</div></div></div>
+      </div>
       <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Brute-force — wszystkie podzbiory kategorii (top 10)</div></div><div class="table-responsive" id="bmCatSubsets"></div></div>
       <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Porównanie z każdym konkurentem (overall target vs pojedynczy konkurent)</div></div><div class="table-responsive" id="bmVsComp"></div></div>
     </div>
@@ -133,6 +136,10 @@
 .bm-delta-plus { color: var(--mint); font-weight:700; }
 .bm-delta-minus { color: var(--red); font-weight:700; }
 .bm-delta-zero { color: var(--fg-faint); }
+.bm-chart-pair { display:grid; grid-template-columns:repeat(auto-fit,minmax(460px,1fr)); gap:20px; }
+.bm-chart-pair > .panel { margin-bottom:0; min-width:0; display:flex; flex-direction:column; }
+.bm-chart-pair > .panel > .panel-body { flex:1; }
+@media (max-width:640px){ .bm-chart-pair { grid-template-columns:1fr; } }
 #bmHeat table { width:100%; border-collapse:separate; border-spacing:3px; font-family:var(--mono); font-size:11.5px; }
 #bmHeat th { font-size:11px; color:var(--fg-dim); text-align:center; padding:4px; }
 #bmHeat td { text-align:center; padding:8px 6px; border-radius:4px; font-weight:600; min-width:70px; }
