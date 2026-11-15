@@ -76,16 +76,20 @@
     </div>
   </div>
 
-  <!-- Optimal cards grid -->
-  <div id="bmOptimalGrid" class="grid-cards" style="display:none;"></div>
+  <!-- Coverage — which task types have target data -->
+  <div id="bmCoverage" class="panel" style="display:none;">
+    <div class="panel-header"><div class="panel-title">Pokrycie typów zadań — które kategorie mają dane targetu</div><span class="badge badge-neutral" id="bmCoverageBadge">—</span></div>
+    <div class="panel-body" id="bmCoverageBody"></div>
+  </div>
 
   <!-- Charts -->
   <div id="bmCharts" style="display:none;">
     <div class="an-grid">
-      <div class="panel"><div class="panel-header"><div class="panel-title">Deltas per category — composite (Δsuccess + Δscore)</div></div><div class="panel-body"><div class="an-chart" style="height:300px;"><canvas id="chCat"></canvas></div></div></div>
-      <div class="panel"><div class="panel-header"><div class="panel-title">Deltas per difficulty</div></div><div class="panel-body"><div class="an-chart" style="height:300px;"><canvas id="chDiff"></canvas></div></div></div>
+      <div class="panel"><div class="panel-header"><div class="panel-title">Deltas per category — Δsuccess · Δscore + composite</div><div class="panel-header-right"><label style="font-family:var(--mono); font-size:11px; color:var(--fg-faint);">Metryka <select id="bmCatMetric" class="select" style="padding:3px 6px;"><option value="all" selected>wszystko</option><option value="composite">composite</option><option value="success">Δ success</option><option value="score">Δ score</option></select></label></div></div><div class="panel-body"><div class="an-chart" style="height:340px;"><canvas id="chCat"></canvas></div><div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono); margin-top:6px;">Każda kategoria z katalogu jest wyświetlona. Szare słupki = brak danych targetu (Δ = n/a). Zielone = wygrywa na oba wskaźniki i ma wystarczająco prób.</div></div></div>
+      <div class="panel"><div class="panel-header"><div class="panel-title">Deltas per difficulty — Δsuccess · Δscore + composite</div><div class="panel-header-right"><label style="font-family:var(--mono); font-size:11px; color:var(--fg-faint);">Metryka <select id="bmDiffMetric" class="select" style="padding:3px 6px;"><option value="all" selected>wszystko</option><option value="composite">composite</option><option value="success">Δ success</option><option value="score">Δ score</option></select></label></div></div><div class="panel-body"><div class="an-chart" style="height:340px;"><canvas id="chDiff"></canvas></div></div></div>
       <div class="panel"><div class="panel-header"><div class="panel-title">Heatmap — category × difficulty (composite)</div></div><div class="panel-body" id="bmHeat"></div></div>
       <div class="panel"><div class="panel-header"><div class="panel-title">Top 12 tasks — target vs pooled (success_rate)</div></div><div class="panel-body"><div class="an-chart" style="height:420px;"><canvas id="chTasks"></canvas></div></div></div>
+      <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Diagram wygranych — target vs others (success_rate na zadanie)</div></div><div class="panel-body"><div class="an-chart" style="height:440px;"><canvas id="chScatter"></canvas></div><div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono); margin-top:6px;">Każdy punkt = zadanie. Nad linią parytetu (przekątna) = target wygrywa. Zielone = wygrywa na oba wskaźniki i ma dane; niebieskie = composite &gt; 0; czerwone = przegrywa.</div></div></div>
       <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Brute-force — wszystkie podzbiory kategorii (top 10)</div></div><div class="table-responsive" id="bmCatSubsets"></div></div>
       <div class="panel" style="grid-column:1/-1;"><div class="panel-header"><div class="panel-title">Porównanie z każdym konkurentem (overall target vs pojedynczy konkurent)</div></div><div class="table-responsive" id="bmVsComp"></div></div>
     </div>

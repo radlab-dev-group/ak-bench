@@ -7,7 +7,11 @@
     verdict: $('#bmVerdict'),
     hero: $('#bmHero'),
     heroBody: $('#bmHeroBody'),
-    optimalGrid: $('#bmOptimalGrid'),
+    coverage: $('#bmCoverage'),
+    coverageBody: $('#bmCoverageBody'),
+    coverageBadge: $('#bmCoverageBadge'),
+    catMetric: $('#bmCatMetric'),
+    diffMetric: $('#bmDiffMetric'),
     charts: $('#bmCharts'),
     panelCat: $('#panelCat'),
     panelDiff: $('#panelDiff'),
@@ -58,7 +62,7 @@
   async function fetchData(){
     const minRuns = el.minRuns.value || 3;
     el.loading.style.display = 'flex';
-    [el.kpis, el.verdict, el.hero, el.optimalGrid, el.charts, el.panelCat, el.panelDiff, el.panelCatDiff, el.panelTasks, el.panelTaskSet, el.panelWinning, el.empty].forEach(e=>e.style.display='none');
+    [el.kpis, el.verdict, el.hero, el.coverage, el.charts, el.panelCat, el.panelDiff, el.panelCatDiff, el.panelTasks, el.panelTaskSet, el.panelWinning, el.empty].forEach(e=>e.style.display='none');
     // destroy charts
     Object.values(charts).forEach(c=>{ try{c.destroy();}catch{} });
     charts={};
@@ -186,56 +190,133 @@
     el.heroBody.innerHTML = html;
   }
 
-  function renderOptimalGrid(){
-    el.optimalGrid.style.display='grid';
-    const o = raw.optimal;
-    const cards = [];
-    function card(title, obj, note){
-      if(!obj) return;
-      const d = obj.delta;
-      cards.push(`<div class="card" style="border-top:2px solid ${d.wins_both?'var(--mint)':'var(--line)'};">
-        <div class="card-title">${title}</div>
-        <div style="font-weight:700; font-size:15px; margin:6px 0;">${obj.label}</div>
-        <div style="font-family:var(--mono); font-size:12px;">Δsuccess <span class="${deltaClass(d.delta_success_rate)}">${fmtDelta(d.delta_success_rate)}</span> · Δscore <span class="${deltaClass(d.delta_mean_score)}">${fmtDelta(d.delta_mean_score)}</span> · <strong>${fmtDelta(d.composite)}</strong></div>
-        <div style="font-size:11.5px; color:var(--fg-faint); margin-top:6px;">${note||''}<br>target ${fmtPct(obj.target_summary.success_rate)} vs ${fmtPct(obj.other_summary.success_rate)} · ${obj.target_summary.evaluated} vs ${obj.other_summary.evaluated} eval</div>
-      </div>`);
-    }
-    card('Najlepsza kategoria', o.best_category, `kategoria: ${o.best_category?.filter.category||''}`);
-    card('Najlepsza trudność', o.best_difficulty, `trudność: ${o.best_difficulty?.filter.difficulty||''}`);
-    card('Najlepsze kat×trud', o.best_category_difficulty, '');
-    card('Najlepsze zadanie', o.best_task, `${o.best_task?.filter.category||''} · ${o.best_task?.filter.difficulty||''}`);
-    card('Najlepszy podzbiór kategorii', o.best_category_subset, `brute-force 2^n kategorii`);
-    if(o.task_set_winning) card('Zestaw wygrywających zadań', o.task_set_winning, `${o.task_set_winning.filter.task_uids.length} tasks`);
-    el.optimalGrid.innerHTML = cards.join('');
+  function renderCoverage(){
+    el.coverage.style.display='block';
+    const cats = raw.slices.by_category || [];
+    const withTarget = cats.filter(c=> c.target_summary.evaluated>0).length;
+    const total = cats.length;
+    if(el.coverageBadge) el.coverageBadge.textContent = `${withTarget} / ${total} z danymi`;
+    let html = `<div style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">Target <code>auto_codex+knowledge</code> ma ewaluacje w <strong style="color:var(--mint);">${withTarget}</strong> z <strong>${total}</strong> typów zadań (kategorii). Poniżej pełna lista — kategorie bez żadnego runu targetu są zaznaczone jako <em>brak danych targetu</em>, więc ich delta to <code>null</code> (nie zero). To pokazuje, których typów zadań na wykresie "Deltas per category" w ogóle nie widać.</div>`;
+    html += '<table><thead><tr><th>Kategoria (typ zadania)</th><th class="num">Target eval</th><th class="num">Others eval</th><th class="num">Δsuccess</th><th class="num">Δscore</th><th class="num">Composite</th><th>Status</th></tr></thead><tbody>';
+    cats.forEach(c=>{
+      const has = c.target_summary.evaluated>0;
+      const status = !has
+        ? '<span class="badge badge-neutral">brak danych targetu</span>'
+        : (c.delta.wins_both ? '<span class="badge badge-passed">WIN</span>' : '<span class="badge badge-info">ma dane</span>');
+      html += `<tr style="${c.delta.wins_both&&c.enough_data?'background:rgba(0,229,155,.06);':''}">
+        <td><strong>${c.label}</strong></td>
+        <td class="num mono">${c.target_summary.evaluated}</td>
+        <td class="num mono">${c.other_summary.evaluated}</td>
+        <td class="num mono ${deltaClass(c.delta.delta_success_rate)}">${fmtDelta(c.delta.delta_success_rate)}</td>
+        <td class="num mono ${deltaClass(c.delta.delta_mean_score)}">${fmtDelta(c.delta.delta_mean_score)}</td>
+        <td class="num mono" style="font-weight:700; color:${c.delta.composite>0?'var(--mint)':(c.delta.composite<0?'var(--red)':'var(--fg)')};">${fmtDelta(c.delta.composite)}</td>
+        <td>${status}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    el.coverageBody.innerHTML = html;
+  }
+
+  function _barY(metric){
+    if(metric==='success' || metric==='score') return { y:{ ticks:{color:'#5aa9ff', callback:(v)=> (v>0?'+':'')+v}, grid:{color:'rgba(255,255,255,.06)'} } };
+    if(metric==='composite') return { y:{ ticks:{color:'#a5b3c2', callback:(v)=> (v>0?'+':'')+v}, grid:{color:'rgba(255,255,255,.06)'} } };
+    return { y:{ ticks:{color:'#5aa9ff', callback:(v)=> (v>0?'+':'')+v}, grid:{color:'rgba(255,255,255,.06)'} }, y1:{ position:'right', ticks:{color:'#ffb44a'}, grid:{drawOnChartArea:false} } };
+  }
+  function _barDatasets(slices, metric, wins){
+    const color = (arr)=> arr.map((v,i)=> wins[i] ? '#00e59b' : (v==null ? '#3a4654' : (v>0 ? '#5aa9ff' : '#ff6b7a')));
+    const success = slices.map(c=> c.delta.delta_success_rate ?? null);
+    const score = slices.map(c=> c.delta.delta_mean_score ?? null);
+    const comp = slices.map(c=> c.delta.composite ?? null);
+    if(metric==='composite') return [{ label:'composite Δ', data:comp, backgroundColor:color(comp), borderWidth:0 }];
+    if(metric==='success') return [{ label:'Δ success', data:success, backgroundColor:color(success), borderWidth:0 }];
+    if(metric==='score') return [{ label:'Δ score', data:score, backgroundColor:color(score), borderWidth:0 }];
+    return [
+      { label:'Δ success', data:success, backgroundColor:color(success), borderWidth:0 },
+      { label:'Δ score', data:score, backgroundColor:color(score), borderWidth:0 },
+      { label:'composite', type:'line', data:comp, borderColor:'#ffb44a', backgroundColor:'#ffb44a', yAxisID:'y1', tension:.25, pointRadius:3, borderWidth:2 },
+    ];
+  }
+  function _barTooltip(slices){
+    return { callbacks:{ label:(c)=>{
+      const s = slices[c.dataIndex];
+      const v = c.raw==null ? 'n/a' : fmtDelta(c.raw);
+      return `${c.dataset.label}: ${v}  ·  target ${fmtPct(s.target_summary.success_rate)} (${s.target_summary.evaluated} eval) vs ${fmtPct(s.other_summary.success_rate)} (${s.other_summary.evaluated} eval)`;
+    } } };
+  }
+  function buildCatChart(){
+    const cats = raw.slices.by_category || [];
+    const metric = el.catMetric ? el.catMetric.value : 'all';
+    const wins = cats.map(c=> c.delta.wins_both && c.enough_data);
+    const ctx = document.getElementById('chCat');
+    if(!ctx) return;
+    if(charts.chCat) charts.chCat.destroy();
+    const datasets = _barDatasets(cats, metric, wins);
+    charts.chCat = new Chart(ctx, {
+      type:'bar',
+      data:{ labels:cats.map(c=>c.label), datasets },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display: datasets.length>1, labels:{color:'#c6d3df', boxWidth:12}}, tooltip:_barTooltip(cats) },
+        scales:{ x:{ ticks:{color:'#a5b3c2', font:{family:'ui-monospace', size:11}, autoSkip:false, maxRotation:60, minRotation:30} }, ..._barY(metric) }
+      }
+    });
+  }
+  function buildDiffChart(){
+    const diffs = raw.slices.by_difficulty || [];
+    const metric = el.diffMetric ? el.diffMetric.value : 'all';
+    const wins = diffs.map(d=> d.delta.wins_both && d.enough_data);
+    const ctx = document.getElementById('chDiff');
+    if(!ctx) return;
+    if(charts.chDiff) charts.chDiff.destroy();
+    const datasets = _barDatasets(diffs, metric, wins);
+    charts.chDiff = new Chart(ctx, {
+      type:'bar',
+      data:{ labels:diffs.map(d=>d.label), datasets },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display: datasets.length>1, labels:{color:'#c6d3df', boxWidth:12}}, tooltip:_barTooltip(diffs) },
+        scales:{ x:{ ticks:{color:'#a5b3c2', font:{family:'ui-monospace', size:11}, autoSkip:false, maxRotation:60, minRotation:30} }, ..._barY(metric) }
+      }
+    });
+  }
+  function buildScatterChart(){
+    const tasks = raw.slices.by_task || [];
+    const pts = [];
+    const colors = [];
+    tasks.forEach(t=>{
+      const x = t.other_summary.success_rate;
+      const y = t.target_summary.success_rate;
+      if(x==null || y==null) return;
+      pts.push({ x, y, _t:t });
+      colors.push((t.delta.wins_both && t.enough_data) ? '#00e59b' : (t.delta.composite>0 ? '#5aa9ff' : '#ff6b7a'));
+    });
+    const ctx = document.getElementById('chScatter');
+    if(!ctx || !pts.length) return;
+    if(charts.chScatter) charts.chScatter.destroy();
+    charts.chScatter = new Chart(ctx, {
+      type:'scatter',
+      data:{ datasets:[
+        { label:'zadania (target vs others success_rate)', data:pts, pointBackgroundColor:colors, pointRadius:5, pointHoverRadius:7 },
+        { label:'linia parytetu (target = others)', type:'line', data:[{x:0,y:0},{x:1,y:1}], borderColor:'#a5b3c2', borderDash:[6,4], pointRadius:0, fill:false },
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{labels:{color:'#c6d3df'}},
+          tooltip:{ callbacks:{ label:(c)=>{
+            const t = c.raw._t;
+            if(!t) return '';
+            return `${t.filter.task_uid}: target ${fmtPct(t.target_summary.success_rate)} vs others ${fmtPct(t.other_summary.success_rate)} · Δsuccess ${fmtDelta(t.delta.delta_success_rate)} (${t.target_summary.evaluated} vs ${t.other_summary.evaluated} eval)`;
+          } } } },
+        scales:{ x:{ min:0, max:1, title:{display:true, text:'others success_rate', color:'#a5b3c2'}, ticks:{color:'#a5b3c2', callback:(v)=> (v*100).toFixed(0)+'%'}, grid:{color:'rgba(255,255,255,.06)'} },
+          y:{ min:0, max:1, title:{display:true, text:'target success_rate', color:'#a5b3c2'}, ticks:{color:'#a5b3c2', callback:(v)=> (v*100).toFixed(0)+'%'}, grid:{color:'rgba(255,255,255,.06)'} } }
+      }
+    });
   }
 
   function renderCharts(){
     el.charts.style.display='block';
-    // category bar
-    const cats = raw.slices.by_category || [];
-    const catLabels = cats.map(c=>c.label);
-    const catComp = cats.map(c=>c.delta.composite ?? 0);
-    const catWins = cats.map(c=> c.delta.wins_both && c.enough_data);
-    const ctxCat = document.getElementById('chCat');
-    if(ctxCat){
-      charts.chCat = new Chart(ctxCat, {
-        type:'bar',
-        data:{ labels:catLabels, datasets:[{ label:'composite Δ', data:catComp, backgroundColor: catComp.map((v,i)=> catWins[i]?'#00e59b':(v>0?'#5aa9ff':'#ff6b7a')), borderWidth:0 }]},
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(c)=> `${c.label}: ${c.raw?.toFixed(3)}`}}}, scales:{ x:{ ticks:{color:'#a5b3c2', font:{family:'ui-monospace', size:11}}}, y:{ ticks:{color:'#a5b3c2'}, grid:{color:'rgba(255,255,255,.06)'} } } }
-      });
-    }
-    const diffs = raw.slices.by_difficulty || [];
-    const diffLabels = diffs.map(d=>d.label);
-    const diffComp = diffs.map(d=>d.delta.composite ?? 0);
-    const diffWins = diffs.map(d=> d.delta.wins_both && d.enough_data);
-    const ctxDiff = document.getElementById('chDiff');
-    if(ctxDiff){
-      charts.chDiff = new Chart(ctxDiff, {
-        type:'bar',
-        data:{ labels:diffLabels, datasets:[{ label:'composite Δ', data:diffComp, backgroundColor: diffComp.map((v,i)=> diffWins[i]?'#00e59b':(v>0?'#5aa9ff':'#ff6b7a')), borderWidth:0 }]},
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{color:'#a5b3c2'}}, y:{ ticks:{color:'#a5b3c2'}, grid:{color:'rgba(255,255,255,.06)'} } } }
-      });
-    }
+    buildCatChart();
+    buildDiffChart();
+    buildScatterChart();
+    if(el.catMetric) el.catMetric.onchange = ()=> buildCatChart();
+    if(el.diffMetric) el.diffMetric.onchange = ()=> buildDiffChart();
     // tasks bar top 12
     const tasks = [...(raw.slices.by_task||[])].sort((a,b)=> (b.delta.composite??-9e9)-(a.delta.composite??-9e9)).slice(0,12);
     const ctxTasks = document.getElementById('chTasks');
@@ -418,7 +499,7 @@
     renderKPIs();
     renderVerdict();
     renderHero();
-    renderOptimalGrid();
+    renderCoverage();
     renderCharts();
     renderTables();
   }
