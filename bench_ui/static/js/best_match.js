@@ -73,7 +73,7 @@
       raw = await res.json();
       render();
     }catch(e){
-      el.loading.innerHTML = `<div class="fl-empty">Błąd pobierania: ${e.message}</div>`;
+      el.loading.innerHTML = `<div class="fl-empty">Failed to load data: ${e.message}</div>`;
     }
   }
 
@@ -98,7 +98,7 @@
     const o = raw.overall;
     const m = raw.meta;
     el.meta.textContent = `${m.total_runs} runs · ${m.target_runs} target · ${m.other_runs} others · ${m.total_tasks} tasks`;
-    el.targetDesc.innerHTML = `Znaleziono <strong style="color:var(--mint);">${t.runs} runów</strong> target (<strong>${t.evaluated} evaluated</strong>) vs <strong>${b.runs} runów</strong> baseline (<strong>${b.evaluated} evaluated</strong>)`;
+    el.targetDesc.innerHTML = `Found <strong style="color:var(--mint);">${t.runs} target runs</strong> (<strong>${t.evaluated} evaluated</strong>) vs <strong>${b.runs} baseline runs</strong> (<strong>${b.evaluated} evaluated</strong>)`;
     el.kpis.style.display='grid';
     const tSucc = fmtPct(t.summary.success_rate);
     const oSucc = fmtPct(b.summary.success_rate);
@@ -110,9 +110,9 @@
       kpiCard('Target success_rate', tSucc, `auto_codex+knowledge: ${t.summary.passed}/${t.summary.evaluated} <span style="color:var(--fg-faint);">vs baseline ${oSucc}</span>`, 'card-mint') +
       kpiCard('Target mean_score', tScore, `vs baseline ${oScore}`, 'card-blue') +
       kpiCard('Δ success (target − others)', `<span class="${deltaClass(dSucc)}">${fmtDelta(dSucc)}</span>`, `ci target ${ciSpan(t.ci.low,t.ci.high)}<br>ci baseline ${ciSpan(b.ci.low,b.ci.high)}`) +
-      kpiCard('Δ mean_score', `<span class="${deltaClass(dScore)}">${fmtDelta(dScore)}</span>`, `${o.delta.wins_both?'✅ wygrywa na oba wskaźniki':'—'} · composite ${o.delta.composite==null?'—':fmtDelta(o.delta.composite)}`, o.delta.wins_both?'card-mint':'') +
-      kpiCard('Wygrywające slice’y', `${raw.optimal.winning_slices.length}`, `z ${raw.optimal.winning_slices_all.length} wszystkich z win na oba wskaźniki`, raw.optimal.winning_slices.length?'card-amber':'') +
-      kpiCard('Optymalne zadania', `${(raw.optimal.winning_task_ids||[]).length} tasks`, `gdzie target wygrywa — łączny zestaw maksymalizujący`, (raw.optimal.winning_task_ids||[]).length?'card-mint':'');
+      kpiCard('Δ mean_score', `<span class="${deltaClass(dScore)}">${fmtDelta(dScore)}</span>`, `${o.delta.wins_both?'✅ wins on both indicators':'—'} · composite ${o.delta.composite==null?'—':fmtDelta(o.delta.composite)}`, o.delta.wins_both?'card-mint':'') +
+      kpiCard('Winning slices', `${raw.optimal.winning_slices.length}`, `of ${raw.optimal.winning_slices_all.length} total slices winning on both indicators`, raw.optimal.winning_slices.length?'card-amber':'') +
+      kpiCard('Optimal tasks', `${(raw.optimal.winning_task_ids||[]).length} tasks`, `where the target wins — the combined maximised set`, (raw.optimal.winning_task_ids||[]).length?'card-mint':'');
   }
 
   function renderVerdict(){
@@ -123,12 +123,12 @@
     el.verdict.innerHTML = `<div class="panel-body" style="display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
       <div style="width:10px; height:48px; border-radius:4px; background:${color}; flex-shrink:0;"></div>
       <div style="flex:1;">
-        <div style="font-weight:600; color:${color};">Werdykt ogólny: ${interp}</div>
+        <div style="font-weight:600; color:${color};">Overall verdict: ${interp}</div>
         <div style="font-size:12.5px; color:var(--fg-dim); margin-top:4px;">Overall Δsuccess <span class="${deltaClass(o.delta.delta_success_rate)}">${fmtDelta(o.delta.delta_success_rate)}</span> · Δscore <span class="${deltaClass(o.delta.delta_mean_score)}">${fmtDelta(o.delta.delta_mean_score)}</span> · target ${fmtPct(o.target_summary.success_rate)} (${o.target_summary.passed}/${o.target_summary.evaluated}) vs others ${fmtPct(o.other_summary.success_rate)} (${o.other_summary.passed}/${o.other_summary.evaluated})</div>
-        <div style="font-size:11.5px; color:var(--fg-faint); margin-top:2px; font-family:var(--mono);">Definicja wygranej: Δsuccess &gt; 0 <strong>i</strong> Δmean_score &gt; 0 jednocześnie → maksymalizacja wszystkich wskaźników jakości. Sortowanie po <code>composite = Δsuccess + Δscore</code>.</div>
+        <div style="font-size:11.5px; color:var(--fg-faint); margin-top:2px; font-family:var(--mono);">Win definition: Δsuccess &gt; 0 <strong>and</strong> Δmean_score &gt; 0 simultaneously → maximisation of all quality indicators. Sorted by <code>composite = Δsuccess + Δscore</code>.</div>
       </div>
       <div style="display:flex; gap:8px;">
-        <a href="/compare" class="btn btn-sm">Porównaj w Studio</a>
+        <a href="/compare" class="btn btn-sm">Compare in Studio</a>
         <a href="/analytics" class="btn btn-sm">Analytics</a>
       </div>
     </div>`;
@@ -150,15 +150,15 @@
     let html = '';
     if(globalBest){
       html += `<div style="margin-bottom:14px; padding:10px 14px; background:var(--panel-2); border:1px solid var(--mint-border); border-radius:8px;">
-        <div style="font-size:11px; color:var(--mint); font-family:var(--mono); letter-spacing:.05em;">🏆 GLOBAL BEST — maksymalizuje wszystkie wskaźniki jakości</div>
+        <div style="font-size:11px; color:var(--mint); font-family:var(--mono); letter-spacing:.05em;">🏆 GLOBAL BEST — maximises all quality indicators</div>
         <div style="font-size:1.25rem; font-weight:700; margin:4px 0; color:var(--fg-strong);">${globalBest.label}</div>
         <div style="font-size:12.5px; color:var(--fg-dim);">Δsuccess <span class="${deltaClass(globalBest.delta.delta_success_rate)}">${fmtDelta(globalBest.delta.delta_success_rate)}</span> · Δscore <span class="${deltaClass(globalBest.delta.delta_mean_score)}">${fmtDelta(globalBest.delta.delta_mean_score)}</span> · composite <strong>${fmtDelta(globalBest.delta.composite)}</strong> &nbsp;|&nbsp; target ${fmtPct(globalBest.target_summary.success_rate)} (${globalBest.target_summary.passed}/${globalBest.target_summary.evaluated}) vs others ${fmtPct(globalBest.other_summary.success_rate)} (${globalBest.other_summary.passed}/${globalBest.other_summary.evaluated}) · target score ${fmtScore(globalBest.target_summary.mean_score)} vs ${fmtScore(globalBest.other_summary.mean_score)}</div>
-        <div style="font-size:11.5px; color:var(--fg-faint); font-family:var(--mono); margin-top:4px;">${globalBest.enough_data ? '✅ wystarczająco danych (≥ min_runs)' : '⚠️ mało danych — wynik orientacyjny'} · kluc: <code>${globalBest.key}</code></div>
+        <div style="font-size:11.5px; color:var(--fg-faint); font-family:var(--mono); margin-top:4px;">${globalBest.enough_data ? '✅ enough data (≥ min_runs)' : '⚠️ insufficient data — indicative result'} · key: <code>${globalBest.key}</code></div>
       </div>`;
     }
     html += `<div class="bm-hero-grid">`;
     function heroCard(title, obj, icon){
-      if(!obj) return `<div class="bm-hero-card"><div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono);">${title}</div><div style="color:var(--fg-faint); margin-top:6px;">brak danych</div></div>`;
+      if(!obj) return `<div class="bm-hero-card"><div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono);">${title}</div><div style="color:var(--fg-faint); margin-top:6px;">No data</div></div>`;
       const isBest = globalBest && obj.key===globalBest.key;
       return `<div class="bm-hero-card ${isBest?'best':''}"><div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono);">${icon} ${title}</div>
         <div style="font-weight:700; margin:6px 0 4px; font-size:13.5px;">${obj.label}</div>
@@ -167,25 +167,25 @@
         <div style="font-size:11px; color:var(--fg-faint); margin-top:6px; font-family:var(--mono);">${obj.enough_data?'✅':'⚠️'} ${obj.target_summary.evaluated} vs ${obj.other_summary.evaluated} evaluated · ${obj.target_summary.runs} vs ${obj.other_summary.runs} runs</div>
       </div>`;
     }
-    html += heroCard('Najlepsza kategoria', bestCat, '📦');
-    html += heroCard('Najlepsza trudność', bestDiff, '🎯');
-    html += heroCard('Najlepsze kategoria × trudność', bestCatDiff, '🔀');
-    html += heroCard('Najlepsze zadanie', bestTask, '🧩');
-    html += heroCard('Optymalny podzbiór kategorii (brute-force)', bestCatSubset, '📚');
+    html += heroCard('Best category', bestCat, '📦');
+    html += heroCard('Best difficulty', bestDiff, '🎯');
+    html += heroCard('Best category × difficulty', bestCatDiff, '🔀');
+    html += heroCard('Best task', bestTask, '🧩');
+    html += heroCard('Optimal category subset (brute force)', bestCatSubset, '📚');
     if(taskSet){
       html += `<div class="bm-hero-card best" style="grid-column: span 2;">
-        <div style="font-size:11px; color:var(--mint); font-family:var(--mono);">🧪 ZESTAW MAKSYMALIZUJĄCY — wszystkie wygrywające zadania razem</div>
-        <div style="font-weight:700; margin:6px 0 4px; font-size:14px;">${taskSet.label} — ${taskSet.filter.task_uids.length} zadań</div>
+        <div style="font-size:11px; color:var(--mint); font-family:var(--mono);">🧪 MAXIMISED TASK SET — all winning tasks together</div>
+        <div style="font-weight:700; margin:6px 0 4px; font-size:14px;">${taskSet.label} — ${taskSet.filter.task_uids.length} tasks</div>
         <div style="font-size:12px;"><span class="${deltaClass(taskSet.delta.delta_success_rate)}">${fmtDelta(taskSet.delta.delta_success_rate)}</span> success · <span class="${deltaClass(taskSet.delta.delta_mean_score)}">${fmtDelta(taskSet.delta.delta_mean_score)}</span> score · <strong>${fmtDelta(taskSet.delta.composite)}</strong></div>
         <div style="font-size:11.5px; color:var(--fg-dim); margin-top:6px;">target ${fmtPct(taskSet.target_summary.success_rate)} (${taskSet.target_summary.passed}/${taskSet.target_summary.evaluated}) vs others ${fmtPct(taskSet.other_summary.success_rate)} (${taskSet.other_summary.passed}/${taskSet.other_summary.evaluated})</div>
         <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">${taskSet.filter.task_uids.map(id=>`<a href="/tasks/${id}" class="chip chip-sm" style="font-size:10.5px;">${id}</a>`).join(' ')}</div>
-        <div style="font-size:11px; color:var(--fg-faint); margin-top:6px; font-family:var(--mono);">Połączony wynik dla całego zestawu — dokładnie w tej sytuacji konfiguracja bije inne.</div>
+        <div style="font-size:11px; color:var(--fg-faint); margin-top:6px; font-family:var(--mono);">Combined result for the whole set — this is the exact scenario where the configuration beats the others.</div>
       </div>`;
     }
     html += `</div>`;
     if(taskSet){
       html += `<div style="margin-top:12px; padding:10px 14px; background:rgba(255,180,74,.08); border:1px solid var(--amber-border); border-radius:8px; font-size:12.5px; color:var(--fg-dim);">
-        <strong style="color:var(--amber);">Jak czytać:</strong> To jest <em>zmaksymalizowana sytuacja</em> — filtr zadań/kategorii/trudności, w którym <code>auto_codex+knowledge</code> jednocześnie maksymalizuje <code>success_rate</code> i <code>mean_score</code>. Composite = Δsuccess + Δscore. Im większy, tym silniejsza przewaga nad wszystkimi innymi konfiguracjami.
+        <strong style="color:var(--amber);">How to read this:</strong> This is the <em>maximised scenario</em> — the task/category/difficulty filter where <code>auto_codex+knowledge</code> simultaneously maximises <code>success_rate</code> and <code>mean_score</code>. Composite = Δsuccess + Δscore. The higher it is, the stronger the advantage over all other configurations.
       </div>`;
     }
     el.heroBody.innerHTML = html;
@@ -196,14 +196,14 @@
     const cats = raw.slices.by_category || [];
     const withTarget = cats.filter(c=> c.target_summary.evaluated>0).length;
     const total = cats.length;
-    if(el.coverageBadge) el.coverageBadge.textContent = `${withTarget} / ${total} z danymi`;
-    let html = `<div style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">Target <code>auto_codex+knowledge</code> ma ewaluacje w <strong style="color:var(--mint);">${withTarget}</strong> z <strong>${total}</strong> typów zadań (kategorii). Poniżej pełna lista — kategorie bez żadnego runu targetu są zaznaczone jako <em>brak danych targetu</em>, więc ich delta to <code>null</code> (nie zero). To pokazuje, których typów zadań na wykresie "Deltas per category" w ogóle nie widać.</div>`;
-    html += '<table><thead><tr><th>Kategoria (typ zadania)</th><th class="num">Target eval</th><th class="num">Others eval</th><th class="num">Δsuccess</th><th class="num">Δscore</th><th class="num">Composite</th><th>Status</th></tr></thead><tbody>';
+    if(el.coverageBadge) el.coverageBadge.textContent = `${withTarget} / ${total} with data`;
+    let html = `<div style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">The target <code>auto_codex+knowledge</code> has evaluated runs in <strong style="color:var(--mint);">${withTarget}</strong> of <strong>${total}</strong> task types (categories). The full list is below — categories without any target runs are marked as <em>no target data</em>, so their delta is <code>null</code> (not zero). This shows which task types are missing entirely from the "Deltas per category" chart.</div>`;
+    html += '<table><thead><tr><th>Category (task type)</th><th class="num">Target eval</th><th class="num">Others eval</th><th class="num">Δsuccess</th><th class="num">Δscore</th><th class="num">Composite</th><th>Status</th></tr></thead><tbody>';
     cats.forEach(c=>{
       const has = c.target_summary.evaluated>0;
       const status = !has
-        ? '<span class="badge badge-neutral">brak danych targetu</span>'
-        : (c.delta.wins_both ? '<span class="badge badge-passed">WIN</span>' : '<span class="badge badge-info">ma dane</span>');
+        ? '<span class="badge badge-neutral">No target data</span>'
+        : (c.delta.wins_both ? '<span class="badge badge-passed">WIN</span>' : '<span class="badge badge-info">Has data</span>');
       html += `<tr style="${c.delta.wins_both&&c.enough_data?'background:rgba(0,229,155,.06);':''}">
         <td><strong>${c.label}</strong></td>
         <td class="num mono">${c.target_summary.evaluated}</td>
@@ -295,8 +295,8 @@
     charts.chScatter = new Chart(ctx, {
       type:'scatter',
       data:{ datasets:[
-        { label:'zadania (target vs others success_rate)', data:pts, pointBackgroundColor:colors, pointRadius:5, pointHoverRadius:7 },
-        { label:'linia parytetu (target = others)', type:'line', data:[{x:0,y:0},{x:1,y:1}], borderColor:'#a5b3c2', borderDash:[6,4], pointRadius:0, fill:false },
+        { label:'tasks (target vs others success_rate)', data:pts, pointBackgroundColor:colors, pointRadius:5, pointHoverRadius:7 },
+        { label:'parity line (target = others)', type:'line', data:[{x:0,y:0},{x:1,y:1}], borderColor:'#a5b3c2', borderDash:[6,4], pointRadius:0, fill:false },
       ]},
       options:{ responsive:true, maintainAspectRatio:false,
         plugins:{ legend:{labels:{color:'#c6d3df'}},
@@ -323,7 +323,7 @@
     const groups = new Map();
     tasks.forEach(t=>{
       const raw_key = groupBy === 'difficulty' ? t.filter.difficulty : t.filter.category;
-      const key = raw_key || 'brak';
+      const key = raw_key || 'unknown';
       if(!groups.has(key)) groups.set(key, { key, win:0, tie:0, loss:0, total:0 });
       const g = groups.get(key);
       g.total += 1;
@@ -333,7 +333,7 @@
     });
     const rows = [...groups.values()].sort((a,b)=> (b.win - a.win) || (b.total - a.total) || a.key.localeCompare(b.key));
     if(!rows.length){
-      ctx.parentElement.innerHTML = '<div class="fl-empty">Brak zadań do policzenia.</div>';
+      ctx.parentElement.innerHTML = '<div class="fl-empty">No tasks to count.</div>';
       return;
     }
     const totalWin = rows.reduce((s,r)=> s + r.win, 0);
@@ -341,34 +341,34 @@
     // leave room to the right of the longest bar for the "won / all" label
     const maxTotal = Math.max(...rows.map(r=> r.total)) + 1;
     const titleEl = document.getElementById('bmWinBarsTitle');
-    if(titleEl) titleEl.textContent = groupBy === 'difficulty' ? 'Bilans wygranych — zadania wg trudności' : 'Bilans wygranych — zadania wg kategorii';
+    if(titleEl) titleEl.textContent = groupBy === 'difficulty' ? 'Win balance — tasks by difficulty' : 'Win balance — tasks by category';
     charts.chWinBars = new Chart(ctx, {
       type:'bar',
       data:{ labels:rows.map(r=> r.key), datasets:[
-        { label:'wygrywa oba', data:rows.map(r=> r.win), backgroundColor:'#00e59b', stack:'s' },
-        { label:'nierozstrzygnięte', data:rows.map(r=> r.tie), backgroundColor:'#ffb44a', stack:'s' },
-        { label:'przegrywa', data:rows.map(r=> r.loss), backgroundColor:'#ff6b7a', stack:'s' },
+        { label:'wins both', data:rows.map(r=> r.win), backgroundColor:'#00e59b', stack:'s' },
+        { label:'undecided', data:rows.map(r=> r.tie), backgroundColor:'#ffb44a', stack:'s' },
+        { label:'loses', data:rows.map(r=> r.loss), backgroundColor:'#ff6b7a', stack:'s' },
       ]},
       options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins:{
           legend:{ labels:{color:'#c6d3df', boxWidth:12} },
-          title:{ display:true, text:`${totalWin} z ${totalAll} zadań wygrywa oba wskaźniki`, color:'#c6d3df', font:{size:12, weight:'600'}, padding:{bottom:10} },
+          title:{ display:true, text:`${totalWin} of ${totalAll} tasks win on both indicators`, color:'#c6d3df', font:{size:12, weight:'600'}, padding:{bottom:10} },
           tooltip:{ callbacks:{
-            label:(c)=> ` ${c.dataset.label}: ${c.parsed.x} z ${rows[c.dataIndex].total} zadań`,
+            label:(c)=> ` ${c.dataset.label}: ${c.parsed.x} of ${rows[c.dataIndex].total} tasks`,
             footer:(items)=>{
               const r = rows[items[0].dataIndex];
               const pct = r.total ? (r.win / r.total * 100).toFixed(0) : '0';
-              return `wygrane ${r.win}/${r.total} (${pct}%)`;
+              return `won ${r.win}/${r.total} (${pct}%)`;
             },
           } },
         },
         scales:{
-          x:{ stacked:true, beginAtZero:true, suggestedMax:maxTotal, ticks:{ color:'#a5b3c2', precision:0, callback:(v)=> Number.isInteger(v)? v : '' }, grid:{color:'rgba(255,255,255,.06)'}, title:{display:true, text:'liczba zadań', color:'#a5b3c2'} },
+          x:{ stacked:true, beginAtZero:true, suggestedMax:maxTotal, ticks:{ color:'#a5b3c2', precision:0, callback:(v)=> Number.isInteger(v)? v : '' }, grid:{color:'rgba(255,255,255,.06)'}, title:{display:true, text:'Number of tasks', color:'#a5b3c2'} },
           y:{ stacked:true, ticks:{ color:'#a5b3c2', font:{family:'ui-monospace', size:10} }, grid:{display:false} },
         },
       },
       plugins:[{
-        // "wygrane / wszystkie" at the end of every stacked bar — the count alone
+        // "won / total" at the end of every stacked bar — the count alone
         // hides how big the group is, the ratio is what makes groups comparable
         id:'bmWinRatio',
         afterDatasetsDraw(chart){
@@ -446,14 +446,14 @@
       html+='</tr>';
     });
     html+='</tbody></table>';
-    html+=`<div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono); margin-top:6px;">Kolor: zielony = target wygrywa (composite >0), intensywność = siła przewagi. Klik w komórkę → filtr w tabeli poniżej.</div>`;
+    html+=`<div style="font-size:11px; color:var(--fg-faint); font-family:var(--mono); margin-top:6px;">Colour: green = target wins (composite >0), intensity = strength of the advantage. Click a cell → filter the table below.</div>`;
     el.heat.innerHTML = html;
   }
 
   function renderCatSubsets(){
     const rows = (raw.optimal.best_category_subsets_ranked||[]).slice(0,10);
-    if(!rows.length){ el.catSubsets.innerHTML='<div class="fl-empty">Za mało kategorii do brute-force.</div>'; return; }
-    let html = '<table><thead><tr><th>#</th><th>Podzbiór kategorii</th><th class="num">Target success</th><th class="num">Others success</th><th class="num">Δsuccess</th><th class="num">Δscore</th><th class="num">Composite</th><th>Evid.</th></tr></thead><tbody>';
+    if(!rows.length){ el.catSubsets.innerHTML='<div class="fl-empty">Not enough categories for brute force.</div>'; return; }
+    let html = '<table><thead><tr><th>#</th><th>Category subset</th><th class="num">Target success</th><th class="num">Others success</th><th class="num">Δsuccess</th><th class="num">Δscore</th><th class="num">Composite</th><th>Evid.</th></tr></thead><tbody>';
     rows.forEach((r,i)=>{
       const isBest = i===0;
       html+=`<tr style="${isBest?'background:rgba(0,229,155,.07);':''}"><td class="mono">${isBest?'🏆':i+1}</td><td><code>${r.label}</code></td><td class="num mono">${fmtPct(r.target_summary.success_rate)}</td><td class="num mono">${fmtPct(r.other_summary.success_rate)}</td><td class="num mono ${deltaClass(r.delta.delta_success_rate)}">${fmtDelta(r.delta.delta_success_rate)}</td><td class="num mono ${deltaClass(r.delta.delta_mean_score)}">${fmtDelta(r.delta.delta_mean_score)}</td><td class="num mono" style="font-weight:700; color:${r.delta.composite>0?'var(--mint)':'var(--fg)'}">${fmtDelta(r.delta.composite)}</td><td style="font-size:11px; color:var(--fg-faint);">${r.target_summary.evaluated} vs ${r.other_summary.evaluated}${r.enough_data?' ✅':' ⚠️'}</td></tr>`;
@@ -464,8 +464,8 @@
 
   function renderVsComp(){
     const rows = raw.vs_competitors || [];
-    if(!rows.length){ el.vsComp.innerHTML='<div class="fl-empty">Brak konkurentów.</div>'; return; }
-    let html = '<table><thead><tr><th>Konkurent</th><th class="num">Target</th><th class="num">Konkurent</th><th class="num">Δsuccess</th><th class="num">Δscore</th><th class="num">Composite</th><th>Werdykt</th></tr></thead><tbody>';
+    if(!rows.length){ el.vsComp.innerHTML='<div class="fl-empty">No competitors.</div>'; return; }
+    let html = '<table><thead><tr><th>Competitor</th><th class="num">Target</th><th class="num">Competitor</th><th class="num">Δsuccess</th><th class="num">Δscore</th><th class="num">Composite</th><th>Verdict</th></tr></thead><tbody>';
     rows.forEach(r=>{
       html+=`<tr><td class="mono" style="font-size:11.5px; max-width:320px; overflow:hidden; text-overflow:ellipsis;">${r.filter.competitor}</td><td class="num mono">${fmtPct(r.target_summary.success_rate)}<div style="font-size:10px; color:var(--fg-faint);">${fmtScore(r.target_summary.mean_score)}</div></td><td class="num mono">${fmtPct(r.other_summary.success_rate)}<div style="font-size:10px; color:var(--fg-faint);">${fmtScore(r.other_summary.mean_score)}</div></td><td class="num mono ${deltaClass(r.delta.delta_success_rate)}">${fmtDelta(r.delta.delta_success_rate)}</td><td class="num mono ${deltaClass(r.delta.delta_mean_score)}">${fmtDelta(r.delta.delta_mean_score)}</td><td class="num mono" style="font-weight:700;">${fmtDelta(r.delta.composite)}</td><td>${r.delta.wins_both ? '<span class="badge badge-passed">WIN</span>' : (r.delta.delta_success_rate>0?'<span class="badge badge-neutral">partial</span>':'<span class="badge badge-failed">lose</span>')}</td></tr>`;
     });
@@ -486,7 +486,7 @@
         <td class="num mono" style="font-weight:700; color:${r.delta.composite>0?'var(--mint)': r.delta.composite<0?'var(--red)':'var(--fg)'}">${fmtDelta(r.delta.composite)}</td>
         <td class="num mono">${r.target_summary.passed}/${r.target_summary.evaluated}</td>
         <td class="num mono">${r.other_summary.passed}/${r.other_summary.evaluated}</td>
-        <td>${win ? '<span class="badge badge-passed">WIN oba</span>' : '<span class="badge badge-neutral">—</span>'} ${r.enough_data?'<span class="badge badge-info">enough</span>':'<span class="badge badge-neutral">low n</span>'}</td>
+        <td>${win ? '<span class="badge badge-passed">WIN both</span>' : '<span class="badge badge-neutral">—</span>'} ${r.enough_data?'<span class="badge badge-info">enough</span>':'<span class="badge badge-neutral">low n</span>'}</td>
       </tr>`;
     });
     html+='</tbody></table>';
@@ -494,7 +494,7 @@
   }
 
   function tasksTableHTML(rows){
-    let html = '<table class="table-wide"><thead><tr><th>Task</th><th>Kategoria</th><th>Trudność</th><th class="num">Target</th><th class="num">Others</th><th class="num">Δsuccess</th><th class="num">Δscore</th><th class="num">Composite</th><th>Link</th></tr></thead><tbody>';
+    let html = '<table class="table-wide"><thead><tr><th>Task</th><th>Category</th><th>Difficulty</th><th class="num">Target</th><th class="num">Others</th><th class="num">Δsuccess</th><th class="num">Δscore</th><th class="num">Composite</th><th>Link</th></tr></thead><tbody>';
     rows.forEach(r=>{
       const win = r.delta.wins_both;
       html+=`<tr style="${win && r.enough_data?'background:rgba(0,229,155,.06);':''}">
@@ -554,7 +554,7 @@
           const cat = meta?.filter.category||''; const diff=meta?.filter.difficulty||'';
           return `<a href="/tasks/${id}" class="chip" style="font-size:11px;">${id}<span style="color:var(--fg-faint); margin-left:6px;">${cat}·${diff}</span></a>`;
         }).join('')}</div>
-        <div style="margin-top:10px;"><a href="/runs?search=${tset.filter.task_uids.slice(0,5).join(' ')}" class="btn btn-sm">Zobacz runs dla tych zadań</a> <span style="font-size:11px; color:var(--fg-faint);">To jest zmaksymalizowany zestaw — każdy task w nim to task, gdzie target wygrywa oba wskaźniki.</span></div>
+        <div style="margin-top:10px;"><a href="/runs?search=${tset.filter.task_uids.slice(0,5).join(' ')}" class="btn btn-sm">View runs for these tasks</a> <span style="font-size:11px; color:var(--fg-faint);">This is the maximised set — every task in it is a task where the target wins on both indicators.</span></div>
       `;
     }
     if(winning.length){
@@ -574,7 +574,7 @@
     el.loading.style.display='none';
     if(raw.meta.total_runs===0 || raw.target.runs===0){
       el.empty.style.display='block';
-      el.empty.innerHTML = `<div class="panel-body"><strong>Brak danych dla targetu.</strong><div style="color:var(--fg-dim); font-size:13px; margin-top:6px;">Historia ma ${raw.meta.total_runs} runs, ale żaden nie został rozpoznany jako <code>auto_codex+knowledge</code>. Sprawdź czy zostały uruchomione eksperymenty z modelem <code>auto_codex</code> i pipeline <code>agentic_knowledge</code>.</div><div style="margin-top:10px; font-size:11.5px; color:var(--fg-faint); font-family:var(--mono);">Meta: categories=${raw.meta.categories.join(', ')||'—'} · difficulties=${raw.meta.difficulties.join(', ')||'—'} · tasks=${raw.meta.total_tasks}</div></div>`;
+      el.empty.innerHTML = `<div class="panel-body"><strong>No data for the target.</strong><div style="color:var(--fg-dim); font-size:13px; margin-top:6px;">The history has ${raw.meta.total_runs} runs, but none were recognised as <code>auto_codex+knowledge</code>. Check whether experiments were run with the <code>auto_codex</code> model and the <code>agentic_knowledge</code> pipeline.</div><div style="margin-top:10px; font-size:11.5px; color:var(--fg-faint); font-family:var(--mono);">Meta: categories=${raw.meta.categories.join(', ')||'—'} · difficulties=${raw.meta.difficulties.join(', ')||'—'} · tasks=${raw.meta.total_tasks}</div></div>`;
       return;
     }
     renderKPIs();
