@@ -1,4 +1,5 @@
-# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+# Task category (plan section 8.1): the agent restructures code to a declared
+# shape while preserving externally visible behaviour, pinned by the hidden tests.
 schema_version: "1.0"
 id: refactoring
 version: "1.0.0"

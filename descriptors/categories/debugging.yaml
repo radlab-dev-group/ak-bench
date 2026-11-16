@@ -1,4 +1,6 @@
-# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+# Task category (plan section 8.1): a reproducible failure is presented and the
+# agent repairs its root cause; the defect lives in the base code rather than in a
+# mutation patch.
 schema_version: "1.0"
 id: debugging
 version: "1.0.0"

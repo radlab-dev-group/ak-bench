@@ -1,4 +1,6 @@
-# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+# Task category (plan section 8.1): the agent writes the tests; they must pass on
+# the code as it is and fail on a mutated variant, judged against hidden reference
+# tests.
 schema_version: "1.0"
 id: testing
 version: "1.0.0"

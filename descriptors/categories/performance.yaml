@@ -1,4 +1,6 @@
-# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+# Task category (plan section 8.1): the agent improves a measurable performance
+# characteristic under a deterministic measurement harness, without behavioural
+# regressions.
 schema_version: "1.0"
 id: performance
 version: "1.0.0"

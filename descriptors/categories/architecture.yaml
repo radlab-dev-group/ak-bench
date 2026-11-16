@@ -1,4 +1,6 @@
-# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+# Task category (plan section 8.1): the agent restructures the repository toward
+# an architectural goal stated by the task; the acceptance criteria are judged by
+# the hidden tests.
 schema_version: "1.0"
 id: architecture
 version: "1.0.0"

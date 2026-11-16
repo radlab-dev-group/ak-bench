@@ -1,4 +1,6 @@
-# Roadmap category (plan section 8.1): registered but disabled until tasks exist.
+# Task category (plan section 8.1): a vulnerability is present in the base code
+# and the agent closes it without changing the API; hidden tests prove the
+# vulnerability is closed.
 schema_version: "1.0"
 id: security
 version: "1.0.0"
